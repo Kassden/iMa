@@ -1,0 +1,13 @@
+[Unit]
+Description=iMa meeting-complete model retraining
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ima
+EnvironmentFile=/opt/ima/.env
+ExecStart=/opt/ima/.venv/bin/python -m scripts.train --output /opt/ima/artifacts/models/latest
+User=ima
+Group=ima
+NoNewPrivileges=true
+PrivateTmp=true
