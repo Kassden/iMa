@@ -21,7 +21,7 @@ class FeatureSchema:
 BASELINE_SCHEMA = FeatureSchema("baseline-v1", NUMERIC_FEATURES, CATEGORICAL_FEATURES)
 
 RICH_NUMERIC_FEATURES = (
-    "horse_rating", "declared_weight", "actual_weight", "draw", "distance",
+    "horse_age", "horse_rating", "declared_weight", "actual_weight", "draw", "distance",
     "race_class", "prize", "field_size", "official_source",
     "prior_starts", "prior_win_rate", "prior_top3_rate", "prior_avg_result",
     "prior_avg_odds", "days_since_last_race", "last_result", "avg_result_2",
@@ -45,14 +45,17 @@ RICH_NUMERIC_FEATURES = (
     "sectionals_available", "last_sectional_time", "last_sectional_position",
 )
 
-RICH_CATEGORICAL_FEATURES = ("venue", "course", "going", "surface")
+RICH_CATEGORICAL_FEATURES = (
+    "venue", "course", "going", "surface", "horse_country", "horse_type", "horse_gear",
+)
 RICH_SCHEMA = FeatureSchema("benter-rich-v1", RICH_NUMERIC_FEATURES, RICH_CATEGORICAL_FEATURES)
 
 
 FEATURE_FAMILIES = {
     "current_race": (
-        "horse_rating", "declared_weight", "actual_weight", "draw", "distance",
+        "horse_age", "horse_rating", "declared_weight", "actual_weight", "draw", "distance",
         "race_class", "prize", "field_size", "venue", "course", "going", "surface",
+        "horse_country", "horse_type", "horse_gear",
     ),
     "source_quality": ("official_source",),
     "current_condition": (
@@ -99,6 +102,7 @@ FEATURE_ORIGINS = {
         "trainer_win_rate", "prior_avg_odds",
     ),
     "official_hkjc_recovery": (
+        "horse_age", "horse_country", "horse_type", "horse_gear",
         "distance", "race_class", "prize", "course", "going",
         "last_lengths_behind", "avg_lengths_behind_3",
         "last_late_position_gain", "avg_late_position_gain_3",
@@ -110,7 +114,7 @@ BENTER_COVERAGE = (
     {"factor": "recent race performance", "status": "supported"},
     {"factor": "time since last race", "status": "supported"},
     {"factor": "recent workouts", "status": "partial", "note": "2015-2017 third-party coverage"},
-    {"factor": "horse age", "status": "unsupported", "note": "not reliably point-in-time"},
+    {"factor": "horse age", "status": "partial", "note": "timestamped HKJC and archived snapshot propagation"},
     {"factor": "past finishing positions", "status": "supported"},
     {"factor": "lengths behind winner", "status": "supported"},
     {"factor": "normalized past times", "status": "supported"},

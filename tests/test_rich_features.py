@@ -46,7 +46,7 @@ class RichFeatureContractTests(unittest.TestCase):
 
     def test_benter_coverage_discloses_unsupported_factors(self):
         coverage = {row["factor"]: row["status"] for row in BENTER_COVERAGE}
-        self.assertEqual("unsupported", coverage["horse age"])
+        self.assertEqual("partial", coverage["horse age"])
         self.assertEqual("unsupported", coverage["bad luck adjustment"])
         self.assertEqual("supported", coverage["lengths behind winner"])
 
