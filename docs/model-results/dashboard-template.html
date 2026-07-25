@@ -75,6 +75,7 @@
     .control select { min-width: 190px; padding: 0 34px 0 10px; }
     .segments { display: inline-grid; grid-template-columns: repeat(3, 1fr); }
     .segments button { border-radius: 0; min-width: 82px; padding: 0 12px; }
+    #source-filter button { min-width: 108px; }
     .segments button:first-child { border-radius: 6px 0 0 6px; }
     .segments button:last-child { border-radius: 0 6px 6px 0; }
     .segments button + button { border-left: 0; }
@@ -105,10 +106,37 @@
     tbody tr:last-child td { border-bottom: 0; }
     .family { display: inline-flex; align-items: center; gap: 7px; }
     .empty { color: var(--muted); padding: 32px 0; }
+    .pipeline-section { margin: 8px 0 30px; border-top: 1px solid var(--line); padding-top: 24px; }
+    .pipeline-note { color: var(--muted); margin: -7px 0 18px; max-width: 900px; }
+    .pipeline {
+      display: grid;
+      gap: 10px;
+    }
+    .pipeline-lane { display: grid; grid-template-columns: 1fr 28px 1fr 28px 1fr; gap: 6px; align-items: stretch; }
+    .pipeline-lane.market-lane { grid-template-columns: 1fr 28px 1fr; width: calc(60% - 2px); }
+    .pipeline-merge { display: grid; grid-template-columns: minmax(180px, 1fr); place-items: center; padding: 2px 20%; }
+    .pipeline-downstream { display: grid; grid-template-columns: 1fr 28px 1fr 28px 1fr 28px 1.2fr 28px 1fr; gap: 6px; align-items: stretch; }
+    .pipe-node { border: 1px solid var(--line); border-radius: 6px; padding: 14px; background: #fff; min-width: 0; }
+    .pipe-node strong { display: block; margin-bottom: 5px; }
+    .pipe-node span { color: var(--muted); font-size: 12px; }
+    .pipe-node.market { border-color: rgba(29, 78, 216, .45); }
+    .pipe-node.blend { border-color: rgba(24, 121, 78, .5); background: #f4faf7; }
+    .pipe-node.output { border-color: rgba(181, 71, 8, .4); }
+    .pipe-arrow { display: grid; place-items: center; color: var(--muted); font-weight: 700; }
+    .pool-list { margin-top: 8px; font-size: 12px; font-weight: 650; line-height: 1.7; }
+    .source-comparison { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0 0 18px; }
+    .source-comparison div { border-top: 2px solid var(--line); padding-top: 7px; }
+    .source-comparison div:nth-child(2) { border-color: var(--market); }
+    .source-comparison div:nth-child(3) { border-color: var(--logit); }
+    .source-comparison span { display: block; color: var(--muted); font-size: 11px; }
+    .source-comparison strong { font-variant-numeric: tabular-nums; }
     @media (max-width: 900px) {
       .visuals { grid-template-columns: 1fr; }
       .chart-wrap { height: 340px; }
       .detail { min-height: 0; }
+      .pipeline-lane, .pipeline-downstream { grid-template-columns: 1fr 24px 1fr; }
+      .pipeline-lane.market-lane { width: 100%; grid-template-columns: 1fr 24px 1fr; }
+      .pipeline-merge { padding: 2px 12%; }
     }
     @media (max-width: 620px) {
       header { padding-top: 20px; }
@@ -122,6 +150,9 @@
       .control select { width: 100%; min-width: 0; }
       .chart-wrap { height: 300px; }
       .detail-grid { grid-template-columns: 1fr 1fr; }
+      .pipeline-lane, .pipeline-lane.market-lane, .pipeline-downstream { display: grid; grid-template-columns: 1fr; }
+      .pipe-arrow { min-height: 18px; transform: rotate(90deg); }
+      .source-comparison { grid-template-columns: 1fr 1fr 1fr; }
     }
   </style>
 </head>
@@ -148,8 +179,50 @@
       <div class="stat"><strong id="market-score"></strong><span>Market Top-1</span></div>
     </section>
 
+    <section class="pipeline-section" aria-labelledby="pipeline-title">
+      <h2 id="pipeline-title">Prediction and wagering pipeline</h2>
+      <p class="pipeline-note">The horse model and market remain independently measurable, then combine before finishing-order and pool probabilities are calculated.</p>
+      <div class="pipeline" id="prediction-pipeline">
+        <div class="pipeline-lane">
+          <div class="pipe-node"><strong>Point-in-time inputs</strong><span>Horse form, rating, draw, weight, distance, class, going, trackwork and veterinary history</span></div>
+          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
+          <div class="pipe-node"><strong>Feature transformation</strong><span>Race-safe joins, missing-value indicators, scaling and categorical encoding</span></div>
+          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
+          <div class="pipe-node"><strong>Fundamental probability</strong><span>Logistic or boosted model, normalized within each race and temperature calibrated</span></div>
+        </div>
+        <div class="pipeline-lane market-lane">
+          <div class="pipe-node market"><strong>Live WIN market odds</strong><span>Only odds observed at or before the prediction timestamp</span></div>
+          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
+          <div class="pipe-node market"><strong>Market probability</strong><span>Inverse odds, takeout-aware normalization and race-level probability scaling</span></div>
+        </div>
+        <div class="pipeline-merge">
+          <div class="pipe-node blend"><strong>Fitted market blend</strong><span>Fundamental<sup>wf</sup> x Market<sup>wm</sup>, with weights learned on validation races</span></div>
+        </div>
+        <div class="pipeline-downstream">
+          <div class="pipe-node"><strong>Public fallback</strong><span>First-time or unratable horses inherit their public probability</span></div>
+          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
+          <div class="pipe-node"><strong>Finishing-order model</strong><span>Fitted Benter second- and third-place exponents</span></div>
+          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
+          <div class="pipe-node output"><strong>Pool probabilities</strong><span>Rank every valid single-horse or combination outcome</span><div class="pool-list" id="supported-pools">WIN / PLACE / QIN / QPL / TRI / TIERCE / FIRST4 / QUARTET</div></div>
+          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
+          <div class="pipe-node market"><strong>Live pool-price comparison</strong><span>Compare fair odds with current pool odds and measure disagreement</span></div>
+          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
+          <div class="pipe-node output"><strong>Wager decision</strong><span>Expected value, fractional Kelly, exposure limits and paper execution</span></div>
+        </div>
+      </div>
+      <p class="pipeline-note" id="market-limitation"></p>
+    </section>
+
     <section class="toolbar" aria-label="Experiment controls">
       <div class="toolbar-group">
+        <div class="control">
+          <label>Probability source</label>
+          <div class="segments" id="source-filter">
+            <button type="button" data-source="fundamental">Fundamental</button>
+            <button type="button" data-source="market">Market</button>
+            <button type="button" class="active" data-source="combined">Combined</button>
+          </div>
+        </div>
         <div class="control">
           <label>Model family</label>
           <div class="segments" id="family-filter">
@@ -239,7 +312,7 @@
       pseudo_r2: { label: "Pseudo-R2", higher: true },
       duration_seconds: { label: "Run duration", higher: false }
     };
-    const state = { family: "all", metric: "top_pick_win_rate", sort: "top_pick_win_rate", selected: null };
+    const state = { source: "combined", family: "all", metric: "top_pick_win_rate", sort: "top_pick_win_rate", selected: null };
 
     const fmt = (value, digits = 4) => Number(value).toFixed(digits);
     const pct = value => `${(Number(value) * 100).toFixed(2)}%`;
@@ -247,12 +320,17 @@
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
     })[char]);
+    const sourceMetrics = run => {
+      if (state.source === "market") return DATA.market_test;
+      if (state.source === "combined") return run.test_blended;
+      return run.test_fundamental;
+    };
     const filteredRuns = () => DATA.runs.filter(run => state.family === "all" || run.kind === state.family);
     const sortedRuns = () => {
       const metric = METRICS[state.sort];
       return filteredRuns().slice().sort((a, b) => {
-        const av = state.sort === "duration_seconds" ? a.duration_seconds : a.test_fundamental[state.sort];
-        const bv = state.sort === "duration_seconds" ? b.duration_seconds : b.test_fundamental[state.sort];
+        const av = state.sort === "duration_seconds" ? a.duration_seconds : sourceMetrics(a)[state.sort];
+        const bv = state.sort === "duration_seconds" ? b.duration_seconds : sourceMetrics(b)[state.sort];
         return metric.higher ? bv - av : av - bv;
       });
     };
@@ -273,9 +351,10 @@
       const { context: ctx, width, height } = prepareCanvas(canvas);
       const runs = sortedRuns();
       const metric = METRICS[state.metric];
-      document.getElementById("chart-title").textContent = `${metric.label} by run`;
+      const sourceLabel = state.source[0].toUpperCase() + state.source.slice(1);
+      document.getElementById("chart-title").textContent = `${sourceLabel} ${metric.label} by run`;
       if (!runs.length) return;
-      const values = runs.map(run => run.test_fundamental[state.metric]);
+      const values = runs.map(run => sourceMetrics(run)[state.metric]);
       const benchmark = DATA.market_test[state.metric];
       const allValues = Number.isFinite(benchmark) ? values.concat([benchmark]) : values;
       let min = Math.min(...allValues);
@@ -295,7 +374,7 @@
         ctx.textAlign = "right";
         const label = run.run_id.length > 25 ? `${run.run_id.slice(0, 23)}...` : run.run_id;
         ctx.fillText(label, left - 10, y);
-        ctx.fillStyle = COLORS[run.kind];
+        ctx.fillStyle = state.source === "market" ? COLORS.market : COLORS[run.kind];
         const start = x(min);
         ctx.fillRect(start, y - Math.min(8, row * .28), Math.max(2, x(values[index]) - start), Math.min(16, row * .56));
       });
@@ -322,12 +401,14 @@
       const runs = filteredRuns();
       if (!runs.length) return;
       const points = runs.map(run => ({
-        x: run.test_fundamental.race_log_loss,
-        y: run.test_fundamental.top_pick_win_rate,
-        kind: run.kind,
+        x: sourceMetrics(run).race_log_loss,
+        y: sourceMetrics(run).top_pick_win_rate,
+        kind: state.source === "market" ? "market" : run.kind,
         selected: run.run_id === state.selected
       }));
-      points.push({ x: DATA.market_test.race_log_loss, y: DATA.market_test.top_pick_win_rate, kind: "market" });
+      if (state.source !== "market") {
+        points.push({ x: DATA.market_test.race_log_loss, y: DATA.market_test.top_pick_win_rate, kind: "market" });
+      }
       const xs = points.map(point => point.x), ys = points.map(point => point.y);
       const xPad = Math.max((Math.max(...xs) - Math.min(...xs)) * .16, .01);
       const yPad = Math.max((Math.max(...ys) - Math.min(...ys)) * .18, .005);
@@ -362,7 +443,7 @@
       const { context: ctx, width, height } = prepareCanvas(canvas);
       const runs = DATA.runs.filter(run => state.family === "all" || run.kind === state.family);
       if (!runs.length) return;
-      const values = runs.map(run => run.test_fundamental.top_pick_win_rate);
+      const values = runs.map(run => sourceMetrics(run).top_pick_win_rate);
       const market = DATA.market_test.top_pick_win_rate;
       const min = Math.max(0, Math.min(...values) - .015);
       const max = Math.max(market, ...values) + .012;
@@ -392,12 +473,12 @@
         ctx.lineWidth = 2;
         ctx.beginPath();
         indexes.forEach((item, sequence) => {
-          const px = x(item.index), py = y(item.run.test_fundamental.top_pick_win_rate);
+          const px = x(item.index), py = y(sourceMetrics(item.run).top_pick_win_rate);
           if (sequence === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         });
         ctx.stroke();
         indexes.forEach(item => {
-          const px = x(item.index), py = y(item.run.test_fundamental.top_pick_win_rate);
+          const px = x(item.index), py = y(sourceMetrics(item.run).top_pick_win_rate);
           ctx.beginPath(); ctx.arc(px, py, item.run.run_id === state.selected ? 6 : 4, 0, Math.PI * 2);
           ctx.fillStyle = COLORS[kind]; ctx.fill();
           if (item.run.run_id === state.selected) { ctx.strokeStyle = "#18201d"; ctx.lineWidth = 2; ctx.stroke(); }
@@ -416,18 +497,26 @@
       state.selected = runId;
       const run = DATA.runs.find(item => item.run_id === runId);
       if (!run) return;
+      const metrics = sourceMetrics(run);
+      const sourceLabel = state.source[0].toUpperCase() + state.source.slice(1);
       const detail = document.getElementById("run-detail");
       detail.className = `detail ${run.kind}`;
       detail.innerHTML = `
         <h2>${escapeHtml(run.run_id)}</h2>
+        <p class="subtitle">Displayed source: ${sourceLabel}</p>
+        <div class="source-comparison">
+          <div><span>Fundamental Top-1</span><strong>${pct(run.test_fundamental.top_pick_win_rate)}</strong></div>
+          <div><span>Market Top-1</span><strong>${pct(DATA.market_test.top_pick_win_rate)}</strong></div>
+          <div><span>Combined Top-1</span><strong>${pct(run.test_blended.top_pick_win_rate)}</strong></div>
+        </div>
         <dl class="detail-grid">
-          <div><dt>Top-1</dt><dd>${pct(run.test_fundamental.top_pick_win_rate)}</dd></div>
-          <div><dt>Top-3</dt><dd>${pct(run.test_fundamental.winner_top3_rate)}</dd></div>
-          <div><dt>Log loss</dt><dd>${fmt(run.test_fundamental.race_log_loss)}</dd></div>
-          <div><dt>Brier</dt><dd>${fmt(run.test_fundamental.race_brier)}</dd></div>
-          <div><dt>ECE</dt><dd>${fmt(run.test_fundamental.ece)}</dd></div>
-          <div><dt>Pseudo-R2</dt><dd>${fmt(run.test_fundamental.pseudo_r2)}</dd></div>
-          <div><dt>Mean winner rank</dt><dd>${fmt(run.test_fundamental.mean_winner_rank, 2)}</dd></div>
+          <div><dt>Top-1</dt><dd>${pct(metrics.top_pick_win_rate)}</dd></div>
+          <div><dt>Top-3</dt><dd>${pct(metrics.winner_top3_rate)}</dd></div>
+          <div><dt>Log loss</dt><dd>${fmt(metrics.race_log_loss)}</dd></div>
+          <div><dt>Brier</dt><dd>${fmt(metrics.race_brier)}</dd></div>
+          <div><dt>ECE</dt><dd>${fmt(metrics.ece)}</dd></div>
+          <div><dt>Pseudo-R2</dt><dd>${fmt(metrics.pseudo_r2)}</dd></div>
+          <div><dt>Mean winner rank</dt><dd>${fmt(metrics.mean_winner_rank, 2)}</dd></div>
           <div><dt>Temperature</dt><dd>${fmt(run.temperature, 3)}</dd></div>
           <div><dt>Blend fundamental</dt><dd>${fmt(run.fundamental_weight, 3)}</dd></div>
           <div><dt>Incremental Pseudo-R2</dt><dd>${fmt(run.incremental_pseudo_r2)}</dd></div>
@@ -443,19 +532,22 @@
     function renderTable() {
       const runs = sortedRuns();
       document.getElementById("empty-state").hidden = runs.length > 0;
-      document.getElementById("results-body").innerHTML = runs.map(run => `
+      document.getElementById("results-body").innerHTML = runs.map(run => {
+        const metrics = sourceMetrics(run);
+        return `
         <tr data-run-id="${escapeHtml(run.run_id)}" class="${run.run_id === state.selected ? "selected" : ""}" tabindex="0">
           <td>${escapeHtml(run.run_id)}</td>
           <td><span class="family"><span class="dot" style="background:${COLORS[run.kind]}"></span>${escapeHtml(run.kind)}</span></td>
-          <td>${pct(run.test_fundamental.top_pick_win_rate)}</td>
-          <td>${pct(run.test_fundamental.winner_top3_rate)}</td>
-          <td>${fmt(run.test_fundamental.mean_winner_rank, 2)}</td>
-          <td>${fmt(run.test_fundamental.race_log_loss)}</td>
-          <td>${fmt(run.test_fundamental.race_brier)}</td>
-          <td>${fmt(run.test_fundamental.ece)}</td>
-          <td>${fmt(run.test_fundamental.pseudo_r2)}</td>
+          <td>${pct(metrics.top_pick_win_rate)}</td>
+          <td>${pct(metrics.winner_top3_rate)}</td>
+          <td>${fmt(metrics.mean_winner_rank, 2)}</td>
+          <td>${fmt(metrics.race_log_loss)}</td>
+          <td>${fmt(metrics.race_brier)}</td>
+          <td>${fmt(metrics.ece)}</td>
+          <td>${fmt(metrics.pseudo_r2)}</td>
           <td>${fmt(run.fundamental_weight, 3)}</td>
-        </tr>`).join("");
+        </tr>`;
+      }).join("");
       document.querySelectorAll("#results-body tr").forEach(row => {
         row.addEventListener("click", () => selectRun(row.dataset.runId));
         row.addEventListener("keydown", event => {
@@ -479,7 +571,18 @@
     document.getElementById("runner-count").textContent = DATA.dataset.runners.toLocaleString();
     document.getElementById("test-count").textContent = DATA.dataset.test_races.toLocaleString();
     document.getElementById("market-score").textContent = pct(DATA.market_test.top_pick_win_rate);
+    if (DATA.supported_pools) {
+      document.getElementById("supported-pools").textContent = DATA.supported_pools.join(" / ");
+    }
+    document.getElementById("market-limitation").textContent = DATA.prediction_sources?.historical_market_limit || "Historical charts may use final odds; live wagering requires timestamped pre-race odds.";
 
+    document.getElementById("source-filter").addEventListener("click", event => {
+      const button = event.target.closest("button[data-source]");
+      if (!button) return;
+      state.source = button.dataset.source;
+      document.querySelectorAll("#source-filter button").forEach(item => item.classList.toggle("active", item === button));
+      render();
+    });
     document.getElementById("family-filter").addEventListener("click", event => {
       const button = event.target.closest("button[data-family]");
       if (!button) return;
