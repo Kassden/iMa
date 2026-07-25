@@ -1,0 +1,61 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from ima.experiments import default_experiment_specs, render_dashboard, results_frame
+
+
+class ExperimentTests(unittest.TestCase):
+    def test_default_grid_is_unique_and_covers_both_models(self):
+        specs = default_experiment_specs()
+        self.assertGreaterEqual(len(specs), 12)
+        self.assertEqual(len(specs), len({spec.run_id for spec in specs}))
+        self.assertEqual({"logit", "boosted"}, {spec.kind for spec in specs})
+
+    def test_results_flatten_and_dashboard_embed_runs(self):
+        summary = {
+            "created_at": "2026-01-01T00:00:00Z",
+            "dataset": {"runners": 3, "races": 1},
+            "market_test": {"top_pick_win_rate": 0.5, "race_log_loss": 1.0},
+            "runs": [{
+                "run_id": "demo", "kind": "logit", "parameters": {"C": 0.5},
+                "duration_seconds": 1.0, "temperature": 1.0,
+                "fundamental_weight": 0.2, "market_weight": 1.0,
+                "incremental_pseudo_r2": 0.01,
+                "second_place_exponent": 0.8, "third_place_exponent": 0.6,
+                "validation": {"top_pick_win_rate": 0.3},
+                "test_fundamental": {"top_pick_win_rate": 0.4},
+                "test_blended": {"top_pick_win_rate": 0.5},
+                "disagreement": [],
+            }],
+        }
+        self.assertEqual("demo", results_frame(summary).iloc[0]["run_id"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            template = root / "template.html"
+            output = root / "dashboard.html"
+            template.write_text("<script>const DATA=__EXPERIMENT_DATA__;</script>", encoding="utf-8")
+            render_dashboard(summary, template, output)
+            rendered = output.read_text(encoding="utf-8")
+        self.assertIn('"run_id":"demo"', rendered)
+        self.assertNotIn("__EXPERIMENT_DATA__", rendered)
+
+    def test_dashboard_template_contains_interactive_controls(self):
+        template = Path("docs/model-results/dashboard-template.html").read_text(encoding="utf-8")
+        for marker in (
+            'id="family-filter"',
+            'id="metric-select"',
+            'id="sort-select"',
+            'id="bar-chart"',
+            'id="scatter-chart"',
+            'id="progress-chart"',
+            'id="results-body"',
+            'href="results.csv"',
+            'href="results.json"',
+            "__EXPERIMENT_DATA__",
+        ):
+            self.assertIn(marker, template)
+
+
+if __name__ == "__main__":
+    unittest.main()
