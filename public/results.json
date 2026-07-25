@@ -103,6 +103,34 @@
           "combined_mean": 0.018862809886488727,
           "actual_win_frequency": 0.01888791921206832
         }
+      ],
+      "sequence": 6,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -187,6 +215,34 @@
           "combined_mean": 0.018865138995309193,
           "actual_win_frequency": 0.01901259194614138
         }
+      ],
+      "sequence": 7,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -271,6 +327,34 @@
           "combined_mean": 0.018711644529262095,
           "actual_win_frequency": 0.018638573743922204
         }
+      ],
+      "sequence": 8,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -356,6 +440,34 @@
           "combined_mean": 0.018384937904040236,
           "actual_win_frequency": 0.018326891908739557
         }
+      ],
+      "sequence": 15,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -441,6 +553,34 @@
           "combined_mean": 0.018380629436857178,
           "actual_win_frequency": 0.017890537339483856
         }
+      ],
+      "sequence": 14,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -525,6 +665,34 @@
           "combined_mean": 0.018443991736108716,
           "actual_win_frequency": 0.01882558284503179
         }
+      ],
+      "sequence": 9,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -609,6 +777,34 @@
           "combined_mean": 0.01831049307680306,
           "actual_win_frequency": 0.018638573743922204
         }
+      ],
+      "sequence": 11,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -693,6 +889,34 @@
           "combined_mean": 0.018133105255624688,
           "actual_win_frequency": 0.018638573743922204
         }
+      ],
+      "sequence": 12,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -777,6 +1001,34 @@
           "combined_mean": 0.017764624124086033,
           "actual_win_frequency": 0.017329510036155092
         }
+      ],
+      "sequence": 10,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -861,6 +1113,34 @@
           "combined_mean": 0.018473415530965306,
           "actual_win_frequency": 0.018077546440593444
         }
+      ],
+      "sequence": 5,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -945,6 +1225,34 @@
           "combined_mean": 0.01880730392671595,
           "actual_win_frequency": 0.01957361924947014
         }
+      ],
+      "sequence": 2,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -1029,6 +1337,34 @@
           "combined_mean": 0.018799461461598905,
           "actual_win_frequency": 0.01957361924947014
         }
+      ],
+      "sequence": 1,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -1113,6 +1449,34 @@
           "combined_mean": 0.01879367872335332,
           "actual_win_frequency": 0.019698291983543198
         }
+      ],
+      "sequence": 3,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -1197,6 +1561,34 @@
           "combined_mean": 0.018797041802307953,
           "actual_win_frequency": 0.01957361924947014
         }
+      ],
+      "sequence": 4,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -1281,6 +1673,34 @@
           "combined_mean": 0.01880120877423051,
           "actual_win_frequency": 0.01957361924947014
         }
+      ],
+      "sequence": 0,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     },
     {
@@ -1365,6 +1785,34 @@
           "combined_mean": 0.016703032270385033,
           "actual_win_frequency": 0.01689315546689939
         }
+      ],
+      "sequence": 13,
+      "feature_schema": "baseline-v1",
+      "feature_count": 23,
+      "variables": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time",
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
       ]
     }
   ],
@@ -1424,33 +1872,23 @@
     "historical_placeholders": [
       {
         "field": "horse_age",
-        "value": "0.0",
-        "reason": "Not populated in canonical result rows"
-      },
-      {
-        "field": "surface",
-        "value": "0.0",
-        "reason": "Not populated in canonical result rows"
-      },
-      {
-        "field": "prize",
-        "value": "0.0",
-        "reason": "Not populated in canonical result rows"
+        "value": "UNKNOWN",
+        "reason": "Available on the horse profile page; historical use requires a point-in-time age derivation rather than copying the current displayed age backward"
       },
       {
         "field": "horse_country",
         "value": "UNKNOWN",
-        "reason": "Not populated in canonical result rows"
+        "reason": "Available on the horse profile page and awaiting bulk historical profile backfill"
       },
       {
         "field": "horse_type",
         "value": "UNKNOWN",
-        "reason": "Not populated in canonical result rows"
+        "reason": "Available as Colour / Sex on the horse profile page and awaiting bulk historical profile backfill"
       },
       {
         "field": "horse_gear",
         "value": "UNKNOWN",
-        "reason": "Not populated in canonical result rows"
+        "reason": "Available from race cards and per-race form records; retained when supplied and awaiting official historical form backfill"
       }
     ],
     "live_defaults": [
