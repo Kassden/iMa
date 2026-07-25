@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from ima.experiments import default_experiment_specs, render_dashboard, results_frame
+from ima.pipeline_transparency import pipeline_manifest
 
 
 class ExperimentTests(unittest.TestCase):
@@ -17,6 +18,21 @@ class ExperimentTests(unittest.TestCase):
         self.assertIn('"prediction_sources"', source)
         self.assertIn('"combined"', source)
         self.assertIn('"supported_pools"', source)
+
+    def test_pipeline_manifest_matches_active_feature_contract(self):
+        manifest = pipeline_manifest()
+        contract = manifest["feature_contract"]
+        self.assertEqual(23, contract["count"])
+        self.assertEqual(17, len(contract["numeric"]))
+        self.assertEqual(6, len(contract["categorical"]))
+        self.assertEqual(8, len(manifest["training"]))
+        self.assertEqual(9, len(manifest["live"]))
+        self.assertIn("trackwork records", manifest["collected_not_consumed_by_baseline"])
+        for stage in [*manifest["training"], *manifest["live"]]:
+            self.assertEqual(
+                {"id", "name", "purpose", "inputs", "operations", "outputs", "fit_scope", "leakage_boundary"},
+                set(stage),
+            )
 
     def test_results_flatten_and_dashboard_embed_runs(self):
         summary = {

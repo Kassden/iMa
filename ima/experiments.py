@@ -15,6 +15,7 @@ from .modeling import (
     MarketBlend, RaceProbabilityModel, TemperatureCalibrator, disagreement_report,
     evaluate_probabilities, incremental_pseudo_r2,
 )
+from .pipeline_transparency import pipeline_manifest
 from .pools import SUPPORTED_POOLS, fit_order_exponents
 
 
@@ -211,6 +212,7 @@ def run_experiments(
             ),
         },
         "supported_pools": list(SUPPORTED_POOLS),
+        "pipeline_manifest": pipeline_manifest(),
         "runs": runs,
     }
     output_dir.mkdir(parents=True, exist_ok=True)
