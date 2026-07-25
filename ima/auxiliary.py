@@ -125,6 +125,13 @@ class AuxiliaryModelBundle:
     test_metrics: dict[str, dict[str, float | int]] = field(default_factory=dict)
 
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
+        frame = frame.copy()
+        for feature in self.feature_schema.numeric:
+            if feature not in frame:
+                frame[feature] = np.nan
+        for feature in self.feature_schema.categorical:
+            if feature not in frame:
+                frame[feature] = "UNKNOWN"
         output = pd.DataFrame(index=frame.index)
         output["race_id"] = frame["race_id"].astype(str)
         if "horse_no" in frame:
