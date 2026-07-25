@@ -3,9 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+
 from ima.experiments import default_experiment_specs, render_dashboard, results_frame
 from ima.pipeline_transparency import pipeline_manifest
-from scripts.run_feature_study import publish_dashboard
+from scripts.run_feature_study import matrix_payload, publish_dashboard
 
 
 class ExperimentTests(unittest.TestCase):
@@ -83,6 +86,10 @@ class ExperimentTests(unittest.TestCase):
             'id="feature-study"',
             'id="feature-importance-chart"',
             'id="feature-ranking-body"',
+            'id="correlation-run-select"',
+            'id="correlation-feature-select"',
+            'id="correlation-matrix-chart"',
+            'id="correlation-variable-body"',
             'id="family-ranking-body"',
             'id="redundancy-body"',
             'id="benter-coverage-body"',
@@ -109,6 +116,12 @@ class ExperimentTests(unittest.TestCase):
             rendered = output.read_text(encoding="utf-8")
         self.assertEqual(report, published["feature_study"])
         self.assertIn('"selected_rich_model":"benter-rich-v1-boosted"', rendered)
+
+    def test_correlation_matrix_payload_is_json_safe_and_labeled(self):
+        matrix = pd.DataFrame([[1.0, np.nan], [np.nan, 1.0]], columns=["a", "b"], index=["a", "b"])
+        payload = matrix_payload(matrix)
+        self.assertEqual(["a", "b"], payload["features"])
+        self.assertIsNone(payload["values"][0][1])
 
 
 if __name__ == "__main__":
