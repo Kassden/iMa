@@ -10,7 +10,7 @@
 - [x] Stubbed or unavailable historical fields are disclosed explicitly.
 - [x] Market probability conversion, calibration, blend formula, fallback, pool expansion, and Kelly logic are represented exactly.
 - [x] Desktop and mobile Playwright QA verifies stage navigation, readable details, no overlap, and no horizontal page overflow.
-- [ ] Full tests, commit, push, and Vercel production verification pass.
+- [x] Full tests, commit, push, and Vercel production verification pass.
 
 ## Out Of Scope
 - Changing the actual estimator feature set or retraining models.
@@ -72,4 +72,4 @@
 - Checklist:
   - [x] Regenerate static dashboard from existing experiment results.
   - [x] Verify through Playwright at desktop and mobile sizes.
-  - [ ] Commit, push, deploy, and verify production.
+  - [x] Commit, push, deploy, and verify production.
