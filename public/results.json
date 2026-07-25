@@ -1894,5 +1894,2497 @@
         "leakage_boundary": "Live authenticated submission remains fail-closed behind credentials, MFA verification, confirmation, and transaction limits."
       }
     ]
+  },
+  "feature_study": {
+    "created_at": "2026-07-25T12:14:34.637540+00:00",
+    "dataset": {
+      "runners": 271858,
+      "races": 22144,
+      "date_min": "1997-06-02",
+      "date_max": "2025-12-27",
+      "train_races": 15500,
+      "validation_races": 3322,
+      "test_races": 3322
+    },
+    "methodology": {
+      "association": "Training-only point-biserial or Cramer's V with Benjamini-Hochberg FDR correction.",
+      "correlation": "Training-only Spearman correlation; pairs flagged at absolute rho >= 0.80.",
+      "importance": "Held-out increase in race log loss after deterministic global permutation.",
+      "selection": "Rich model family selected only by validation race log loss."
+    },
+    "schemas": {
+      "baseline-v1": {
+        "features": [
+          "horse_age",
+          "horse_rating",
+          "declared_weight",
+          "actual_weight",
+          "draw",
+          "distance",
+          "race_class",
+          "surface",
+          "prize",
+          "field_size",
+          "prior_starts",
+          "prior_win_rate",
+          "prior_avg_result",
+          "prior_avg_odds",
+          "last_result",
+          "last_win_odds",
+          "last_finish_time",
+          "venue",
+          "config",
+          "going",
+          "horse_country",
+          "horse_type",
+          "horse_gear"
+        ]
+      },
+      "benter-rich-v1": {
+        "features": [
+          "horse_rating",
+          "declared_weight",
+          "actual_weight",
+          "draw",
+          "distance",
+          "race_class",
+          "prize",
+          "field_size",
+          "official_source",
+          "prior_starts",
+          "prior_win_rate",
+          "prior_top3_rate",
+          "prior_avg_result",
+          "prior_avg_odds",
+          "days_since_last_race",
+          "last_result",
+          "avg_result_2",
+          "avg_result_3",
+          "avg_result_5",
+          "last_speed_ratio",
+          "avg_speed_ratio_3",
+          "avg_speed_ratio_5",
+          "last_lengths_behind",
+          "avg_lengths_behind_3",
+          "last_late_position_gain",
+          "avg_late_position_gain_3",
+          "last_distance",
+          "distance_change",
+          "last_carried_weight",
+          "carried_weight_change",
+          "last_body_weight",
+          "body_weight_change",
+          "body_weight_change_pct",
+          "last_rating",
+          "rating_change",
+          "class_change",
+          "distance_band_starts",
+          "distance_band_win_rate",
+          "distance_band_top3_rate",
+          "venue_starts",
+          "venue_win_rate",
+          "course_starts",
+          "course_win_rate",
+          "going_starts",
+          "going_win_rate",
+          "surface_starts",
+          "surface_win_rate",
+          "jockey_starts",
+          "jockey_win_rate",
+          "jockey_top3_rate",
+          "trainer_starts",
+          "trainer_win_rate",
+          "trainer_top3_rate",
+          "jockey_trainer_starts",
+          "jockey_trainer_win_rate",
+          "horse_jockey_starts",
+          "horse_jockey_win_rate",
+          "draw_bias_starts",
+          "draw_bias_win_rate",
+          "draw_bias_top3_rate",
+          "trackwork_available",
+          "days_since_trackwork",
+          "trackwork_7d",
+          "trackwork_14d",
+          "trackwork_30d",
+          "barrier_available",
+          "days_since_trial",
+          "trials_90d",
+          "last_trial_placing",
+          "last_trial_speed",
+          "sectionals_available",
+          "last_sectional_time",
+          "last_sectional_position",
+          "venue",
+          "course",
+          "going",
+          "surface"
+        ]
+      }
+    },
+    "benter_coverage": [
+      {
+        "factor": "recent race performance",
+        "status": "supported"
+      },
+      {
+        "factor": "time since last race",
+        "status": "supported"
+      },
+      {
+        "factor": "recent workouts",
+        "status": "partial",
+        "note": "2015-2017 third-party coverage"
+      },
+      {
+        "factor": "horse age",
+        "status": "unsupported",
+        "note": "not reliably point-in-time"
+      },
+      {
+        "factor": "past finishing positions",
+        "status": "supported"
+      },
+      {
+        "factor": "lengths behind winner",
+        "status": "supported"
+      },
+      {
+        "factor": "normalized past times",
+        "status": "supported"
+      },
+      {
+        "factor": "strength of competition",
+        "status": "partial",
+        "note": "class and rating movement proxies"
+      },
+      {
+        "factor": "past weight carried",
+        "status": "supported"
+      },
+      {
+        "factor": "jockey contribution",
+        "status": "supported"
+      },
+      {
+        "factor": "bad luck adjustment",
+        "status": "unsupported",
+        "note": "no validated pre-race coding"
+      },
+      {
+        "factor": "post-position bias",
+        "status": "supported"
+      },
+      {
+        "factor": "current weight and jockey ability",
+        "status": "supported"
+      },
+      {
+        "factor": "distance preference",
+        "status": "supported"
+      },
+      {
+        "factor": "surface and going preference",
+        "status": "supported"
+      },
+      {
+        "factor": "specific track preference",
+        "status": "supported"
+      }
+    ],
+    "feature_origins": {
+      "benter": [
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "prize",
+        "field_size",
+        "official_source",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_top3_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "days_since_last_race",
+        "last_result",
+        "avg_result_2",
+        "avg_result_3",
+        "avg_result_5",
+        "last_speed_ratio",
+        "avg_speed_ratio_3",
+        "avg_speed_ratio_5",
+        "last_lengths_behind",
+        "avg_lengths_behind_3",
+        "last_late_position_gain",
+        "avg_late_position_gain_3",
+        "last_distance",
+        "distance_change",
+        "last_carried_weight",
+        "carried_weight_change",
+        "last_body_weight",
+        "body_weight_change",
+        "body_weight_change_pct",
+        "last_rating",
+        "rating_change",
+        "class_change",
+        "distance_band_starts",
+        "distance_band_win_rate",
+        "distance_band_top3_rate",
+        "venue_starts",
+        "venue_win_rate",
+        "course_starts",
+        "course_win_rate",
+        "going_starts",
+        "going_win_rate",
+        "surface_starts",
+        "surface_win_rate",
+        "jockey_starts",
+        "jockey_win_rate",
+        "jockey_top3_rate",
+        "trainer_starts",
+        "trainer_win_rate",
+        "trainer_top3_rate",
+        "jockey_trainer_starts",
+        "jockey_trainer_win_rate",
+        "horse_jockey_starts",
+        "horse_jockey_win_rate",
+        "draw_bias_starts",
+        "draw_bias_win_rate",
+        "draw_bias_top3_rate",
+        "trackwork_available",
+        "days_since_trackwork",
+        "trackwork_7d",
+        "trackwork_14d",
+        "trackwork_30d",
+        "barrier_available",
+        "days_since_trial",
+        "trials_90d",
+        "last_trial_placing",
+        "last_trial_speed",
+        "sectionals_available",
+        "last_sectional_time",
+        "last_sectional_position",
+        "venue",
+        "course",
+        "going",
+        "surface"
+      ],
+      "simplified_notebook": [
+        "prior_starts",
+        "last_result",
+        "avg_result_2",
+        "last_speed_ratio",
+        "last_distance",
+        "last_carried_weight",
+        "last_body_weight"
+      ],
+      "trackx_notebook": [
+        "days_since_last_race",
+        "avg_result_3",
+        "avg_result_5",
+        "avg_speed_ratio_3",
+        "avg_speed_ratio_5",
+        "body_weight_change",
+        "body_weight_change_pct",
+        "distance_change",
+        "jockey_win_rate",
+        "trainer_win_rate",
+        "prior_avg_odds"
+      ],
+      "official_hkjc_recovery": [
+        "distance",
+        "race_class",
+        "prize",
+        "course",
+        "going",
+        "last_lengths_behind",
+        "avg_lengths_behind_3",
+        "last_late_position_gain",
+        "avg_late_position_gain_3"
+      ]
+    },
+    "coverage": {
+      "horse_rating": 0.36055220004561206,
+      "declared_weight": 0.9999852864363014,
+      "actual_weight": 1.0,
+      "draw": 1.0,
+      "distance": 1.0,
+      "race_class": 0.9733574145325868,
+      "prize": 0.8867313082565162,
+      "field_size": 1.0,
+      "official_source": 1.0,
+      "prior_starts": 1.0,
+      "prior_win_rate": 0.955815168212817,
+      "prior_top3_rate": 0.955815168212817,
+      "prior_avg_result": 0.955815168212817,
+      "prior_avg_odds": 0.955815168212817,
+      "days_since_last_race": 0.955815168212817,
+      "last_result": 0.955815168212817,
+      "avg_result_2": 0.955815168212817,
+      "avg_result_3": 0.955815168212817,
+      "avg_result_5": 0.955815168212817,
+      "last_speed_ratio": 0.9552082337102458,
+      "avg_speed_ratio_3": 0.9557268868306248,
+      "avg_speed_ratio_5": 0.9557305652215495,
+      "last_lengths_behind": 0.8644696863803898,
+      "avg_lengths_behind_3": 0.865109726401283,
+      "last_late_position_gain": 0.8651612238742284,
+      "avg_late_position_gain_3": 0.8651685806560778,
+      "last_distance": 0.955815168212817,
+      "distance_change": 0.955815168212817,
+      "last_carried_weight": 0.955815168212817,
+      "carried_weight_change": 0.955815168212817,
+      "last_body_weight": 0.955804133040043,
+      "body_weight_change": 0.9557894194763442,
+      "body_weight_change_pct": 0.9557894194763442,
+      "last_rating": 0.3445438427414312,
+      "rating_change": 0.33882394485356326,
+      "class_change": 0.9245304533984654,
+      "distance_band_starts": 1.0,
+      "distance_band_win_rate": 0.8479169272193572,
+      "distance_band_top3_rate": 0.8479169272193572,
+      "venue_starts": 1.0,
+      "venue_win_rate": 0.9217569466412613,
+      "course_starts": 1.0,
+      "course_win_rate": 0.756266138940182,
+      "going_starts": 1.0,
+      "going_win_rate": 0.8474387363991496,
+      "surface_starts": 1.0,
+      "surface_win_rate": 0.9272855682010461,
+      "jockey_starts": 1.0,
+      "jockey_win_rate": 0.9981019502828683,
+      "jockey_top3_rate": 0.9981019502828683,
+      "trainer_starts": 1.0,
+      "trainer_win_rate": 0.9980762015463955,
+      "trainer_top3_rate": 0.9980762015463955,
+      "jockey_trainer_starts": 1.0,
+      "jockey_trainer_win_rate": 0.9746742784836201,
+      "horse_jockey_starts": 1.0,
+      "horse_jockey_win_rate": 0.5911689190680429,
+      "draw_bias_starts": 1.0,
+      "draw_bias_win_rate": 0.9985102516755071,
+      "draw_bias_top3_rate": 0.9985102516755071,
+      "trackwork_available": 1.0,
+      "days_since_trackwork": 0.10598179932170472,
+      "trackwork_7d": 1.0,
+      "trackwork_14d": 1.0,
+      "trackwork_30d": 1.0,
+      "barrier_available": 1.0,
+      "days_since_trial": 0.1437993364182772,
+      "trials_90d": 1.0,
+      "last_trial_placing": 0.12836848648927013,
+      "last_trial_speed": 0.14220291475696872,
+      "sectionals_available": 1.0,
+      "last_sectional_time": 0.45541054521110286,
+      "last_sectional_position": 0.45541422360202755,
+      "venue": 1.0,
+      "course": 1.0,
+      "going": 1.0,
+      "surface": 1.0
+    },
+    "candidates": [
+      {
+        "name": "baseline-v1-logit",
+        "schema": "baseline-v1",
+        "kind": "logit",
+        "feature_count": 23,
+        "temperature": 0.5535678645204163,
+        "fundamental_weight": 0.0,
+        "market_weight": 1.0714320879465904,
+        "validation": {
+          "race_log_loss": 2.2788775487151987,
+          "race_brier": 0.8771352843317236,
+          "ece": 0.00390674909392432,
+          "top_pick_win_rate": 0.20469596628537026,
+          "winner_top3_rate": 0.49307645996387717,
+          "mean_winner_rank": 4.393738711619506,
+          "pseudo_r2": 0.08389119451149851
+        },
+        "test_fundamental": {
+          "race_log_loss": 2.299468766778932,
+          "race_brier": 0.881713972532145,
+          "ece": 0.0021826864792411182,
+          "top_pick_win_rate": 0.20048163756773027,
+          "winner_top3_rate": 0.46809151113786873,
+          "mean_winner_rank": 4.547561709813365,
+          "pseudo_r2": 0.07239268992949388
+        },
+        "test_combined": {
+          "race_log_loss": 2.0119328460567436,
+          "race_brier": 0.8136247486002453,
+          "ece": 0.002030546794374762,
+          "top_pick_win_rate": 0.30885009030704397,
+          "winner_top3_rate": 0.6177001806140879,
+          "mean_winner_rank": 3.5258880192655027,
+          "pseudo_r2": 0.18838488161443434
+        },
+        "incremental_pseudo_r2": 0.0006140278795299103
+      },
+      {
+        "name": "baseline-v1-boosted",
+        "schema": "baseline-v1",
+        "kind": "boosted",
+        "feature_count": 23,
+        "temperature": 0.9030602726118362,
+        "fundamental_weight": 0.0,
+        "market_weight": 1.0714290752817064,
+        "validation": {
+          "race_log_loss": 2.2329960224894183,
+          "race_brier": 0.8661275905711749,
+          "ece": 0.0017858557394594412,
+          "top_pick_win_rate": 0.22185430463576158,
+          "winner_top3_rate": 0.5075255869957856,
+          "mean_winner_rank": 4.293798916315472,
+          "pseudo_r2": 0.10233556867648441
+        },
+        "test_fundamental": {
+          "race_log_loss": 2.26418411221515,
+          "race_brier": 0.8723031499175724,
+          "ece": 0.0022973125938924254,
+          "top_pick_win_rate": 0.22817579771222155,
+          "winner_top3_rate": 0.49698976520168575,
+          "mean_winner_rank": 4.396146899458158,
+          "pseudo_r2": 0.08662654427861183
+        },
+        "test_combined": {
+          "race_log_loss": 2.0119328408810726,
+          "race_brier": 0.8136247442586467,
+          "ece": 0.002030605542688522,
+          "top_pick_win_rate": 0.30885009030704397,
+          "winner_top3_rate": 0.6177001806140879,
+          "mean_winner_rank": 3.5258880192655027,
+          "pseudo_r2": 0.18838488370230366
+        },
+        "incremental_pseudo_r2": 0.0006140299673992322
+      },
+      {
+        "name": "benter-rich-v1-logit",
+        "schema": "benter-rich-v1",
+        "kind": "logit",
+        "feature_count": 77,
+        "temperature": 0.7435199120193802,
+        "fundamental_weight": 0.012503608130761259,
+        "market_weight": 1.0677745954758937,
+        "validation": {
+          "race_log_loss": 2.3327894060972123,
+          "race_brier": 0.8882323254280594,
+          "ece": 0.004408436528992655,
+          "top_pick_win_rate": 0.17218543046357615,
+          "winner_top3_rate": 0.44792293798916316,
+          "mean_winner_rank": 4.603853100541842,
+          "pseudo_r2": 0.06221862711280335
+        },
+        "test_fundamental": {
+          "race_log_loss": 2.3132631322051194,
+          "race_brier": 0.8797634490472718,
+          "ece": 0.010091789250756725,
+          "top_pick_win_rate": 0.21342564720048163,
+          "winner_top3_rate": 0.4897652016857315,
+          "mean_winner_rank": 4.415111378687538,
+          "pseudo_r2": 0.06682803326097153
+        },
+        "test_combined": {
+          "race_log_loss": 2.0121589907526314,
+          "race_brier": 0.8136994367192539,
+          "ece": 0.0020969879317381634,
+          "top_pick_win_rate": 0.30885009030704397,
+          "winner_top3_rate": 0.6164960866947622,
+          "mean_winner_rank": 3.5313064419024682,
+          "pseudo_r2": 0.1882936546858195
+        },
+        "incremental_pseudo_r2": 0.0005228009509150588
+      },
+      {
+        "name": "benter-rich-v1-boosted",
+        "schema": "benter-rich-v1",
+        "kind": "boosted",
+        "feature_count": 77,
+        "temperature": 0.9104069612228625,
+        "fundamental_weight": 0.0,
+        "market_weight": 1.0714312766158625,
+        "validation": {
+          "race_log_loss": 2.177927509685625,
+          "race_brier": 0.8548537591021006,
+          "ece": 0.0024181710560886166,
+          "top_pick_win_rate": 0.2399157134256472,
+          "winner_top3_rate": 0.5439494280553884,
+          "mean_winner_rank": 4.061709813365442,
+          "pseudo_r2": 0.12447311157042062
+        },
+        "test_fundamental": {
+          "race_log_loss": 2.2329378658722767,
+          "race_brier": 0.8659520049347897,
+          "ece": 0.0019932034463932195,
+          "top_pick_win_rate": 0.22847682119205298,
+          "winner_top3_rate": 0.5087296809151114,
+          "mean_winner_rank": 4.302227573750753,
+          "pseudo_r2": 0.09923130192466312
+        },
+        "test_combined": {
+          "race_log_loss": 2.011932844662337,
+          "race_brier": 0.8136247474308572,
+          "ece": 0.002030562615663563,
+          "top_pick_win_rate": 0.30885009030704397,
+          "winner_top3_rate": 0.6177001806140879,
+          "mean_winner_rank": 3.5258880192655027,
+          "pseudo_r2": 0.18838488217693905
+        },
+        "incremental_pseudo_r2": 0.0006140284420346198
+      }
+    ],
+    "selected_rich_model": "benter-rich-v1-boosted",
+    "feature_ranking": [
+      {
+        "feature": "jockey_top3_rate",
+        "features": [
+          "jockey_top3_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.043025692194628595,
+        "delta_race_log_loss_std": 0.0005077842670202504,
+        "kind": "numeric",
+        "association": 0.1407081931047482,
+        "p_value": 0.0,
+        "mutual_information": 0.01833885823157222,
+        "coverage": 0.9975960407836907,
+        "unique_values": 99038,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 1
+      },
+      {
+        "feature": "avg_result_3",
+        "features": [
+          "avg_result_3"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.024677936877692375,
+        "delta_race_log_loss_std": 0.0038938853258105866,
+        "kind": "numeric",
+        "association": -0.16926716694026878,
+        "p_value": 0.0,
+        "mutual_information": 0.015903344230214778,
+        "coverage": 0.9469717952871948,
+        "unique_values": 53,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 2
+      },
+      {
+        "feature": "avg_result_2",
+        "features": [
+          "avg_result_2"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.020832396566249134,
+        "delta_race_log_loss_std": 0.00048553821851937684,
+        "kind": "numeric",
+        "association": -0.16848417801585305,
+        "p_value": 0.0,
+        "mutual_information": 0.015532398827733829,
+        "coverage": 0.9469717952871948,
+        "unique_values": 27,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 3
+      },
+      {
+        "feature": "last_result",
+        "features": [
+          "last_result"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.015282309274857742,
+        "delta_race_log_loss_std": 0.00028066202452015077,
+        "kind": "numeric",
+        "association": -0.15012332558881514,
+        "p_value": 0.0,
+        "mutual_information": 0.014056631586681467,
+        "coverage": 0.9469717952871948,
+        "unique_values": 14,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 4
+      },
+      {
+        "feature": "draw_bias_top3_rate",
+        "features": [
+          "draw_bias_top3_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.009864681069696513,
+        "delta_race_log_loss_std": 0.000348349370865364,
+        "kind": "numeric",
+        "association": 0.04503735017938735,
+        "p_value": 2.6269736077457328e-86,
+        "mutual_information": 9.989673938681776e-05,
+        "coverage": 0.9978834706899885,
+        "unique_values": 61757,
+        "p_value_fdr": 6.525063477303917e-86,
+        "significant_fdr_05": true,
+        "family": "post_position",
+        "rank": 5
+      },
+      {
+        "feature": "draw",
+        "features": [
+          "draw"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.009737442908901217,
+        "delta_race_log_loss_std": 0.00042133863711302233,
+        "kind": "numeric",
+        "association": -0.0504439074867933,
+        "p_value": 4.9277895876742356e-108,
+        "mutual_information": 0.0035121054948163977,
+        "coverage": 1.0,
+        "unique_values": 15,
+        "p_value_fdr": 1.3551421366104147e-107,
+        "significant_fdr_05": true,
+        "family": "current_race",
+        "rank": 6
+      },
+      {
+        "feature": "jockey_trainer_win_rate",
+        "features": [
+          "jockey_trainer_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.009315459626289657,
+        "delta_race_log_loss_std": 0.0003029383128698715,
+        "kind": "numeric",
+        "association": 0.10272724647194197,
+        "p_value": 0.0,
+        "mutual_information": 0.011486598629151912,
+        "coverage": 0.970196131716061,
+        "unique_values": 17526,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 7
+      },
+      {
+        "feature": "days_since_last_race",
+        "features": [
+          "days_since_last_race"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.008361960013137715,
+        "delta_race_log_loss_std": 0.0008688923327784259,
+        "kind": "numeric",
+        "association": -0.0106367283205141,
+        "p_value": 5.955977651219e-06,
+        "mutual_information": 0.0026049165181074585,
+        "coverage": 0.9469717952871948,
+        "unique_values": 438,
+        "p_value_fdr": 8.492782947108574e-06,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 8
+      },
+      {
+        "feature": "last_speed_ratio",
+        "features": [
+          "last_speed_ratio"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00794429077280201,
+        "delta_race_log_loss_std": 0.0019578291553279392,
+        "kind": "numeric",
+        "association": 0.0687129112310419,
+        "p_value": 2.1769982447609772e-188,
+        "mutual_information": 0.047629381842220875,
+        "coverage": 0.9463603534865248,
+        "unique_values": 69322,
+        "p_value_fdr": 7.288211515069358e-188,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 9
+      },
+      {
+        "feature": "avg_lengths_behind_3",
+        "features": [
+          "avg_lengths_behind_3"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.006953206204294071,
+        "delta_race_log_loss_std": 0.0013154523228806614,
+        "kind": "numeric",
+        "association": -0.03829573761521111,
+        "p_value": 4.023891247649063e-52,
+        "mutual_information": 0.01241518062896052,
+        "coverage": 0.8217882320970363,
+        "unique_values": 1292,
+        "p_value_fdr": 8.852560744827938e-52,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 10
+      },
+      {
+        "feature": "last_lengths_behind",
+        "features": [
+          "last_lengths_behind"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.006325926103501134,
+        "delta_race_log_loss_std": 0.0015256070123725873,
+        "kind": "numeric",
+        "association": -0.030223569988097745,
+        "p_value": 4.330479242355732e-33,
+        "mutual_information": 0.009537266529875632,
+        "coverage": 0.8212238242810332,
+        "unique_values": 232,
+        "p_value_fdr": 8.549920555420291e-33,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 11
+      },
+      {
+        "feature": "draw_bias_win_rate",
+        "features": [
+          "draw_bias_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.005977150453447155,
+        "delta_race_log_loss_std": 0.0006375135520708675,
+        "kind": "numeric",
+        "association": 0.040599412582228045,
+        "p_value": 1.7836114809454165e-70,
+        "mutual_information": 0.0011449117887996074,
+        "coverage": 0.9978834706899885,
+        "unique_values": 44947,
+        "p_value_fdr": 4.161760122205972e-70,
+        "significant_fdr_05": true,
+        "family": "post_position",
+        "rank": 12
+      },
+      {
+        "feature": "avg_late_position_gain_3",
+        "features": [
+          "avg_late_position_gain_3"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.004149530222999243,
+        "delta_race_log_loss_std": 0.001436011140505844,
+        "kind": "numeric",
+        "association": 0.07546676077768348,
+        "p_value": 2.4150475560066292e-197,
+        "mutual_information": 0.003120356867405416,
+        "coverage": 0.8218613960731849,
+        "unique_values": 96,
+        "p_value_fdr": 8.855174372024307e-197,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 13
+      },
+      {
+        "feature": "prize",
+        "features": [
+          "prize"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.003709390151805936,
+        "delta_race_log_loss_std": 0.0008431512551851927,
+        "kind": "numeric",
+        "association": 0.0034873596514737298,
+        "p_value": 0.1623030731765038,
+        "mutual_information": 0.001666611266550655,
+        "coverage": 0.839075834461278,
+        "unique_values": 83,
+        "p_value_fdr": 0.18935358537258778,
+        "significant_fdr_05": false,
+        "family": "current_race",
+        "rank": 14
+      },
+      {
+        "feature": "prior_avg_odds",
+        "features": [
+          "prior_avg_odds"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.003560669013243478,
+        "delta_race_log_loss_std": 0.0015222836195010192,
+        "kind": "numeric",
+        "association": -0.08986609629374792,
+        "p_value": 1.84e-321,
+        "mutual_information": 0.029332153100140035,
+        "coverage": 0.9469717952871948,
+        "unique_values": 66841,
+        "p_value_fdr": 7.86e-321,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 15
+      },
+      {
+        "feature": "last_distance",
+        "features": [
+          "last_distance"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.003390697497362982,
+        "delta_race_log_loss_std": 0.0009353402574494574,
+        "kind": "numeric",
+        "association": -0.005401812779350954,
+        "p_value": 0.021479513689816238,
+        "mutual_information": 0.007984405900611335,
+        "coverage": 0.9469717952871948,
+        "unique_values": 9,
+        "p_value_fdr": 0.028032585662980513,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 16
+      },
+      {
+        "feature": "prior_starts",
+        "features": [
+          "prior_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.003386014068485599,
+        "delta_race_log_loss_std": 0.002621509554059598,
+        "kind": "numeric",
+        "association": -0.039114280033686784,
+        "p_value": 1.1186466429948658e-65,
+        "mutual_information": 0.00362951835501657,
+        "coverage": 1.0,
+        "unique_values": 98,
+        "p_value_fdr": 2.5334056326648432e-65,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 17
+      },
+      {
+        "feature": "avg_speed_ratio_3",
+        "features": [
+          "avg_speed_ratio_3"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00301736453095236,
+        "delta_race_log_loss_std": 0.0007718115876182985,
+        "kind": "numeric",
+        "association": 0.090126150208369,
+        "p_value": 3e-323,
+        "mutual_information": 0.05254095173824558,
+        "coverage": 0.9468881793144536,
+        "unique_values": 113358,
+        "p_value_fdr": 1.43e-322,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 18
+      },
+      {
+        "feature": "field_size",
+        "features": [
+          "field_size"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.002988073059016161,
+        "delta_race_log_loss_std": 0.002177513233103001,
+        "kind": "numeric",
+        "association": -0.04076949477827431,
+        "p_value": 3.3726074549078835e-71,
+        "mutual_information": 0.014371160303796593,
+        "coverage": 1.0,
+        "unique_values": 12,
+        "p_value_fdr": 8.115336688372095e-71,
+        "significant_fdr_05": true,
+        "family": "current_race",
+        "rank": 19
+      },
+      {
+        "feature": "jockey_win_rate",
+        "features": [
+          "jockey_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.002965643225590453,
+        "delta_race_log_loss_std": 0.0002492520169881107,
+        "kind": "numeric",
+        "association": 0.1365186628338897,
+        "p_value": 0.0,
+        "mutual_information": 0.016669153246741786,
+        "coverage": 0.9975960407836907,
+        "unique_values": 81802,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 20
+      },
+      {
+        "feature": "distance_band_top3_rate",
+        "features": [
+          "distance_band_top3_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00255164910885175,
+        "delta_race_log_loss_std": 0.00042489449964366877,
+        "kind": "numeric",
+        "association": 0.12328664922663134,
+        "p_value": 0.0,
+        "mutual_information": 0.008713956336977802,
+        "coverage": 0.8270612643780278,
+        "unique_values": 421,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 21
+      },
+      {
+        "feature": "avg_result_5",
+        "features": [
+          "avg_result_5"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0021336411045038695,
+        "delta_race_log_loss_std": 5.149249830527225e-06,
+        "kind": "numeric",
+        "association": -0.1613823451340532,
+        "p_value": 0.0,
+        "mutual_information": 0.014233535104335449,
+        "coverage": 0.9469717952871948,
+        "unique_values": 131,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 22
+      },
+      {
+        "feature": "avg_speed_ratio_5",
+        "features": [
+          "avg_speed_ratio_5"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0020783541593432098,
+        "delta_race_log_loss_std": 1.1434288562650607e-05,
+        "kind": "numeric",
+        "association": 0.08995852685142869,
+        "p_value": 4.15e-322,
+        "mutual_information": 0.04959092100881546,
+        "coverage": 0.9468934053127499,
+        "unique_values": 116274,
+        "p_value_fdr": 1.877e-321,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 23
+      },
+      {
+        "feature": "prior_win_rate",
+        "features": [
+          "prior_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0020223567484283222,
+        "delta_race_log_loss_std": 0.0003652327127481314,
+        "kind": "numeric",
+        "association": 0.11204147086403077,
+        "p_value": 0.0,
+        "mutual_information": 0.007372141454819792,
+        "coverage": 0.9469717952871948,
+        "unique_values": 520,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 24
+      },
+      {
+        "feature": "distance_band_win_rate",
+        "features": [
+          "distance_band_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0017507699671908128,
+        "delta_race_log_loss_std": 0.00040905460057372167,
+        "kind": "numeric",
+        "association": 0.10091962510217273,
+        "p_value": 0.0,
+        "mutual_information": 0.004331658170549257,
+        "coverage": 0.8270612643780278,
+        "unique_values": 278,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 25
+      },
+      {
+        "feature": "declared_weight",
+        "features": [
+          "declared_weight"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0016731654389161577,
+        "delta_race_log_loss_std": 0.0007368963234326564,
+        "kind": "numeric",
+        "association": 0.026354438732544568,
+        "p_value": 9.291740735804545e-31,
+        "mutual_information": 0.0016959447363704694,
+        "coverage": 0.9999790960068147,
+        "unique_values": 471,
+        "p_value_fdr": 1.7450342357486586e-30,
+        "significant_fdr_05": true,
+        "family": "current_race",
+        "rank": 26
+      },
+      {
+        "feature": "distance_change",
+        "features": [
+          "distance_change"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0013873758555342786,
+        "delta_race_log_loss_std": 3.665768594829366e-05,
+        "kind": "numeric",
+        "association": 0.006853255230926992,
+        "p_value": 0.003530622507165437,
+        "mutual_information": 0.003431676602992706,
+        "coverage": 0.9469717952871948,
+        "unique_values": 30,
+        "p_value_fdr": 0.004769437421960327,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 27
+      },
+      {
+        "feature": "course_starts",
+        "features": [
+          "course_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0011445983611759747,
+        "delta_race_log_loss_std": 0.00036003941369533443,
+        "kind": "numeric",
+        "association": -0.015728011921810222,
+        "p_value": 5.968782307996776e-12,
+        "mutual_information": 0.00215590594394377,
+        "coverage": 1.0,
+        "unique_values": 48,
+        "p_value_fdr": 9.191924754315037e-12,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 28
+      },
+      {
+        "feature": "trainer_top3_rate",
+        "features": [
+          "trainer_top3_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0008397613224102596,
+        "delta_race_log_loss_std": 0.0004044556722153647,
+        "kind": "numeric",
+        "association": 0.06831347251042458,
+        "p_value": 3.348943345217429e-196,
+        "mutual_information": 0.0034886935263926944,
+        "coverage": 0.9976378487700613,
+        "unique_values": 104225,
+        "p_value_fdr": 1.1721301708261003e-195,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 29
+      },
+      {
+        "feature": "trainer_win_rate",
+        "features": [
+          "trainer_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.000797272036107799,
+        "delta_race_log_loss_std": 0.00013295924045220175,
+        "kind": "numeric",
+        "association": 0.06459649359575455,
+        "p_value": 1.3143094647747936e-175,
+        "mutual_information": 0.0027871646334787226,
+        "coverage": 0.9976378487700613,
+        "unique_values": 86806,
+        "p_value_fdr": 4.0480731515063646e-175,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 30
+      },
+      {
+        "feature": "last_carried_weight",
+        "features": [
+          "last_carried_weight"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0007968334526617937,
+        "delta_race_log_loss_std": 0.0002612184918029392,
+        "kind": "numeric",
+        "association": 0.03381398409793336,
+        "p_value": 5.328127527629542e-47,
+        "mutual_information": 0.002119960274455046,
+        "coverage": 0.9469717952871948,
+        "unique_values": 31,
+        "p_value_fdr": 1.1088265395337155e-46,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 31
+      },
+      {
+        "feature": "going_win_rate",
+        "features": [
+          "going_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0007300414000668276,
+        "delta_race_log_loss_std": 0.00012322224406791094,
+        "kind": "numeric",
+        "association": 0.079514943175299,
+        "p_value": 1.4202933455047535e-219,
+        "mutual_information": 0.00405188538606116,
+        "coverage": 0.8243385192656427,
+        "unique_values": 246,
+        "p_value_fdr": 5.468129380193301e-219,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 32
+      },
+      {
+        "feature": "surface_win_rate",
+        "features": [
+          "surface_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0006701038425527273,
+        "delta_race_log_loss_std": 8.399119570157154e-05,
+        "kind": "numeric",
+        "association": 0.11154752624797767,
+        "p_value": 0.0,
+        "mutual_information": 0.006900267903543922,
+        "coverage": 0.9188925064410429,
+        "unique_values": 412,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 33
+      },
+      {
+        "feature": "surface",
+        "features": [
+          "surface"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0005159957176943397,
+        "delta_race_log_loss_std": 0.00012073655767674829,
+        "kind": "categorical",
+        "association": 0.009659005376977196,
+        "p_value": 0.0001328648288659518,
+        "mutual_information": 4.567748546849271e-05,
+        "coverage": 1.0,
+        "unique_values": 3,
+        "p_value_fdr": 0.0001826891396906837,
+        "significant_fdr_05": true,
+        "family": "current_race",
+        "rank": 34
+      },
+      {
+        "feature": "jockey_trainer_starts",
+        "features": [
+          "jockey_trainer_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0005062900621086719,
+        "delta_race_log_loss_std": 0.00022674237452235957,
+        "kind": "numeric",
+        "association": 0.014729961507928565,
+        "p_value": 1.165681963040361e-10,
+        "mutual_information": 0.0012347755193578003,
+        "coverage": 1.0,
+        "unique_values": 2232,
+        "p_value_fdr": 1.759951199100153e-10,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 35
+      },
+      {
+        "feature": "horse_jockey_win_rate",
+        "features": [
+          "horse_jockey_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0004702120418766942,
+        "delta_race_log_loss_std": 0.00020705546028509936,
+        "kind": "numeric",
+        "association": 0.11275434310469351,
+        "p_value": 1.9892264738e-313,
+        "mutual_information": 0.0052759838515237245,
+        "coverage": 0.5850296052803486,
+        "unique_values": 174,
+        "p_value_fdr": 8.0616020255e-313,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 36
+      },
+      {
+        "feature": "distance",
+        "features": [
+          "distance"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00045329565741170086,
+        "delta_race_log_loss_std": 0.0007290806369066871,
+        "kind": "numeric",
+        "association": 0.000874079711938738,
+        "p_value": 0.7022001009647475,
+        "mutual_information": 0.007392644011648297,
+        "coverage": 1.0,
+        "unique_values": 9,
+        "p_value_fdr": 0.7306676726254805,
+        "significant_fdr_05": false,
+        "family": "current_race",
+        "rank": 37
+      },
+      {
+        "feature": "days_since_trial",
+        "features": [
+          "days_since_trial"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0004281301673672022,
+        "delta_race_log_loss_std": 0.00014368550538867986,
+        "kind": "numeric",
+        "association": -0.01383258820045553,
+        "p_value": 0.039539301222832085,
+        "mutual_information": 0.02214314075891788,
+        "coverage": 0.11574018426869993,
+        "unique_values": 511,
+        "p_value_fdr": 0.05074210323596784,
+        "significant_fdr_05": false,
+        "family": "current_condition",
+        "rank": 38
+      },
+      {
+        "feature": "prior_top3_rate",
+        "features": [
+          "prior_top3_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00041724759688155366,
+        "delta_race_log_loss_std": 7.035556742640559e-05,
+        "kind": "numeric",
+        "association": 0.1372267759135544,
+        "p_value": 0.0,
+        "mutual_information": 0.010535706670955491,
+        "coverage": 0.9469717952871948,
+        "unique_values": 858,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 39
+      },
+      {
+        "feature": "last_body_weight",
+        "features": [
+          "last_body_weight"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00038342545583347487,
+        "delta_race_log_loss_std": 0.00030603274648344225,
+        "kind": "numeric",
+        "association": 0.02515973429693643,
+        "p_value": 8.982144741505179e-27,
+        "mutual_information": 0.0013328578398399404,
+        "coverage": 0.9469613432906021,
+        "unique_values": 462,
+        "p_value_fdr": 1.6467265359426162e-26,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 40
+      },
+      {
+        "feature": "last_late_position_gain",
+        "features": [
+          "last_late_position_gain"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0003678908006683468,
+        "delta_race_log_loss_std": 0.0004530669786217967,
+        "kind": "numeric",
+        "association": 0.07145007502557106,
+        "p_value": 4.667909873831352e-177,
+        "mutual_information": 0.0027549705247946754,
+        "coverage": 0.8218561700748885,
+        "unique_values": 27,
+        "p_value_fdr": 1.497621084520892e-176,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 41
+      },
+      {
+        "feature": "draw_bias_starts",
+        "features": [
+          "draw_bias_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0003644991122426777,
+        "delta_race_log_loss_std": 4.92045552100695e-05,
+        "kind": "numeric",
+        "association": -0.0038601085814730573,
+        "p_value": 0.09130588965747746,
+        "mutual_information": 0.0007492049206416773,
+        "coverage": 1.0,
+        "unique_values": 2251,
+        "p_value_fdr": 0.11159608735913912,
+        "significant_fdr_05": false,
+        "family": "post_position",
+        "rank": 42
+      },
+      {
+        "feature": "body_weight_change",
+        "features": [
+          "body_weight_change"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0002909554284715732,
+        "delta_race_log_loss_std": 0.00037901857895672464,
+        "kind": "numeric",
+        "association": -0.0016848290427587112,
+        "p_value": 0.47326132419493866,
+        "mutual_information": 0.0007303867049424095,
+        "coverage": 0.9469404392974168,
+        "unique_values": 170,
+        "p_value_fdr": 0.5148245784651247,
+        "significant_fdr_05": false,
+        "family": "performance_adjustments",
+        "rank": 43
+      },
+      {
+        "feature": "distance_band_starts",
+        "features": [
+          "distance_band_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00026824181673901215,
+        "delta_race_log_loss_std": 0.00027741754377363925,
+        "kind": "numeric",
+        "association": -0.021941594621542826,
+        "p_value": 8.060257327871013e-22,
+        "mutual_information": 0.0019213915067923804,
+        "coverage": 1.0,
+        "unique_values": 62,
+        "p_value_fdr": 1.443348405223414e-21,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 44
+      },
+      {
+        "feature": "race_class",
+        "features": [
+          "race_class"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0002677309998821986,
+        "delta_race_log_loss_std": 2.954013043887649e-05,
+        "kind": "numeric",
+        "association": -0.0007620960117542452,
+        "p_value": 0.7419082461163724,
+        "mutual_information": 0.012423704326413487,
+        "coverage": 0.9759133738522401,
+        "unique_values": 11,
+        "p_value_fdr": 0.7616924660128089,
+        "significant_fdr_05": false,
+        "family": "current_race",
+        "rank": 45
+      },
+      {
+        "feature": "surface_starts",
+        "features": [
+          "surface_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00022279118682089205,
+        "delta_race_log_loss_std": 0.00043208944253025905,
+        "kind": "numeric",
+        "association": -0.03062272086293589,
+        "p_value": 6.164674378503357e-41,
+        "mutual_information": 0.0031602052175137008,
+        "coverage": 1.0,
+        "unique_values": 85,
+        "p_value_fdr": 1.2491577030125224e-40,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 46
+      },
+      {
+        "feature": "carried_weight_change",
+        "features": [
+          "carried_weight_change"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00020785787254173904,
+        "delta_race_log_loss_std": 0.0005754651658682608,
+        "kind": "numeric",
+        "association": 0.016344100525461425,
+        "p_value": 3.4566729838763598e-12,
+        "mutual_information": 0.0030036962516644117,
+        "coverage": 0.9469717952871948,
+        "unique_values": 61,
+        "p_value_fdr": 5.431914688948565e-12,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 47
+      },
+      {
+        "feature": "trainer_starts",
+        "features": [
+          "trainer_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00015299514298461325,
+        "delta_race_log_loss_std": 0.00047388167047945906,
+        "kind": "numeric",
+        "association": 0.0029510150513391816,
+        "p_value": 0.1967462925499442,
+        "mutual_information": 1.656242556524745e-05,
+        "coverage": 1.0,
+        "unique_values": 5483,
+        "p_value_fdr": 0.22278624303449562,
+        "significant_fdr_05": false,
+        "family": "performance_adjustments",
+        "rank": 48
+      },
+      {
+        "feature": "last_sectional_time",
+        "features": [
+          "last_sectional_time"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.00010823361603740089,
+        "delta_race_log_loss_std": 0.0001555642949251368,
+        "kind": "numeric",
+        "association": -0.07318367732800232,
+        "p_value": 8.204998228858385e-102,
+        "mutual_information": 0.016646065903340723,
+        "coverage": 0.4466190404021928,
+        "unique_values": 878,
+        "p_value_fdr": 2.1785684952486055e-101,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 49
+      },
+      {
+        "feature": "class_change",
+        "features": [
+          "class_change"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 6.351661575809686e-05,
+        "delta_race_log_loss_std": 8.310825603174976e-05,
+        "kind": "numeric",
+        "association": -0.012238801074761751,
+        "p_value": 2.864876853265039e-07,
+        "mutual_information": 0.001776491577753836,
+        "coverage": 0.9188820544444503,
+        "unique_values": 26,
+        "p_value_fdr": 4.1621795792718493e-07,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 50
+      },
+      {
+        "feature": "last_rating",
+        "features": [
+          "last_rating"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 2.5205435461694847e-05,
+        "delta_race_log_loss_std": 3.16222975083047e-05,
+        "kind": "numeric",
+        "association": 0.00234440628014537,
+        "p_value": 0.4747083775457644,
+        "mutual_information": 0.02029734244882797,
+        "coverage": 0.4858819656024792,
+        "unique_values": 123,
+        "p_value_fdr": 0.5148245784651247,
+        "significant_fdr_05": false,
+        "family": "performance_adjustments",
+        "rank": 51
+      },
+      {
+        "feature": "venue",
+        "features": [
+          "venue"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 2.7738398773458073e-06,
+        "delta_race_log_loss_std": 1.7409937366430484e-05,
+        "kind": "categorical",
+        "association": 0.014564307310574287,
+        "p_value": 1.8784281609088636e-10,
+        "mutual_information": 0.00010532982374808486,
+        "coverage": 1.0,
+        "unique_values": 2,
+        "p_value_fdr": 2.7815186228842787e-10,
+        "significant_fdr_05": true,
+        "family": "current_race",
+        "rank": 52
+      },
+      {
+        "feature": "horse_rating",
+        "features": [
+          "horse_rating"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": 0.013623953995410238,
+        "p_value": 1.9942894012246516e-05,
+        "mutual_information": 0.02085893656388249,
+        "coverage": 0.5122471270074366,
+        "unique_values": 124,
+        "p_value_fdr": 2.7920051617145122e-05,
+        "significant_fdr_05": true,
+        "family": "current_race",
+        "rank": 53
+      },
+      {
+        "feature": "official_source",
+        "features": [
+          "official_source"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": -0.0032887426169475593,
+        "p_value": 0.15026056629810686,
+        "mutual_information": 0.026063070232234864,
+        "coverage": 1.0,
+        "unique_values": 2,
+        "p_value_fdr": 0.18078224382740982,
+        "significant_fdr_05": false,
+        "family": "source_quality",
+        "rank": 54
+      },
+      {
+        "feature": "rating_change",
+        "features": [
+          "rating_change"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": 0.08328158034929076,
+        "p_value": 1.9447784226523258e-141,
+        "mutual_information": 0.002832268727674281,
+        "coverage": 0.48137715507104745,
+        "unique_values": 62,
+        "p_value_fdr": 5.759536097854965e-141,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 55
+      },
+      {
+        "feature": "trackwork_available",
+        "features": [
+          "trackwork_available"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": -0.000901023677655312,
+        "p_value": 0.6934788123379435,
+        "mutual_information": 0.001383947793819118,
+        "coverage": 1.0,
+        "unique_values": 2,
+        "p_value_fdr": 0.7306676726254805,
+        "significant_fdr_05": false,
+        "family": "current_condition",
+        "rank": 56
+      },
+      {
+        "feature": "trackwork_7d",
+        "features": [
+          "trackwork_7d"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": 0.019110976568541535,
+        "p_value": 6.242426280493577e-17,
+        "mutual_information": 0.00028437932996805415,
+        "coverage": 1.0,
+        "unique_values": 18,
+        "p_value_fdr": 1.092424599086376e-16,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 57
+      },
+      {
+        "feature": "trackwork_14d",
+        "features": [
+          "trackwork_14d"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": 0.018915306911419363,
+        "p_value": 1.2852191919924957e-16,
+        "mutual_information": 0.000431684722186354,
+        "coverage": 1.0,
+        "unique_values": 33,
+        "p_value_fdr": 2.199152839631604e-16,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 58
+      },
+      {
+        "feature": "trackwork_30d",
+        "features": [
+          "trackwork_30d"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": 0.018415948197260862,
+        "p_value": 7.854535052451885e-16,
+        "mutual_information": 0.0002744320793930388,
+        "coverage": 1.0,
+        "unique_values": 69,
+        "p_value_fdr": 1.3147808674756414e-15,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 59
+      },
+      {
+        "feature": "barrier_available",
+        "features": [
+          "barrier_available"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": -0.0004110273978748828,
+        "p_value": 0.8573116528744795,
+        "mutual_information": 0.0019180614710860855,
+        "coverage": 1.0,
+        "unique_values": 2,
+        "p_value_fdr": 0.86859206935967,
+        "significant_fdr_05": false,
+        "family": "current_condition",
+        "rank": 60
+      },
+      {
+        "feature": "trials_90d",
+        "features": [
+          "trials_90d"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": 0.005523469017493192,
+        "p_value": 0.015684669827781116,
+        "mutual_information": 0.0002546852239906361,
+        "coverage": 1.0,
+        "unique_values": 8,
+        "p_value_fdr": 0.020822751323088723,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 61
+      },
+      {
+        "feature": "sectionals_available",
+        "features": [
+          "sectionals_available"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0,
+        "kind": "numeric",
+        "association": -0.003254770371011642,
+        "p_value": 0.1545185713109638,
+        "mutual_information": 0.02496207940235129,
+        "coverage": 1.0,
+        "unique_values": 2,
+        "p_value_fdr": 0.18304507678375712,
+        "significant_fdr_05": false,
+        "family": "past_performance",
+        "rank": 62
+      },
+      {
+        "feature": "course",
+        "features": [
+          "course"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -6.178851197136126e-06,
+        "delta_race_log_loss_std": 5.772717231566915e-06,
+        "kind": "categorical",
+        "association": 0.009928038382511379,
+        "p_value": 0.17034083925395535,
+        "mutual_information": 4.9169799134733325e-05,
+        "coverage": 1.0,
+        "unique_values": 15,
+        "p_value_fdr": 0.19576484511275466,
+        "significant_fdr_05": false,
+        "family": "current_race",
+        "rank": 63
+      },
+      {
+        "feature": "last_trial_speed",
+        "features": [
+          "last_trial_speed"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -1.9635678259799505e-05,
+        "delta_race_log_loss_std": 4.739788753749252e-05,
+        "kind": "numeric",
+        "association": 0.0003373101287830896,
+        "p_value": 0.9602205114119673,
+        "mutual_information": 0.024110781098588552,
+        "coverage": 0.11427690474572905,
+        "unique_values": 3030,
+        "p_value_fdr": 0.9602205114119672,
+        "significant_fdr_05": false,
+        "family": "current_condition",
+        "rank": 64
+      },
+      {
+        "feature": "last_trial_placing",
+        "features": [
+          "last_trial_placing"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -2.475321809725095e-05,
+        "delta_race_log_loss_std": 4.37192409230569e-06,
+        "kind": "numeric",
+        "association": -0.053119848883367474,
+        "p_value": 2.5663634093085807e-15,
+        "mutual_information": 0.041195590870961585,
+        "coverage": 0.11574018426869993,
+        "unique_values": 14,
+        "p_value_fdr": 4.116874635765848e-15,
+        "significant_fdr_05": true,
+        "family": "current_condition",
+        "rank": 65
+      },
+      {
+        "feature": "days_since_trackwork",
+        "features": [
+          "days_since_trackwork"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -5.720713821921741e-05,
+        "delta_race_log_loss_std": 4.58659269553241e-05,
+        "kind": "numeric",
+        "association": -0.015191358431911862,
+        "p_value": 0.06651137343912904,
+        "mutual_information": 0.0033054101115155277,
+        "coverage": 0.07625254114167158,
+        "unique_values": 144,
+        "p_value_fdr": 0.08395697958709732,
+        "significant_fdr_05": false,
+        "family": "current_condition",
+        "rank": 66
+      },
+      {
+        "feature": "last_sectional_position",
+        "features": [
+          "last_sectional_position"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -6.212291426610506e-05,
+        "delta_race_log_loss_std": 5.46035236950182e-05,
+        "kind": "numeric",
+        "association": -0.1510963043772171,
+        "p_value": 0.0,
+        "mutual_information": 0.018812742041392605,
+        "coverage": 0.4466190404021928,
+        "unique_values": 14,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 67
+      },
+      {
+        "feature": "venue_win_rate",
+        "features": [
+          "venue_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -6.221902208647379e-05,
+        "delta_race_log_loss_std": 0.00017959718945315117,
+        "kind": "numeric",
+        "association": 0.10903861213132424,
+        "p_value": 0.0,
+        "mutual_information": 0.00672613066876826,
+        "coverage": 0.9078813280306871,
+        "unique_values": 401,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 68
+      },
+      {
+        "feature": "course_win_rate",
+        "features": [
+          "course_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -0.00018159624058755597,
+        "delta_race_log_loss_std": 3.12411978180549e-05,
+        "kind": "numeric",
+        "association": 0.05353887559803465,
+        "p_value": 2.9019679388533998e-89,
+        "mutual_information": 0.0012772917687147167,
+        "coverage": 0.7305684318346912,
+        "unique_values": 143,
+        "p_value_fdr": 7.448384376390394e-89,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 69
+      },
+      {
+        "feature": "going",
+        "features": [
+          "going"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -0.00020449305211767133,
+        "delta_race_log_loss_std": 4.43131125023033e-05,
+        "kind": "categorical",
+        "association": 0.010169961299513737,
+        "p_value": 0.40724730107121254,
+        "mutual_information": 5.043032895212028e-05,
+        "coverage": 1.0,
+        "unique_values": 20,
+        "p_value_fdr": 0.45446437945628065,
+        "significant_fdr_05": false,
+        "family": "current_race",
+        "rank": 70
+      },
+      {
+        "feature": "horse_jockey_starts",
+        "features": [
+          "horse_jockey_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -0.00024962011589191313,
+        "delta_race_log_loss_std": 0.00018090835479900313,
+        "kind": "numeric",
+        "association": 0.004152977570516291,
+        "p_value": 0.06926897513338733,
+        "mutual_information": 0.0016941575848132828,
+        "coverage": 1.0,
+        "unique_values": 45,
+        "p_value_fdr": 0.08602759814952943,
+        "significant_fdr_05": false,
+        "family": "performance_adjustments",
+        "rank": 71
+      },
+      {
+        "feature": "prior_avg_result",
+        "features": [
+          "prior_avg_result"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -0.00030477314453314364,
+        "delta_race_log_loss_std": 0.0007868929484562415,
+        "kind": "numeric",
+        "association": -0.13890007969577378,
+        "p_value": 0.0,
+        "mutual_information": 0.01579325980437507,
+        "coverage": 0.9469717952871948,
+        "unique_values": 5463,
+        "p_value_fdr": 0.0,
+        "significant_fdr_05": true,
+        "family": "past_performance",
+        "rank": 72
+      },
+      {
+        "feature": "venue_starts",
+        "features": [
+          "venue_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -0.0005909773336012503,
+        "delta_race_log_loss_std": 0.0006444561687295458,
+        "kind": "numeric",
+        "association": -0.0336882447421326,
+        "p_value": 3.5380110498293044e-49,
+        "mutual_information": 0.001790441265306253,
+        "coverage": 1.0,
+        "unique_values": 86,
+        "p_value_fdr": 7.567412523246012e-49,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 73
+      },
+      {
+        "feature": "body_weight_change_pct",
+        "features": [
+          "body_weight_change_pct"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -0.0005949733748817909,
+        "delta_race_log_loss_std": 0.0005334346722503103,
+        "kind": "numeric",
+        "association": -0.0016007825697948357,
+        "p_value": 0.49561425463932796,
+        "mutual_information": 0.02054546334197016,
+        "coverage": 0.9469404392974168,
+        "unique_values": 16953,
+        "p_value_fdr": 0.5300319112115035,
+        "significant_fdr_05": false,
+        "family": "performance_adjustments",
+        "rank": 74
+      },
+      {
+        "feature": "actual_weight",
+        "features": [
+          "actual_weight"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -0.0008569262987374593,
+        "delta_race_log_loss_std": 0.0010424392460106624,
+        "kind": "numeric",
+        "association": 0.05101698638825357,
+        "p_value": 1.843105838078315e-110,
+        "mutual_information": 0.0032040942306557074,
+        "coverage": 1.0,
+        "unique_values": 31,
+        "p_value_fdr": 5.256264797482603e-110,
+        "significant_fdr_05": true,
+        "family": "current_race",
+        "rank": 75
+      },
+      {
+        "feature": "jockey_starts",
+        "features": [
+          "jockey_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -0.0013677961833271635,
+        "delta_race_log_loss_std": 0.00031456670159957234,
+        "kind": "numeric",
+        "association": 0.018262514915060243,
+        "p_value": 1.3569490491442615e-15,
+        "mutual_information": 0.0016064461167313304,
+        "coverage": 1.0,
+        "unique_values": 5360,
+        "p_value_fdr": 2.223086740087407e-15,
+        "significant_fdr_05": true,
+        "family": "performance_adjustments",
+        "rank": 76
+      },
+      {
+        "feature": "going_starts",
+        "features": [
+          "going_starts"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": -0.003134545962398816,
+        "delta_race_log_loss_std": 0.00037437689758568204,
+        "kind": "numeric",
+        "association": -0.027313207239982477,
+        "p_value": 6.496075604653261e-33,
+        "mutual_information": 0.0020378222279837654,
+        "coverage": 1.0,
+        "unique_values": 66,
+        "p_value_fdr": 1.2504945538957527e-32,
+        "significant_fdr_05": true,
+        "family": "preferences",
+        "rank": 77
+      }
+    ],
+    "family_ranking": [
+      {
+        "family": "current_condition",
+        "features": [
+          "days_since_last_race",
+          "last_result",
+          "avg_result_2",
+          "avg_result_3",
+          "avg_result_5",
+          "trackwork_available",
+          "days_since_trackwork",
+          "trackwork_7d",
+          "trackwork_14d",
+          "trackwork_30d",
+          "barrier_available",
+          "days_since_trial",
+          "trials_90d",
+          "last_trial_placing",
+          "last_trial_speed"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.12111336136578688,
+        "delta_race_log_loss_std": 0.0018737025010624464
+      },
+      {
+        "family": "performance_adjustments",
+        "features": [
+          "last_carried_weight",
+          "carried_weight_change",
+          "last_body_weight",
+          "body_weight_change",
+          "body_weight_change_pct",
+          "last_rating",
+          "rating_change",
+          "class_change",
+          "jockey_starts",
+          "jockey_win_rate",
+          "jockey_top3_rate",
+          "trainer_starts",
+          "trainer_win_rate",
+          "trainer_top3_rate",
+          "jockey_trainer_starts",
+          "jockey_trainer_win_rate",
+          "horse_jockey_starts",
+          "horse_jockey_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0841642977301813,
+        "delta_race_log_loss_std": 0.004389572465310021
+      },
+      {
+        "family": "past_performance",
+        "features": [
+          "prior_starts",
+          "prior_win_rate",
+          "prior_top3_rate",
+          "prior_avg_result",
+          "prior_avg_odds",
+          "last_speed_ratio",
+          "avg_speed_ratio_3",
+          "avg_speed_ratio_5",
+          "last_lengths_behind",
+          "avg_lengths_behind_3",
+          "last_late_position_gain",
+          "avg_late_position_gain_3",
+          "sectionals_available",
+          "last_sectional_time",
+          "last_sectional_position"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.03934991418879186,
+        "delta_race_log_loss_std": 0.0035586225548285277
+      },
+      {
+        "family": "post_position",
+        "features": [
+          "draw_bias_starts",
+          "draw_bias_win_rate",
+          "draw_bias_top3_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.023802270007960535,
+        "delta_race_log_loss_std": 0.0022321152361344243
+      },
+      {
+        "family": "current_race",
+        "features": [
+          "horse_rating",
+          "declared_weight",
+          "actual_weight",
+          "draw",
+          "distance",
+          "race_class",
+          "prize",
+          "field_size",
+          "venue",
+          "course",
+          "going",
+          "surface"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.020116824841108993,
+        "delta_race_log_loss_std": 0.00015737741649912707
+      },
+      {
+        "family": "preferences",
+        "features": [
+          "last_distance",
+          "distance_change",
+          "distance_band_starts",
+          "distance_band_win_rate",
+          "distance_band_top3_rate",
+          "venue_starts",
+          "venue_win_rate",
+          "course_starts",
+          "course_win_rate",
+          "going_starts",
+          "going_win_rate",
+          "surface_starts",
+          "surface_win_rate"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.008404858880243449,
+        "delta_race_log_loss_std": 0.000853064366542089
+      },
+      {
+        "family": "source_quality",
+        "features": [
+          "official_source"
+        ],
+        "repeats": 2,
+        "baseline_race_log_loss": 2.2336693645178336,
+        "delta_race_log_loss_mean": 0.0,
+        "delta_race_log_loss_std": 0.0
+      }
+    ],
+    "redundant_pairs": [
+      {
+        "feature_a": "trackwork_7d",
+        "feature_b": "trackwork_14d",
+        "spearman": 0.9999244407593506,
+        "abs_spearman": 0.9999244407593506
+      },
+      {
+        "feature_a": "trackwork_14d",
+        "feature_b": "trackwork_30d",
+        "spearman": 0.9999215780013415,
+        "abs_spearman": 0.9999215780013415
+      },
+      {
+        "feature_a": "trackwork_7d",
+        "feature_b": "trackwork_30d",
+        "spearman": 0.9998740056991484,
+        "abs_spearman": 0.9998740056991484
+      },
+      {
+        "feature_a": "body_weight_change",
+        "feature_b": "body_weight_change_pct",
+        "spearman": 0.9993399929365719,
+        "abs_spearman": 0.9993399929365719
+      },
+      {
+        "feature_a": "last_result",
+        "feature_b": "last_sectional_position",
+        "spearman": 0.9988869036927506,
+        "abs_spearman": 0.9988869036927506
+      },
+      {
+        "feature_a": "official_source",
+        "feature_b": "sectionals_available",
+        "spearman": 0.980632200764603,
+        "abs_spearman": 0.980632200764603
+      },
+      {
+        "feature_a": "declared_weight",
+        "feature_b": "last_body_weight",
+        "spearman": 0.979085053265883,
+        "abs_spearman": 0.979085053265883
+      },
+      {
+        "feature_a": "trackwork_available",
+        "feature_b": "days_since_trackwork",
+        "spearman": -0.976918429388062,
+        "abs_spearman": 0.976918429388062
+      },
+      {
+        "feature_a": "last_speed_ratio",
+        "feature_b": "last_lengths_behind",
+        "spearman": -0.9707195046882999,
+        "abs_spearman": 0.9707195046882999
+      },
+      {
+        "feature_a": "horse_rating",
+        "feature_b": "last_rating",
+        "spearman": 0.9633095564372984,
+        "abs_spearman": 0.9633095564372984
+      },
+      {
+        "feature_a": "avg_speed_ratio_3",
+        "feature_b": "avg_lengths_behind_3",
+        "spearman": -0.9518939052094062,
+        "abs_spearman": 0.9518939052094062
+      },
+      {
+        "feature_a": "trackwork_available",
+        "feature_b": "barrier_available",
+        "spearman": 0.921378944534896,
+        "abs_spearman": 0.921378944534896
+      },
+      {
+        "feature_a": "jockey_win_rate",
+        "feature_b": "jockey_top3_rate",
+        "spearman": 0.9211327903189298,
+        "abs_spearman": 0.9211327903189298
+      },
+      {
+        "feature_a": "prior_win_rate",
+        "feature_b": "surface_win_rate",
+        "spearman": 0.9165305569244255,
+        "abs_spearman": 0.9165305569244255
+      },
+      {
+        "feature_a": "avg_result_2",
+        "feature_b": "avg_result_3",
+        "spearman": 0.9094236855581191,
+        "abs_spearman": 0.9094236855581191
+      },
+      {
+        "feature_a": "avg_result_3",
+        "feature_b": "avg_result_5",
+        "spearman": 0.9004284204950037,
+        "abs_spearman": 0.9004284204950037
+      },
+      {
+        "feature_a": "trainer_win_rate",
+        "feature_b": "trainer_top3_rate",
+        "spearman": 0.8950480687146717,
+        "abs_spearman": 0.8950480687146717
+      },
+      {
+        "feature_a": "avg_speed_ratio_3",
+        "feature_b": "avg_speed_ratio_5",
+        "spearman": 0.8948926395858467,
+        "abs_spearman": 0.8948926395858467
+      },
+      {
+        "feature_a": "avg_result_3",
+        "feature_b": "avg_lengths_behind_3",
+        "spearman": 0.8863363704751905,
+        "abs_spearman": 0.8863363704751905
+      },
+      {
+        "feature_a": "last_result",
+        "feature_b": "last_lengths_behind",
+        "spearman": 0.8819185847270666,
+        "abs_spearman": 0.8819185847270666
+      },
+      {
+        "feature_a": "last_lengths_behind",
+        "feature_b": "last_sectional_position",
+        "spearman": 0.8811099709588461,
+        "abs_spearman": 0.8811099709588461
+      },
+      {
+        "feature_a": "prior_starts",
+        "feature_b": "venue_starts",
+        "spearman": 0.8706983645740036,
+        "abs_spearman": 0.8706983645740036
+      },
+      {
+        "feature_a": "last_speed_ratio",
+        "feature_b": "last_sectional_position",
+        "spearman": -0.8588379913757717,
+        "abs_spearman": 0.8588379913757717
+      },
+      {
+        "feature_a": "last_result",
+        "feature_b": "last_speed_ratio",
+        "spearman": -0.8569499943169783,
+        "abs_spearman": 0.8569499943169783
+      },
+      {
+        "feature_a": "avg_result_3",
+        "feature_b": "avg_speed_ratio_3",
+        "spearman": -0.8531871203935789,
+        "abs_spearman": 0.8531871203935789
+      },
+      {
+        "feature_a": "avg_result_5",
+        "feature_b": "avg_speed_ratio_5",
+        "spearman": -0.8525514210726705,
+        "abs_spearman": 0.8525514210726705
+      },
+      {
+        "feature_a": "prior_win_rate",
+        "feature_b": "venue_win_rate",
+        "spearman": 0.8453002789209905,
+        "abs_spearman": 0.8453002789209905
+      },
+      {
+        "feature_a": "prior_top3_rate",
+        "feature_b": "prior_avg_result",
+        "spearman": -0.8419501000444202,
+        "abs_spearman": 0.8419501000444202
+      },
+      {
+        "feature_a": "avg_speed_ratio_5",
+        "feature_b": "avg_lengths_behind_3",
+        "spearman": -0.838601743472704,
+        "abs_spearman": 0.838601743472704
+      },
+      {
+        "feature_a": "prior_starts",
+        "feature_b": "surface_starts",
+        "spearman": 0.836701990819568,
+        "abs_spearman": 0.836701990819568
+      },
+      {
+        "feature_a": "race_class",
+        "feature_b": "prize",
+        "spearman": -0.8273358110650534,
+        "abs_spearman": 0.8273358110650534
+      },
+      {
+        "feature_a": "days_since_trial",
+        "feature_b": "trials_90d",
+        "spearman": -0.8223366643024758,
+        "abs_spearman": 0.8223366643024758
+      },
+      {
+        "feature_a": "last_result",
+        "feature_b": "avg_result_2",
+        "spearman": 0.8160792904258198,
+        "abs_spearman": 0.8160792904258198
+      },
+      {
+        "feature_a": "avg_result_2",
+        "feature_b": "last_sectional_position",
+        "spearman": 0.8142609420216033,
+        "abs_spearman": 0.8142609420216033
+      },
+      {
+        "feature_a": "avg_result_2",
+        "feature_b": "avg_lengths_behind_3",
+        "spearman": 0.808288326306868,
+        "abs_spearman": 0.808288326306868
+      },
+      {
+        "feature_a": "avg_result_5",
+        "feature_b": "avg_lengths_behind_3",
+        "spearman": 0.8073043946088413,
+        "abs_spearman": 0.8073043946088413
+      },
+      {
+        "feature_a": "venue_win_rate",
+        "feature_b": "surface_win_rate",
+        "spearman": 0.8047046248076529,
+        "abs_spearman": 0.8047046248076529
+      },
+      {
+        "feature_a": "avg_result_2",
+        "feature_b": "avg_result_5",
+        "spearman": 0.802156250997097,
+        "abs_spearman": 0.802156250997097
+      }
+    ],
+    "data_provenance": {
+      "policy": "HKJC is authoritative wherever an archived official result page exists. Lower-priority archives fill missing races only, and source is retained per runner.",
+      "official_canonical_share": 0.8579540395896604,
+      "sources": [
+        {
+          "source": "official:hkjc-results",
+          "role": "Authoritative official result pages",
+          "runner_rows": 173456,
+          "share": 0.6380389762302379
+        },
+        {
+          "source": "kaggle:mexwell-hkjc",
+          "role": "Gap fill where official archive pages are absent",
+          "runner_rows": 26633,
+          "share": 0.09796658549684026
+        },
+        {
+          "source": "kaggle:jeffreymuller-2013-2020",
+          "role": "Gap fill where higher-priority sources are absent",
+          "runner_rows": 1857,
+          "share": 0.006830771947119452
+        },
+        {
+          "source": "third-party:swords-2008-2009",
+          "role": "Small residual gap fill",
+          "runner_rows": 228,
+          "share": 0.0008386731308256516
+        },
+        {
+          "source": "kaggle:gdaley-hkracing",
+          "role": "Pre-2005 extension used only before official canonical coverage",
+          "runner_rows": 69684,
+          "share": 0.2563249931949768
+        }
+      ]
+    }
   }
 }
