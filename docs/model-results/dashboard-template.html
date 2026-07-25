@@ -107,23 +107,55 @@
     .family { display: inline-flex; align-items: center; gap: 7px; }
     .empty { color: var(--muted); padding: 32px 0; }
     .pipeline-section { margin: 8px 0 30px; border-top: 1px solid var(--line); padding-top: 24px; }
-    .pipeline-note { color: var(--muted); margin: -7px 0 18px; max-width: 900px; }
-    .pipeline {
-      display: grid;
-      gap: 10px;
-    }
-    .pipeline-lane { display: grid; grid-template-columns: 1fr 28px 1fr 28px 1fr; gap: 6px; align-items: stretch; }
-    .pipeline-lane.market-lane { grid-template-columns: 1fr 28px 1fr; width: calc(60% - 2px); }
-    .pipeline-merge { display: grid; grid-template-columns: minmax(180px, 1fr); place-items: center; padding: 2px 20%; }
-    .pipeline-downstream { display: grid; grid-template-columns: 1fr 28px 1fr 28px 1fr 28px 1.2fr 28px 1fr; gap: 6px; align-items: stretch; }
-    .pipe-node { border: 1px solid var(--line); border-radius: 6px; padding: 14px; background: #fff; min-width: 0; }
-    .pipe-node strong { display: block; margin-bottom: 5px; }
-    .pipe-node span { color: var(--muted); font-size: 12px; }
-    .pipe-node.market { border-color: rgba(29, 78, 216, .45); }
-    .pipe-node.blend { border-color: rgba(24, 121, 78, .5); background: #f4faf7; }
-    .pipe-node.output { border-color: rgba(181, 71, 8, .4); }
-    .pipe-arrow { display: grid; place-items: center; color: var(--muted); font-weight: 700; }
-    .pool-list { margin-top: 8px; font-size: 12px; font-weight: 650; line-height: 1.7; }
+    .pipeline-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+    .pipeline-note { color: var(--muted); margin: -7px 0 18px; max-width: 920px; }
+    .pipeline-tabs { display: inline-grid; grid-template-columns: 1fr 1fr; }
+    .pipeline-tabs button { border-radius: 0; min-width: 150px; padding: 0 14px; }
+    .pipeline-tabs button:first-child { border-radius: 6px 0 0 6px; }
+    .pipeline-tabs button:last-child { border-left: 0; border-radius: 0 6px 6px 0; }
+    .pipeline-tabs button.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .pipeline-overview-wrap { overflow-x: auto; padding: 2px 0 12px; }
+    .pipeline-overview { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(145px, 1fr); min-width: 1040px; align-items: stretch; }
+    .overview-step { position: relative; border: 0; border-top: 3px solid var(--line); border-radius: 0; padding: 12px 30px 10px 10px; min-height: 84px; text-align: left; background: #fff; }
+    .overview-step + .overview-step { border-left: 1px solid var(--line); }
+    .overview-step::after { content: ">"; position: absolute; right: 10px; top: 31px; color: #9aa39f; }
+    .overview-step:last-child::after { content: ""; }
+    .overview-step.active { border-top-color: var(--logit); background: var(--soft); }
+    .overview-step small { display: block; color: var(--muted); margin-bottom: 4px; }
+    .overview-step strong { display: block; font-size: 13px; line-height: 1.25; }
+    .pipeline-explorer { display: grid; grid-template-columns: 280px minmax(0, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); min-height: 520px; }
+    .stage-nav { border-right: 1px solid var(--line); padding: 10px 0; }
+    .stage-nav button { width: 100%; min-height: 0; border: 0; border-radius: 0; padding: 11px 14px; text-align: left; color: var(--muted); background: transparent; }
+    .stage-nav button.active { color: var(--ink); background: var(--selected); box-shadow: inset 3px 0 0 var(--logit); }
+    .stage-nav button strong { display: block; color: inherit; }
+    .stage-nav button span { display: block; font-size: 11px; margin-top: 2px; }
+    .stage-detail { padding: 24px 28px 28px; min-width: 0; }
+    .stage-index { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    .stage-detail h3 { margin: 4px 0 8px; font-size: 21px; }
+    .stage-purpose { margin: 0 0 20px; color: #45504b; font-size: 15px; }
+    .stage-boundaries { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
+    .boundary { border-left: 3px solid var(--market); padding: 8px 12px; background: #f7f9ff; }
+    .boundary.leakage { border-left-color: var(--boosted); background: #fff9f5; }
+    .boundary strong { display: block; font-size: 12px; margin-bottom: 3px; }
+    .boundary span { color: #4f5b56; font-size: 12px; }
+    .stage-columns { display: grid; grid-template-columns: .8fr 1.4fr .8fr; gap: 22px; }
+    .stage-column h4, .contract-block h4 { margin: 0 0 9px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
+    .stage-column ul, .stage-column ol { margin: 0; padding-left: 18px; }
+    .stage-column li { margin-bottom: 7px; }
+    .feature-contract { padding: 24px 0 8px; }
+    .contract-summary { display: flex; gap: 28px; flex-wrap: wrap; margin-bottom: 18px; }
+    .contract-summary strong { display: block; font-size: 20px; }
+    .contract-summary span { color: var(--muted); font-size: 11px; }
+    .contract-grid { display: grid; grid-template-columns: 1.25fr .8fr 1fr; gap: 24px; }
+    .field-list { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 18px; }
+    .field-list li { break-inside: avoid; border-bottom: 1px solid #edf0ee; padding: 5px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .field-list.single { columns: 1; }
+    .disclosure-table { min-width: 0; }
+    .disclosure-table th, .disclosure-table td { white-space: normal; text-align: left; vertical-align: top; padding: 8px; }
+    .disclosure-table code { font-size: 11px; }
+    .unused-note { border-left: 3px solid var(--boosted); padding: 10px 12px; background: #fff9f5; margin-top: 18px; }
+    .unused-note strong { display: block; margin-bottom: 4px; }
+    .unused-note span { color: #5c554f; font-size: 12px; }
     .source-comparison { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0 0 18px; }
     .source-comparison div { border-top: 2px solid var(--line); padding-top: 7px; }
     .source-comparison div:nth-child(2) { border-color: var(--market); }
@@ -134,9 +166,9 @@
       .visuals { grid-template-columns: 1fr; }
       .chart-wrap { height: 340px; }
       .detail { min-height: 0; }
-      .pipeline-lane, .pipeline-downstream { grid-template-columns: 1fr 24px 1fr; }
-      .pipeline-lane.market-lane { width: 100%; grid-template-columns: 1fr 24px 1fr; }
-      .pipeline-merge { padding: 2px 12%; }
+      .pipeline-explorer { grid-template-columns: 220px minmax(0, 1fr); }
+      .stage-columns { grid-template-columns: 1fr; }
+      .contract-grid { grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 620px) {
       header { padding-top: 20px; }
@@ -150,8 +182,15 @@
       .control select { width: 100%; min-width: 0; }
       .chart-wrap { height: 300px; }
       .detail-grid { grid-template-columns: 1fr 1fr; }
-      .pipeline-lane, .pipeline-lane.market-lane, .pipeline-downstream { display: grid; grid-template-columns: 1fr; }
-      .pipe-arrow { min-height: 18px; transform: rotate(90deg); }
+      .pipeline-tabs { width: 100%; }
+      .pipeline-tabs button { min-width: 0; }
+      .pipeline-explorer { grid-template-columns: 1fr; }
+      .stage-nav { border-right: 0; border-bottom: 1px solid var(--line); display: flex; overflow-x: auto; padding: 0; }
+      .stage-nav button { min-width: 190px; border-right: 1px solid var(--line); }
+      .stage-nav button.active { box-shadow: inset 0 -3px 0 var(--logit); }
+      .stage-detail { padding: 20px 0 24px; }
+      .stage-boundaries, .contract-grid { grid-template-columns: 1fr; }
+      .field-list { columns: 1; }
       .source-comparison { grid-template-columns: 1fr 1fr 1fr; }
     }
   </style>
@@ -180,36 +219,48 @@
     </section>
 
     <section class="pipeline-section" aria-labelledby="pipeline-title">
-      <h2 id="pipeline-title">Prediction and wagering pipeline</h2>
-      <p class="pipeline-note">The horse model and market remain independently measurable, then combine before finishing-order and pool probabilities are calculated.</p>
-      <div class="pipeline" id="prediction-pipeline">
-        <div class="pipeline-lane">
-          <div class="pipe-node"><strong>Point-in-time inputs</strong><span>Horse form, rating, draw, weight, distance, class, going, trackwork and veterinary history</span></div>
-          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
-          <div class="pipe-node"><strong>Feature transformation</strong><span>Race-safe joins, missing-value indicators, scaling and categorical encoding</span></div>
-          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
-          <div class="pipe-node"><strong>Fundamental probability</strong><span>Logistic or boosted model, normalized within each race and temperature calibrated</span></div>
+      <div class="pipeline-header">
+        <div>
+          <h2 id="pipeline-title">Exact data and prediction pipeline</h2>
+          <p class="pipeline-note">Select a stage to inspect its inputs, exact transformation, outputs, fitted state, and leakage boundary.</p>
         </div>
-        <div class="pipeline-lane market-lane">
-          <div class="pipe-node market"><strong>Live WIN market odds</strong><span>Only odds observed at or before the prediction timestamp</span></div>
-          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
-          <div class="pipe-node market"><strong>Market probability</strong><span>Inverse odds, takeout-aware normalization and race-level probability scaling</span></div>
-        </div>
-        <div class="pipeline-merge">
-          <div class="pipe-node blend"><strong>Fitted market blend</strong><span>Fundamental<sup>wf</sup> x Market<sup>wm</sup>, with weights learned on validation races</span></div>
-        </div>
-        <div class="pipeline-downstream">
-          <div class="pipe-node"><strong>Public fallback</strong><span>First-time or unratable horses inherit their public probability</span></div>
-          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
-          <div class="pipe-node"><strong>Finishing-order model</strong><span>Fitted Benter second- and third-place exponents</span></div>
-          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
-          <div class="pipe-node output"><strong>Pool probabilities</strong><span>Rank every valid single-horse or combination outcome</span><div class="pool-list" id="supported-pools">WIN / PLACE / QIN / QPL / TRI / TIERCE / FIRST4 / QUARTET</div></div>
-          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
-          <div class="pipe-node market"><strong>Live pool-price comparison</strong><span>Compare fair odds with current pool odds and measure disagreement</span></div>
-          <div class="pipe-arrow" aria-hidden="true">-&gt;</div>
-          <div class="pipe-node output"><strong>Wager decision</strong><span>Expected value, fractional Kelly, exposure limits and paper execution</span></div>
+        <div class="pipeline-tabs" id="pipeline-mode" aria-label="Pipeline view">
+          <button type="button" class="active" data-pipeline-mode="training">Historical training</button>
+          <button type="button" data-pipeline-mode="live">Live prediction</button>
         </div>
       </div>
+
+      <div class="pipeline-overview-wrap">
+        <div class="pipeline-overview" id="pipeline-overview"></div>
+      </div>
+
+      <div class="pipeline-explorer" id="prediction-pipeline">
+        <nav class="stage-nav" id="pipeline-stage-nav" aria-label="Pipeline stages"></nav>
+        <article class="stage-detail" id="pipeline-stage-detail" aria-live="polite"></article>
+      </div>
+
+      <section class="feature-contract" aria-labelledby="feature-contract-title">
+        <h3 id="feature-contract-title">What actually enters the fundamental model</h3>
+        <p class="pipeline-note">This contract is generated from the active Python feature constants. Current WIN odds remain outside the fundamental estimator and combine later.</p>
+        <div class="contract-summary" id="feature-summary"></div>
+        <div class="contract-grid">
+          <div class="contract-block"><h4>Numeric features</h4><ul class="field-list" id="numeric-features"></ul></div>
+          <div class="contract-block"><h4>Categorical features</h4><ul class="field-list single" id="categorical-features"></ul></div>
+          <div class="contract-block"><h4>Excluded market fields</h4><ul class="field-list single" id="excluded-market-fields"></ul></div>
+        </div>
+        <div class="unused-note" id="unused-data"></div>
+      </section>
+
+      <section class="feature-contract" aria-labelledby="data-limit-title">
+        <h3 id="data-limit-title">Current placeholders and unavailable values</h3>
+        <p class="pipeline-note">These values are not hidden by imputation. They are disclosed here because they limit what the current benchmark can learn.</p>
+        <div class="table-scroll">
+          <table class="disclosure-table">
+            <thead><tr><th>Context</th><th>Field</th><th>Current value</th><th>Reason</th></tr></thead>
+            <tbody id="pipeline-placeholders"></tbody>
+          </table>
+        </div>
+      </section>
       <p class="pipeline-note" id="market-limitation"></p>
     </section>
 
@@ -312,7 +363,15 @@
       pseudo_r2: { label: "Pseudo-R2", higher: true },
       duration_seconds: { label: "Run duration", higher: false }
     };
-    const state = { source: "combined", family: "all", metric: "top_pick_win_rate", sort: "top_pick_win_rate", selected: null };
+    const state = {
+      source: "combined",
+      family: "all",
+      metric: "top_pick_win_rate",
+      sort: "top_pick_win_rate",
+      selected: null,
+      pipelineMode: "training",
+      pipelineStage: 0
+    };
 
     const fmt = (value, digits = 4) => Number(value).toFixed(digits);
     const pct = value => `${(Number(value) * 100).toFixed(2)}%`;
@@ -334,6 +393,76 @@
         return metric.higher ? bv - av : av - bv;
       });
     };
+
+    function renderPipeline() {
+      const manifest = DATA.pipeline_manifest;
+      if (!manifest) return;
+      const stages = manifest[state.pipelineMode];
+      state.pipelineStage = Math.min(state.pipelineStage, stages.length - 1);
+      const selected = stages[state.pipelineStage];
+      const stageButton = (stage, index, compact = false) => `
+        <button type="button" class="${index === state.pipelineStage ? "active" : ""}" data-stage-index="${index}">
+          ${compact ? `<small>Step ${index + 1}</small>` : ""}
+          <strong>${escapeHtml(stage.name)}</strong>
+          ${compact ? "" : `<span>Step ${index + 1} of ${stages.length}</span>`}
+        </button>`;
+      document.getElementById("pipeline-overview").innerHTML = stages.map((stage, index) => `
+        <button type="button" class="overview-step ${index === state.pipelineStage ? "active" : ""}" data-stage-index="${index}">
+          <small>Step ${index + 1}</small><strong>${escapeHtml(stage.name)}</strong>
+        </button>`).join("");
+      document.getElementById("pipeline-stage-nav").innerHTML = stages.map((stage, index) => stageButton(stage, index)).join("");
+
+      const list = (items, ordered = false) => {
+        const tag = ordered ? "ol" : "ul";
+        return `<${tag}>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</${tag}>`;
+      };
+      document.getElementById("pipeline-stage-detail").innerHTML = `
+        <div class="stage-index">${state.pipelineMode === "training" ? "Historical training" : "Live prediction"} / Step ${state.pipelineStage + 1} of ${stages.length}</div>
+        <h3>${escapeHtml(selected.name)}</h3>
+        <p class="stage-purpose">${escapeHtml(selected.purpose)}</p>
+        <div class="stage-boundaries">
+          <div class="boundary"><strong>Fitted state</strong><span>${escapeHtml(selected.fit_scope)}</span></div>
+          <div class="boundary leakage"><strong>Leakage boundary</strong><span>${escapeHtml(selected.leakage_boundary)}</span></div>
+        </div>
+        <div class="stage-columns">
+          <section class="stage-column"><h4>Inputs</h4>${list(selected.inputs)}</section>
+          <section class="stage-column"><h4>Exact transformation</h4>${list(selected.operations, true)}</section>
+          <section class="stage-column"><h4>Outputs</h4>${list(selected.outputs)}</section>
+        </div>`;
+
+      document.querySelectorAll("[data-stage-index]").forEach(button => {
+        button.addEventListener("click", () => {
+          state.pipelineStage = Number(button.dataset.stageIndex);
+          renderPipeline();
+        });
+      });
+    }
+
+    function renderFeatureContract() {
+      const manifest = DATA.pipeline_manifest;
+      if (!manifest) return;
+      const contract = manifest.feature_contract;
+      document.getElementById("feature-summary").innerHTML = `
+        <div><strong>${contract.count}</strong><span>Total estimator features</span></div>
+        <div><strong>${contract.numeric.length}</strong><span>Numeric</span></div>
+        <div><strong>${contract.categorical.length}</strong><span>Categorical</span></div>
+        <div><strong>0</strong><span>Current-odds features</span></div>`;
+      const fields = (target, values) => {
+        document.getElementById(target).innerHTML = values.map(value => `<li>${escapeHtml(value)}</li>`).join("");
+      };
+      fields("numeric-features", contract.numeric);
+      fields("categorical-features", contract.categorical);
+      fields("excluded-market-fields", contract.excluded_market_fields);
+      document.getElementById("unused-data").innerHTML = `
+        <strong>Collected but not consumed by the current baseline</strong>
+        <span>${manifest.collected_not_consumed_by_baseline.map(escapeHtml).join(" / ")}</span>`;
+      const rows = [
+        ...manifest.historical_placeholders.map(item => ({ context: "Historical canonical", ...item })),
+        ...manifest.live_defaults.map(item => ({ context: "Live mapping", ...item }))
+      ];
+      document.getElementById("pipeline-placeholders").innerHTML = rows.map(item => `
+        <tr><td>${escapeHtml(item.context)}</td><td><code>${escapeHtml(item.field)}</code></td><td><code>${escapeHtml(item.value)}</code></td><td>${escapeHtml(item.reason)}</td></tr>`).join("");
+    }
 
     function prepareCanvas(canvas) {
       const rect = canvas.getBoundingClientRect();
@@ -571,11 +700,16 @@
     document.getElementById("runner-count").textContent = DATA.dataset.runners.toLocaleString();
     document.getElementById("test-count").textContent = DATA.dataset.test_races.toLocaleString();
     document.getElementById("market-score").textContent = pct(DATA.market_test.top_pick_win_rate);
-    if (DATA.supported_pools) {
-      document.getElementById("supported-pools").textContent = DATA.supported_pools.join(" / ");
-    }
     document.getElementById("market-limitation").textContent = DATA.prediction_sources?.historical_market_limit || "Historical charts may use final odds; live wagering requires timestamped pre-race odds.";
 
+    document.getElementById("pipeline-mode").addEventListener("click", event => {
+      const button = event.target.closest("button[data-pipeline-mode]");
+      if (!button) return;
+      state.pipelineMode = button.dataset.pipelineMode;
+      state.pipelineStage = 0;
+      document.querySelectorAll("#pipeline-mode button").forEach(item => item.classList.toggle("active", item === button));
+      renderPipeline();
+    });
     document.getElementById("source-filter").addEventListener("click", event => {
       const button = event.target.closest("button[data-source]");
       if (!button) return;
@@ -594,6 +728,8 @@
     document.getElementById("sort-select").addEventListener("change", event => { state.sort = event.target.value; render(); });
     let resizeTimer;
     window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawBarChart(); drawScatterChart(); drawProgressChart(); }, 100); });
+    renderFeatureContract();
+    renderPipeline();
     render();
   </script>
 </body>
