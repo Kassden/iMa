@@ -10,6 +10,7 @@ import pandas as pd
 
 from ima.data import build_full_history_dataset, chronological_race_split
 from ima.experiments import render_dashboard
+from ima.experiments import default_experiment_specs
 from ima.feature_analysis import association_report, correlation_report, permutation_importance_report
 from ima.feature_sets import (
     BASELINE_SCHEMA, BENTER_COVERAGE, FEATURE_FAMILIES, FEATURE_ORIGINS, RICH_SCHEMA,
@@ -18,6 +19,7 @@ from ima.modeling import (
     MarketBlend, RaceProbabilityModel, TemperatureCalibrator, evaluate_probabilities,
     incremental_pseudo_r2,
 )
+from ima.pipeline_transparency import pipeline_manifest
 from ima.rich_features import load_full_rich_history
 
 
@@ -71,6 +73,13 @@ def data_provenance(report: dict, canonical_path: Path) -> dict:
 def publish_dashboard(report: dict, results_path: Path, template_path: Path, output_path: Path) -> None:
     summary = json.loads(results_path.read_text(encoding="utf-8"))
     summary["feature_study"] = report
+    summary["pipeline_manifest"] = pipeline_manifest()
+    sequence = {spec.run_id: index for index, spec in enumerate(default_experiment_specs())}
+    for run in summary.get("runs", []):
+        run.setdefault("sequence", sequence.get(run["run_id"], len(sequence)))
+        run.setdefault("feature_schema", BASELINE_SCHEMA.name)
+        run.setdefault("feature_count", len(BASELINE_SCHEMA.features))
+        run.setdefault("variables", list(BASELINE_SCHEMA.features))
     results_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     render_dashboard(summary, template_path, output_path)
 
