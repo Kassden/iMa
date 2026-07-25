@@ -1,4 +1,7 @@
 {
+  "buildCommand": "echo 'Using committed static dashboard'",
   "cleanUrls": true,
+  "framework": null,
+  "installCommand": "echo 'No install required'",
   "outputDirectory": "public"
 }
