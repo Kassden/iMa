@@ -1,0 +1,15 @@
+{
+  "systems": 1,
+  "file_edges": 11,
+  "cycles": 0,
+  "max_hub_degree": 4,
+  "api_routes": 0,
+  "workers": 2,
+  "schemas": 6,
+  "integrations": 0,
+  "risk_points": 0,
+  "risk_tier": "low",
+  "recommendations": [
+    "Architecture risk appears low; preserve simplicity and add only targeted boundaries."
+  ]
+}

@@ -1,0 +1,23 @@
+digraph architecture {
+  rankdir="LR";
+  "scrapper/__init__.py";
+  "scrapper/cli.py";
+  "scrapper/contracts.py";
+  "scrapper/history.py";
+  "scrapper/hkjc.py";
+  "scrapper/horse_pages.py";
+  "scrapper/pipeline.py";
+  "scrapper/tests/__init__.py";
+  "scrapper/tests/test_scrapper.py";
+  "scrapper/__init__.py" -> "scrapper/pipeline.py";
+  "scrapper/cli.py" -> "scrapper/history.py";
+  "scrapper/cli.py" -> "scrapper/pipeline.py";
+  "scrapper/pipeline.py" -> "scrapper/contracts.py";
+  "scrapper/pipeline.py" -> "scrapper/history.py";
+  "scrapper/pipeline.py" -> "scrapper/hkjc.py";
+  "scrapper/pipeline.py" -> "scrapper/horse_pages.py";
+  "scrapper/tests/test_scrapper.py" -> "scrapper/contracts.py";
+  "scrapper/tests/test_scrapper.py" -> "scrapper/history.py";
+  "scrapper/tests/test_scrapper.py" -> "scrapper/horse_pages.py";
+  "scrapper/tests/test_scrapper.py" -> "scrapper/pipeline.py";
+}

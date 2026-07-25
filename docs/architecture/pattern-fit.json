@@ -1,0 +1,32 @@
+{
+  "patterns": {
+    "modular-monolith": {
+      "fit": "fits",
+      "reason": "Default until distribution pressure is proven."
+    },
+    "layered": {
+      "fit": "maybe",
+      "reason": "Fits request/response apps with clear delivery/application/domain/persistence flow."
+    },
+    "clean-architecture": {
+      "fit": "maybe",
+      "reason": "Useful when policy should be testable apart from frameworks, database, or web."
+    },
+    "event-driven": {
+      "fit": "fits",
+      "reason": "Fits async workflows, fan-out, ingestion, notifications, and integrations."
+    },
+    "microkernel": {
+      "fit": "maybe",
+      "reason": "Use only if the product has a stable core plus plugin/extensions shape."
+    },
+    "microservices": {
+      "fit": "avoid-for-now",
+      "reason": "Needs scaling, isolation, ownership, security, or release-cadence evidence."
+    },
+    "space-based": {
+      "fit": "avoid-for-now",
+      "reason": "Only for extreme throughput/concurrency where central persistence is the bottleneck."
+    }
+  }
+}

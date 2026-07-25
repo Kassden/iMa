@@ -1,0 +1,21 @@
+flowchart LR
+  scrapper___init___py["scrapper/__init__.py"]
+  scrapper_cli_py["scrapper/cli.py"]
+  scrapper_contracts_py["scrapper/contracts.py"]
+  scrapper_history_py["scrapper/history.py"]
+  scrapper_hkjc_py["scrapper/hkjc.py"]
+  scrapper_horse_pages_py["scrapper/horse_pages.py"]
+  scrapper_pipeline_py["scrapper/pipeline.py"]
+  scrapper_tests___init___py["scrapper/tests/__init__.py"]
+  scrapper_tests_test_scrapper_py["scrapper/tests/test_scrapper.py"]
+  scrapper___init___py --> scrapper_pipeline_py
+  scrapper_cli_py --> scrapper_history_py
+  scrapper_cli_py --> scrapper_pipeline_py
+  scrapper_pipeline_py --> scrapper_contracts_py
+  scrapper_pipeline_py --> scrapper_history_py
+  scrapper_pipeline_py --> scrapper_hkjc_py
+  scrapper_pipeline_py --> scrapper_horse_pages_py
+  scrapper_tests_test_scrapper_py --> scrapper_contracts_py
+  scrapper_tests_test_scrapper_py --> scrapper_history_py
+  scrapper_tests_test_scrapper_py --> scrapper_horse_pages_py
+  scrapper_tests_test_scrapper_py --> scrapper_pipeline_py
