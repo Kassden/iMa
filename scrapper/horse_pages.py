@@ -57,6 +57,15 @@ def _finish_seconds(value: str) -> float | None:
         return None
 
 
+def _form_date(value: str):
+    for pattern in ("%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(value, pattern).date()
+        except ValueError:
+            continue
+    return None
+
+
 @dataclass(frozen=True)
 class FormRecord:
     race_index: str
@@ -109,13 +118,17 @@ class HorsePageData:
         for record in self.form_records:
             if record.placing is None:
                 continue
-            record_date = datetime.strptime(record.date, "%d/%m/%y").date()
-            if cutoff is None or record_date < cutoff:
+            record_date = _form_date(record.date)
+            if record_date and (cutoff is None or record_date < cutoff):
                 valid.append(record)
         previous = valid[0] if valid else None
         prior_results = [record.placing for record in valid if record.placing is not None]
+        age = self.age
+        if age is not None and cutoff and self.fetched_at:
+            projected_age = age - (datetime.fromisoformat(self.fetched_at).year - cutoff.year)
+            age = projected_age if 1 <= projected_age <= 20 else None
         return {
-            "horse_age": self.age,
+            "horse_age": age,
             "horse_country": self.country,
             "horse_type": self.sex,
             "last_speed": (
@@ -124,10 +137,10 @@ class HorsePageData:
                 else None
             ),
             "avg_2last": sum(prior_results[:2]) / 2 if len(prior_results) >= 2 else None,
-            "won_odds": self.wins if self.wins is not None else sum(value == 1 for value in prior_results),
-            "second_count": self.seconds if self.seconds is not None else sum(value == 2 for value in prior_results),
-            "third_count": self.thirds if self.thirds is not None else sum(value == 3 for value in prior_results),
-            "exp": self.starts if self.starts is not None else len(valid),
+            "won_odds": self.wins if cutoff is None and self.wins is not None else sum(value == 1 for value in prior_results),
+            "second_count": self.seconds if cutoff is None and self.seconds is not None else sum(value == 2 for value in prior_results),
+            "third_count": self.thirds if cutoff is None and self.thirds is not None else sum(value == 3 for value in prior_results),
+            "exp": self.starts if cutoff is None and self.starts is not None else len(valid),
             "raced": int(bool(valid)),
             "fin_time": previous.finish_time if previous else None,
             "prev_dist": previous.distance if previous else None,
@@ -149,22 +162,22 @@ def parse_profile_and_form(source: str, horse_page_id: str) -> HorsePageData:
     data = HorsePageData(horse_page_id=horse_page_id)
     title_match = re.search(r'<span\b[^>]*class="title_text"[^>]*>(.*?)</span>', source, re.I | re.S)
     if title_match:
-        title = _text(title_match.group(1))
+        title = re.sub(r"\s+\(Retired\)\s*$", "", _text(title_match.group(1)), flags=re.I)
         match = re.match(r"(.+?)\s*\(([^)]+)\)\s*$", title)
         data.horse_name = match.group(1) if match else title
         data.brand_code = match.group(2) if match else ""
 
     profile = {row[0]: row[2] for row in rows if len(row) == 3 and row[1] == ":"}
-    country_age = profile.get("Country of Origin / Age", "").split("/")
+    country_age = profile.get("Country of Origin / Age", profile.get("Country of Origin", "")).split("/")
     if country_age:
         data.country = country_age[0].strip() or None
     if len(country_age) > 1:
         data.age = _integer(country_age[1])
-    colour_sex = profile.get("Colour / Sex", "").split("/")
+    colour_sex = [item.strip() for item in profile.get("Colour / Sex", "").split("/") if item.strip()]
     if colour_sex:
-        data.colour = colour_sex[0].strip() or None
+        data.colour = " / ".join(colour_sex[:-1]) if len(colour_sex) > 1 else colour_sex[0]
     if len(colour_sex) > 1:
-        data.sex = colour_sex[1].strip() or None
+        data.sex = colour_sex[-1]
     data.trainer = profile.get("Trainer")
     data.owner = profile.get("Owner")
     data.current_rating = _number(profile.get("Current Rating"))
@@ -175,7 +188,7 @@ def parse_profile_and_form(source: str, horse_page_id: str) -> HorsePageData:
     for row in rows:
         if len(row) < 18 or not re.fullmatch(r"\d+", row[0]):
             continue
-        if not re.fullmatch(r"\d{2}/\d{2}/\d{2}", row[2]):
+        if not re.fullmatch(r"\d{2}/\d{2}/(?:\d{2}|\d{4})", row[2]):
             continue
         data.form_records.append(
             FormRecord(
@@ -216,11 +229,7 @@ class HorsePageClient:
         return url, source
 
     def fetch_all(self, horse_page_id: str) -> HorsePageData:
-        fetched_at = datetime.now().astimezone().isoformat()
-        profile_url, profile_source = self._fetch("horse", horse_page_id)
-        data = parse_profile_and_form(profile_source, horse_page_id)
-        data.fetched_at = fetched_at
-        data.source_urls["profile_and_form"] = profile_url
+        data, _profile_source = self.fetch_profile(horse_page_id)
         resources = (
             ("trackwork", "trackworkresult", ("date", "type", "track", "workouts", "gear")),
             ("veterinary", "ovehorse", ("date", "details", "passed_date")),
@@ -243,6 +252,14 @@ class HorsePageClient:
             except RuntimeError as exc:
                 data.errors.append(str(exc))
         return data
+
+    def fetch_profile(self, horse_page_id: str) -> tuple[HorsePageData, str]:
+        fetched_at = datetime.now().astimezone().isoformat()
+        profile_url, profile_source = self._fetch("horse", horse_page_id)
+        data = parse_profile_and_form(profile_source, horse_page_id)
+        data.fetched_at = fetched_at
+        data.source_urls["profile_and_form"] = profile_url
+        return data, profile_source
 
 
 def write_horse_page_fixture(data: HorsePageData, path: Path) -> None:

@@ -106,6 +106,26 @@ class ScraperTests(unittest.TestCase):
         self.assertEqual(1400.0, features["prev_dist"])
         self.assertAlmostEqual(17.282, features["last_speed"], places=3)
 
+    def test_retired_horse_profile_and_four_digit_form_dates(self):
+        source = """
+        <span class="title_text">LUCKY RED (CJ059) (Retired)</span>
+        <table>
+          <tr><td>Country of Origin</td><td>:</td><td>AUS</td></tr>
+          <tr><td>Colour / Sex</td><td>:</td><td>Bay / Brown / Gelding</td></tr>
+          <tr><td>343</td><td>07</td><td>22/01/2014</td><td>HV / Turf / C+3</td>
+          <td>1000</td><td>G</td><td>Class 5</td><td>3</td><td>24</td><td>Trainer</td>
+          <td>Jockey</td><td>3</td><td>8.2</td><td>120</td><td>4 4 7</td>
+          <td>0.57.50</td><td>1120</td><td>B/TT</td><td>Replay</td></tr>
+        </table>
+        """
+        page = parse_profile_and_form(source, "HK_2007_J059")
+        page.fetched_at = "2026-07-26T00:00:00+08:00"
+        self.assertEqual("AUS", page.country)
+        self.assertEqual("Bay / Brown", page.colour)
+        self.assertEqual("Gelding", page.sex)
+        self.assertEqual("B/TT", page.form_records[0].gear)
+        self.assertEqual(7, page.model_features("2014-01-23")["prev_resu"])
+
 
 if __name__ == "__main__":
     unittest.main()

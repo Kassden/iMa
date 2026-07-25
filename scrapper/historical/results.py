@@ -21,6 +21,7 @@ class HistoricalResult:
     horse_no: int
     horse_name: str
     horse_code: str
+    horse_page_id: str | None
     jockey: str
     trainer: str
     actual_weight: float
@@ -50,6 +51,13 @@ def _money(value: str) -> float | None:
 
 def parse_race(html: str) -> HistoricalRace:
     rows = table_rows(html)
+    horse_page_ids = {
+        code.upper(): page_id
+        for page_id, code in re.findall(
+            r"horse\?horseid=([^&\" ]+)[^\"]*\"[^>]*>.*?</a>\s*&nbsp;\([A-Z]*([A-Z]\d{3})\)",
+            html, re.I | re.S,
+        )
+    }
     race_class = None
     distance = None
     prize = None
@@ -86,7 +94,8 @@ def parse_race(html: str) -> HistoricalRace:
         try:
             results.append(HistoricalResult(
                 place=int(placing.group(1)), horse_no=int(row[1]), horse_name=horse_name,
-                horse_code=horse_code, jockey=row[3], trainer=row[4],
+                horse_code=horse_code, horse_page_id=horse_page_ids.get(horse_code.upper()),
+                jockey=row[3], trainer=row[4],
                 actual_weight=float(row[5]), declared_weight=float(row[6]), draw=int(row[7]),
                 lengths_behind=row[8], running_position=row[9], finish_time=row[10],
                 win_odds=float(row[11]),
