@@ -6,7 +6,7 @@ import pandas as pd
 
 from ima.historical_sources import (
     CANONICAL_COLUMNS, extract_horse_identity, iter_mexwell_odds, normalize_mexwell_dividends,
-    reconcile_sources, validate_canonical,
+    normalize_official_archive, reconcile_sources, validate_canonical,
 )
 
 
@@ -68,6 +68,31 @@ class HistoricalSourceTests(unittest.TestCase):
         identity = extract_horse_identity(pd.Series(["WAIT FOR ME(CE332)", "BATURO(H029)"]))
         self.assertEqual(["E332", "H029"], identity[1].tolist())
         self.assertEqual(["WAIT FOR ME", "BATURO"], identity[0].tolist())
+
+    def test_official_normalization_keeps_race_metadata_and_runner_context(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            destination = root / "normalized/2020-01-01"
+            destination.mkdir(parents=True)
+            payload = [{
+                "race_date": "2020-01-01", "venue": "ST", "race_no": 1,
+                "race_class": "Class 3", "distance": 1400, "prize": 1860000,
+                "going": "GOOD", "course": 'TURF - "A" Course',
+                "runners": [{
+                    "place": 1, "horse_no": 4, "horse_name": "SIGHT DREAMER",
+                    "horse_code": "J542", "jockey": "A Atzeni", "trainer": "J Size",
+                    "actual_weight": 134, "declared_weight": 1306, "draw": 8,
+                    "lengths_behind": "---", "running_position": "5 4 1 1",
+                    "finish_time": "1:21.99", "win_odds": 8.4,
+                }],
+            }]
+            (destination / "ST.json").write_text(
+                __import__("json").dumps(payload), encoding="utf-8"
+            )
+            frame = normalize_official_archive(root)
+        self.assertEqual(1400, frame.iloc[0]["distance"])
+        self.assertEqual("Class 3", frame.iloc[0]["race_class"])
+        self.assertEqual("5 4 1 1", frame.iloc[0]["running_position"])
 
 
 if __name__ == "__main__":

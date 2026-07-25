@@ -1,17 +1,27 @@
 import unittest
 
-from scrapper.historical.results import parse_results
+from scrapper.historical.results import parse_race, parse_results
 
 
 class HistoricalTests(unittest.TestCase):
     def test_result_archive_parser(self):
-        html = """<table><tr><th>Pla.</th><th>Horse No.</th></tr>
+        html = """<table>
+        <tr><td>Class 3 - 1400M - (80-60)</td><td>Going :</td><td>GOOD</td></tr>
+        <tr><td>TEST HANDICAP</td><td>Course :</td><td>TURF - \"A\" Course</td></tr>
+        <tr><td>HK$ 1,860,000</td><td>Time :</td><td>1:21.99</td></tr>
+        <tr><th>Pla.</th><th>Horse No.</th></tr>
         <tr><td>1</td><td>4</td><td>SIGHT DREAMER (J542)</td><td>A Atzeni</td>
         <td>J Size</td><td>134</td><td>1306</td><td>8</td><td>---</td>
         <td>5 4 1 1</td><td>1:21.99</td><td>8.4</td></tr></table>"""
-        rows = parse_results(html)
-        self.assertEqual("J542", rows[0].horse_code)
-        self.assertEqual(8.4, rows[0].win_odds)
+        race = parse_race(html)
+        self.assertEqual("J542", race.runners[0].horse_code)
+        self.assertEqual(8.4, race.runners[0].win_odds)
+        self.assertEqual("Class 3", race.race_class)
+        self.assertEqual(1400, race.distance)
+        self.assertEqual("GOOD", race.going)
+        self.assertEqual('TURF - "A" Course', race.course)
+        self.assertEqual(1860000.0, race.prize)
+        self.assertEqual("TEST HANDICAP", race.race_name)
 
     def test_dead_heat_placing_is_preserved(self):
         html = """<table>
