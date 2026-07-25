@@ -200,6 +200,9 @@
     .matrix-gradient { width: 150px; height: 10px; background: linear-gradient(90deg, var(--boosted), #fff 50%, var(--market)); border: 1px solid var(--line); }
     .matrix-table-wrap { max-height: 820px; overflow: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
     .matrix-table-wrap table { min-width: 0; }
+    .variable-disclosure summary { cursor: pointer; color: var(--market); }
+    .variable-disclosure div { margin-top: 7px; max-width: 520px; white-space: normal; line-height: 1.6; }
+    .variable-disclosure code { display: inline-block; margin: 0 5px 3px 0; font-size: 10px; }
     @media (max-width: 900px) {
       .visuals { grid-template-columns: 1fr; }
       .chart-wrap { height: 340px; }
@@ -458,6 +461,7 @@
 
     <section class="panel table-section">
       <h2>Run progression</h2>
+      <p class="pipeline-note" id="progress-note"></p>
       <div class="chart-wrap"><canvas id="progress-chart" role="img" aria-label="Top-1 accuracy by experiment sequence"></canvas></div>
       <div class="legend">
         <span class="key"><span class="dot" style="background:var(--logit)"></span>Logistic sequence</span>
@@ -471,7 +475,7 @@
       <div class="table-scroll">
         <table>
           <thead><tr>
-            <th>Run</th><th>Family</th><th>Top-1</th><th>Top-3</th><th>Winner rank</th>
+            <th>Run</th><th>Family</th><th>Feature set</th><th>Variables</th><th>Top-1</th><th>Top-3</th><th>Winner rank</th>
             <th>Log loss</th><th>Brier</th><th>ECE</th><th>Pseudo-R2</th><th>Blend fund.</th>
           </tr></thead>
           <tbody id="results-body"></tbody>
@@ -886,8 +890,14 @@
     function drawProgressChart() {
       const canvas = document.getElementById("progress-chart");
       const { context: ctx, width, height } = prepareCanvas(canvas);
-      const runs = DATA.runs.filter(run => state.family === "all" || run.kind === state.family);
+      const runs = DATA.runs.filter(run => state.family === "all" || run.kind === state.family)
+        .slice().sort((a, b) => (a.sequence ?? 999) - (b.sequence ?? 999));
       if (!runs.length) return;
+      document.getElementById("progress-note").textContent = state.source === "fundamental"
+        ? "Configured hyperparameter-sweep order, not chronological retraining. Higher learning rates and larger boosted trees lose held-out accuracy here, consistent with overfitting."
+        : state.source === "combined"
+          ? "All combined runs are flat because validation selected a fundamental weight of 0.0; these historical combined predictions equal the final-odds market benchmark."
+          : "The market line is identical for every run because all models are evaluated against the same held-out races and final WIN odds.";
       const values = runs.map(run => sourceMetrics(run).top_pick_win_rate);
       const market = DATA.market_test.top_pick_win_rate;
       const min = Math.max(0, Math.min(...values) - .015);
@@ -967,7 +977,10 @@
           <div><dt>Incremental Pseudo-R2</dt><dd>${fmt(run.incremental_pseudo_r2)}</dd></div>
           <div><dt>2nd exponent</dt><dd>${fmt(run.second_place_exponent, 3)}</dd></div>
           <div><dt>3rd exponent</dt><dd>${fmt(run.third_place_exponent, 3)}</dd></div>
+          <div><dt>Feature set</dt><dd>${escapeHtml(run.feature_schema || "baseline-v1")}</dd></div>
+          <div><dt>Feature count</dt><dd>${run.feature_count || run.variables?.length || 0}</dd></div>
         </dl>
+        <div class="variable-disclosure"><strong>Estimator variables</strong><div>${(run.variables || []).map(variable => `<code>${escapeHtml(variable)}</code>`).join("")}</div></div>
         <pre>${escapeHtml(JSON.stringify(run.parameters, null, 2))}</pre>`;
       renderTable();
       drawScatterChart();
@@ -983,6 +996,8 @@
         <tr data-run-id="${escapeHtml(run.run_id)}" class="${run.run_id === state.selected ? "selected" : ""}" tabindex="0">
           <td>${escapeHtml(run.run_id)}</td>
           <td><span class="family"><span class="dot" style="background:${COLORS[run.kind]}"></span>${escapeHtml(run.kind)}</span></td>
+          <td>${escapeHtml(run.feature_schema || "baseline-v1")} (${run.feature_count || run.variables?.length || 0})</td>
+          <td><details class="variable-disclosure"><summary>Show variables</summary><div>${(run.variables || []).map(variable => `<code>${escapeHtml(variable)}</code>`).join("")}</div></details></td>
           <td>${pct(metrics.top_pick_win_rate)}</td>
           <td>${pct(metrics.winner_top3_rate)}</td>
           <td>${fmt(metrics.mean_winner_rank, 2)}</td>
