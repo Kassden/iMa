@@ -189,6 +189,17 @@
     .status.unsupported { color: var(--muted); }
     .positive { color: var(--logit); }
     .negative { color: #a13d2d; }
+    .matrix-toolbar { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
+    .matrix-toolbar .control select { min-width: 260px; }
+    .matrix-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr); gap: 24px; }
+    .matrix-layout > * { min-width: 0; }
+    .matrix-scroll { width: 100%; overflow: auto; border: 1px solid var(--line); background: #fff; }
+    #correlation-matrix-chart { width: 820px; height: 820px; }
+    .matrix-readout { min-height: 22px; margin: 8px 0 0; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .matrix-scale { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .matrix-gradient { width: 150px; height: 10px; background: linear-gradient(90deg, var(--boosted), #fff 50%, var(--market)); border: 1px solid var(--line); }
+    .matrix-table-wrap { max-height: 820px; overflow: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .matrix-table-wrap table { min-width: 0; }
     @media (max-width: 900px) {
       .visuals { grid-template-columns: 1fr; }
       .chart-wrap { height: 340px; }
@@ -197,6 +208,7 @@
       .stage-columns { grid-template-columns: 1fr; }
       .contract-grid { grid-template-columns: 1fr 1fr; }
       .study-grid { grid-template-columns: 1fr; }
+      .matrix-layout { grid-template-columns: 1fr; }
       .method-grid { grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 620px) {
@@ -329,6 +341,27 @@
           <thead><tr><th>Rank</th><th>Feature</th><th>Family</th><th>Delta log loss</th><th>Association</th><th>FDR q</th><th>Mutual info</th><th>Coverage</th></tr></thead>
           <tbody id="feature-ranking-body"></tbody>
         </table></div>
+      </section>
+
+      <section class="study-block" style="margin-top:28px" aria-labelledby="correlation-matrix-title">
+        <h3 id="correlation-matrix-title">Spearman matrix by model run</h3>
+        <p>Choose a fitted candidate and inspect every numeric feature pair. Runs with the same feature schema intentionally share one training matrix; model family and hyperparameters do not alter input correlations.</p>
+        <div class="matrix-toolbar">
+          <div class="control"><label for="correlation-run-select">Model run</label><select id="correlation-run-select"></select></div>
+          <div class="control"><label for="correlation-feature-select">Inspect variable</label><select id="correlation-feature-select"></select></div>
+          <div class="matrix-scale"><span>-1</span><span class="matrix-gradient"></span><span>+1</span></div>
+        </div>
+        <p class="pipeline-note" id="correlation-schema-note"></p>
+        <div class="matrix-layout">
+          <div>
+            <div class="matrix-scroll"><canvas id="correlation-matrix-chart" role="img" aria-label="Feature Spearman correlation matrix"></canvas></div>
+            <p class="matrix-readout" id="correlation-hover">Move over a cell to inspect the exact pair.</p>
+          </div>
+          <div class="matrix-table-wrap"><table class="compact-table">
+            <thead><tr><th>Variable</th><th>Spearman rho</th></tr></thead>
+            <tbody id="correlation-variable-body"></tbody>
+          </table></div>
+        </div>
       </section>
 
       <div class="study-grid" style="margin-top:28px">
@@ -467,7 +500,9 @@
       sort: "top_pick_win_rate",
       selected: null,
       pipelineMode: "training",
-      pipelineStage: 0
+      pipelineStage: 0,
+      correlationRun: null,
+      correlationFeature: null
     };
 
     const fmt = (value, digits = 4) => Number(value).toFixed(digits);
@@ -622,7 +657,112 @@
         <td>${escapeHtml(item.note || "Implemented with point-in-time race data")}</td></tr>`).join("");
       document.getElementById("feature-methodology").innerHTML = Object.entries(study.methodology).map(([name, description]) => `
         <div class="method-item"><strong>${escapeHtml(name.replaceAll("_", " "))}</strong><span>${escapeHtml(description)}</span></div>`).join("");
+      renderCorrelationExplorer();
       drawFeatureImportance();
+    }
+
+    function correlationContext() {
+      const study = DATA.feature_study;
+      const candidate = study.candidates.find(item => item.name === state.correlationRun) || study.candidates[0];
+      return { study, candidate, matrix: study.correlation_matrices[candidate.schema] };
+    }
+
+    function renderCorrelationExplorer() {
+      const study = DATA.feature_study;
+      if (!study?.correlation_matrices) return;
+      if (!state.correlationRun) state.correlationRun = study.selected_rich_model;
+      const runSelect = document.getElementById("correlation-run-select");
+      runSelect.innerHTML = study.candidates.map(candidate => `
+        <option value="${escapeHtml(candidate.name)}" ${candidate.name === state.correlationRun ? "selected" : ""}>${escapeHtml(candidate.name)}</option>`).join("");
+      const { candidate, matrix } = correlationContext();
+      if (!state.correlationFeature || !matrix.features.includes(state.correlationFeature)) {
+        state.correlationFeature = matrix.features[0];
+      }
+      const featureSelect = document.getElementById("correlation-feature-select");
+      featureSelect.innerHTML = matrix.features.map(feature => `
+        <option value="${escapeHtml(feature)}" ${feature === state.correlationFeature ? "selected" : ""}>${escapeHtml(feature)}</option>`).join("");
+      const excluded = study.schemas[candidate.schema].features.length - matrix.features.length;
+      document.getElementById("correlation-schema-note").textContent =
+        `${candidate.name} uses ${candidate.schema}: ${matrix.features.length} numeric variables in this training-only matrix. ${excluded} categorical variables remain in the Cramer's V table above. Runs sharing ${candidate.schema} share this matrix.`;
+      renderCorrelationVariable();
+      drawCorrelationMatrix();
+      runSelect.onchange = event => {
+        state.correlationRun = event.target.value;
+        state.correlationFeature = null;
+        renderCorrelationExplorer();
+      };
+      featureSelect.onchange = event => {
+        state.correlationFeature = event.target.value;
+        renderCorrelationVariable();
+        drawCorrelationMatrix();
+      };
+    }
+
+    function renderCorrelationVariable() {
+      const { matrix } = correlationContext();
+      const index = matrix.features.indexOf(state.correlationFeature);
+      const rows = matrix.features.map((feature, featureIndex) => ({
+        feature,
+        value: matrix.values[index][featureIndex]
+      })).filter(item => item.feature !== state.correlationFeature && item.value !== null && Number.isFinite(Number(item.value)))
+        .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+      document.getElementById("correlation-variable-body").innerHTML = rows.map(item => `
+        <tr><td><code>${escapeHtml(item.feature)}</code></td><td class="${item.value >= 0 ? "positive" : "negative"}">${fmt(item.value, 4)}</td></tr>`).join("");
+    }
+
+    function matrixColor(value) {
+      if (value === null || !Number.isFinite(Number(value))) return "#eef1ef";
+      const amount = Math.min(1, Math.abs(Number(value)));
+      const target = Number(value) >= 0 ? [29, 78, 216] : [181, 71, 8];
+      const channel = index => Math.round(255 + (target[index] - 255) * amount);
+      return `rgb(${channel(0)}, ${channel(1)}, ${channel(2)})`;
+    }
+
+    function drawCorrelationMatrix() {
+      const { matrix } = correlationContext();
+      const canvas = document.getElementById("correlation-matrix-chart");
+      const { context: ctx, width, height } = prepareCanvas(canvas);
+      const left = 128, top = 108, right = 18, bottom = 18;
+      const size = Math.min(width - left - right, height - top - bottom);
+      const cell = size / matrix.features.length;
+      matrix.values.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
+        ctx.fillStyle = matrixColor(value);
+        ctx.fillRect(left + columnIndex * cell, top + rowIndex * cell, Math.ceil(cell), Math.ceil(cell));
+      }));
+      const selected = matrix.features.indexOf(state.correlationFeature);
+      if (selected >= 0) {
+        ctx.strokeStyle = "#18201d"; ctx.lineWidth = 1.5;
+        ctx.strokeRect(left, top + selected * cell, size, cell);
+        ctx.strokeRect(left + selected * cell, top, cell, size);
+      }
+      const labelStep = Math.max(1, Math.ceil(matrix.features.length / 13));
+      ctx.fillStyle = "#56615c"; ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+      matrix.features.forEach((feature, index) => {
+        if (index % labelStep !== 0 && index !== selected) return;
+        const position = top + index * cell + cell / 2;
+        ctx.textAlign = "right"; ctx.textBaseline = "middle";
+        ctx.fillText(feature, left - 7, position);
+        ctx.save();
+        ctx.translate(left + index * cell + cell / 2, top - 7);
+        ctx.rotate(-Math.PI / 3);
+        ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        ctx.fillText(feature, 0, 0);
+        ctx.restore();
+      });
+      canvas.onmousemove = event => {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left - left;
+        const y = event.clientY - rect.top - top;
+        const column = Math.floor(x / cell), row = Math.floor(y / cell);
+        if (row >= 0 && column >= 0 && row < matrix.features.length && column < matrix.features.length) {
+          const value = matrix.values[row][column];
+          document.getElementById("correlation-hover").textContent =
+            `${matrix.features[row]} x ${matrix.features[column]}: rho ${value === null ? "unavailable" : fmt(value, 4)}`;
+        }
+      };
+      canvas.onmouseleave = () => {
+        document.getElementById("correlation-hover").textContent = "Move over a cell to inspect the exact pair.";
+      };
     }
 
     function drawFeatureImportance() {
@@ -903,7 +1043,7 @@
     document.getElementById("metric-select").addEventListener("change", event => { state.metric = event.target.value; drawBarChart(); });
     document.getElementById("sort-select").addEventListener("change", event => { state.sort = event.target.value; render(); });
     let resizeTimer;
-    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawFeatureImportance(); drawBarChart(); drawScatterChart(); drawProgressChart(); }, 100); });
+    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawFeatureImportance(); drawCorrelationMatrix(); drawBarChart(); drawScatterChart(); drawProgressChart(); }, 100); });
     renderFeatureContract();
     renderPipeline();
     renderFeatureStudy();
