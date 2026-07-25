@@ -21,6 +21,15 @@ from ima.modeling import (
 from ima.rich_features import load_full_rich_history
 
 
+def matrix_payload(matrix: pd.DataFrame) -> dict:
+    clean = matrix.astype(object).where(matrix.notna(), None)
+    return {
+        "method": "Training-only Spearman rank correlation",
+        "features": list(clean.columns),
+        "values": clean.to_numpy(dtype=object).tolist(),
+    }
+
+
 def data_provenance(report: dict, canonical_path: Path) -> dict:
     canonical_sources = pd.read_csv(canonical_path, usecols=["source"])["source"].value_counts()
     study_rows = int(report["dataset"]["runners"])
@@ -64,6 +73,17 @@ def publish_dashboard(report: dict, results_path: Path, template_path: Path, out
     summary["feature_study"] = report
     results_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     render_dashboard(summary, template_path, output_path)
+
+
+def existing_correlation_matrices(args) -> dict:
+    baseline = build_full_history_dataset(args.legacy_runs, args.legacy_races, args.canonical)
+    baseline_split = chronological_race_split(baseline).train
+    baseline_matrix, _ = correlation_report(baseline_split, BASELINE_SCHEMA.numeric)
+    rich_matrix = pd.read_csv(args.output / "correlation.csv", index_col=0)
+    return {
+        BASELINE_SCHEMA.name: matrix_payload(baseline_matrix),
+        RICH_SCHEMA.name: matrix_payload(rich_matrix),
+    }
 
 
 def evaluate_candidate(kind: str, schema, splits) -> tuple[dict, dict]:
@@ -115,6 +135,8 @@ def main() -> int:
     if args.publish_only:
         report = json.loads((args.output / "report.json").read_text(encoding="utf-8"))
         report["data_provenance"] = data_provenance(report, args.canonical)
+        if "correlation_matrices" not in report:
+            report["correlation_matrices"] = existing_correlation_matrices(args)
         (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         publish_dashboard(report, args.dashboard_results, args.dashboard_template, args.dashboard_output)
         return 0
@@ -150,6 +172,9 @@ def main() -> int:
     selected_model = artifacts[selected["name"]]["model"]
 
     associations = association_report(rich_splits.train, RICH_SCHEMA)
+    baseline_matrix, _baseline_redundant = correlation_report(
+        baseline_splits.train, BASELINE_SCHEMA.numeric,
+    )
     matrix, redundant = correlation_report(rich_splits.train, RICH_SCHEMA.numeric)
     feature_groups = {feature: (feature,) for feature in RICH_SCHEMA.features}
     feature_importance = permutation_importance_report(
@@ -197,6 +222,10 @@ def main() -> int:
         "coverage": coverage,
         "candidates": candidates,
         "selected_rich_model": selected["name"],
+        "correlation_matrices": {
+            BASELINE_SCHEMA.name: matrix_payload(baseline_matrix),
+            RICH_SCHEMA.name: matrix_payload(matrix),
+        },
         "feature_ranking": ranking.to_dict(orient="records"),
         "family_ranking": family_importance.to_dict(orient="records"),
         "redundant_pairs": redundant.to_dict(orient="records"),
