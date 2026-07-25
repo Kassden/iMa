@@ -12,7 +12,22 @@ from scipy.optimize import minimize_scalar
 
 
 ORDERED_POOLS = {"WIN": 1, "TIERCE": 3, "FIRST4": 4, "QUARTET": 4}
-UNORDERED_POOLS = {"QIN": 2, "QPL": 2, "TRI": 3}
+UNORDERED_POOLS = {"QIN": 2, "TRI": 3}
+POOL_ALIASES = {
+    "WIN": "WIN",
+    "PLACE": "PLACE",
+    "QIN": "QIN",
+    "QUINELLA": "QIN",
+    "QPL": "QPL",
+    "QUINELLA PLACE": "QPL",
+    "TRI": "TRI",
+    "TRIO": "TRI",
+    "TIERCE": "TIERCE",
+    "FIRST4": "FIRST4",
+    "FIRST 4": "FIRST4",
+    "QUARTET": "QUARTET",
+}
+SUPPORTED_POOLS = ("WIN", "PLACE", "QIN", "QPL", "TRI", "TIERCE", "FIRST4", "QUARTET")
 
 
 @dataclass(frozen=True)
@@ -30,6 +45,15 @@ class CombinationProbability:
 class OrderExponents:
     second: float = 1.0
     third: float = 1.0
+
+
+def canonical_pool_name(pool: str) -> str:
+    normalized = " ".join(
+        str(pool).strip().upper().replace("-", " ").replace("_", " ").split()
+    )
+    if normalized not in POOL_ALIASES:
+        raise ValueError(f"Unsupported pool: {pool}")
+    return POOL_ALIASES[normalized]
 
 
 def benter_order_probability(
@@ -88,7 +112,7 @@ def rank_combinations(
     if len(runner_ids) != len(probabilities):
         raise ValueError("Runner ids and probabilities must have equal length")
     strengths = np.clip(np.asarray(probabilities, dtype=float), 1e-12, None)
-    pool = pool.upper()
+    pool = canonical_pool_name(pool)
     results: list[CombinationProbability] = []
     if pool in ORDERED_POOLS:
         places = ORDERED_POOLS[pool]
@@ -106,6 +130,18 @@ def rank_combinations(
             results.append(
                 CombinationProbability(pool, tuple(sorted(runner_ids[i] for i in combination)), probability)
             )
+    elif pool == "QPL":
+        places = min(3, len(runner_ids))
+        for combination in itertools.combinations(range(len(runner_ids)), 2):
+            selected = set(combination)
+            probability = sum(
+                benter_order_probability(order, strengths, exponents)
+                for order in itertools.permutations(range(len(runner_ids)), places)
+                if selected.issubset(order)
+            )
+            results.append(
+                CombinationProbability(pool, tuple(sorted(runner_ids[i] for i in combination)), probability)
+            )
     elif pool == "PLACE":
         places = min(3, len(runner_ids))
         for index, runner_id in enumerate(runner_ids):
@@ -115,6 +151,4 @@ def rank_combinations(
                 if index in order
             )
             results.append(CombinationProbability(pool, (runner_id,), probability))
-    else:
-        raise ValueError(f"Unsupported pool: {pool}")
     return sorted(results, key=lambda item: item.probability, reverse=True)

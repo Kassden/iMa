@@ -7,7 +7,7 @@ from ima.modeling import (
     MarketBlend, TemperatureCalibrator, apply_public_fallback,
     evaluate_probabilities, incremental_pseudo_r2, normalize_by_race,
 )
-from ima.pools import OrderExponents, rank_combinations
+from ima.pools import OrderExponents, canonical_pool_name, rank_combinations
 
 
 class ModelingTests(unittest.TestCase):
@@ -39,6 +39,21 @@ class ModelingTests(unittest.TestCase):
         self.assertAlmostEqual(sum(x.probability for x in rank_combinations(runners, strengths, "WIN")), 1.0)
         self.assertAlmostEqual(sum(x.probability for x in rank_combinations(runners, strengths, "QIN")), 1.0)
         self.assertAlmostEqual(sum(x.probability for x in rank_combinations(runners, strengths, "TIERCE")), 1.0)
+
+    def test_quinella_place_means_both_horses_finish_in_top_three(self):
+        runners = ["1", "2", "3", "4"]
+        strengths = np.array([0.4, 0.3, 0.2, 0.1])
+        quinella = {
+            item.runners: item.probability
+            for item in rank_combinations(runners, strengths, "QIN")
+        }
+        qpl = {
+            item.runners: item.probability
+            for item in rank_combinations(runners, strengths, "QUINELLA PLACE")
+        }
+        self.assertEqual("QPL", canonical_pool_name("quinella-place"))
+        self.assertGreater(qpl[("1", "2")], quinella[("1", "2")])
+        self.assertAlmostEqual(sum(qpl.values()), 3.0)
 
     def test_unratable_runner_inherits_public_probability(self):
         result = apply_public_fallback(

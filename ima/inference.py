@@ -9,6 +9,13 @@ import pandas as pd
 
 from .data import FEATURES
 from .modeling import apply_public_fallback, normalize_by_race
+from .pools import (
+    CombinationProbability,
+    OrderExponents,
+    SUPPORTED_POOLS,
+    canonical_pool_name,
+    rank_combinations,
+)
 
 
 def _class_number(value: object) -> float:
@@ -64,3 +71,26 @@ def predict_live_win(frame: pd.DataFrame, artifact: dict) -> np.ndarray:
     return apply_public_fallback(
         combined, market, frame["race_id"], frame["ratable"].to_numpy()
     )
+
+
+def predict_live_pools(
+    frame: pd.DataFrame,
+    artifact: dict,
+    pools: tuple[str, ...] | list[str] = SUPPORTED_POOLS,
+    top_n: int | None = None,
+) -> dict[str, dict[str, list[CombinationProbability]]]:
+    """Expand market-combined runner probabilities into ranked pool outcomes."""
+    combined = predict_live_win(frame, artifact)
+    work = frame.assign(_combined_probability=combined)
+    exponents = artifact.get("order_exponents", OrderExponents())
+    canonical_pools = tuple(dict.fromkeys(canonical_pool_name(pool) for pool in pools))
+    predictions: dict[str, dict[str, list[CombinationProbability]]] = {}
+    for race_id, race in work.groupby("race_id", sort=False):
+        runner_ids = race["horse_no"].astype(str).tolist()
+        strengths = race["_combined_probability"].to_numpy(dtype=float)
+        race_predictions = {}
+        for pool in canonical_pools:
+            ranked = rank_combinations(runner_ids, strengths, pool, exponents=exponents)
+            race_predictions[pool] = ranked if top_n is None else ranked[:top_n]
+        predictions[str(race_id)] = race_predictions
+    return predictions
