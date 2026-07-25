@@ -47,9 +47,10 @@
       "status": "downloaded-supplemental",
       "url": "https://www.kaggle.com/datasets/gdaley/hkracing",
       "sha256": "c7cf1924ea2a3708b1186213bd5b55a6ed71c0493cca05a6689fa0da66d63f84",
-      "coverage": "1997-06-02 through 2005-08-28; normalized use begins 2005-01-01",
+      "coverage": "Obscured source dates labeled 1997-06-02 through 2005-08-28; model use is limited to rows labeled before 2005 to avoid canonical overlap",
       "fields": ["runners", "results", "win_place_final_odds", "win_place_dividends", "sectionals"],
       "odds_semantics": "final/result odds; observation time unavailable",
+      "identity_semantics": "Horse, jockey, and trainer identities are anonymized integers. Kaggle states race dates are obscured and are not real calendar dates, although intervals are preserved. These IDs cannot be treated as HKJC horse codes.",
       "license": "CC0 Public Domain"
     },
     {
