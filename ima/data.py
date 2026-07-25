@@ -100,7 +100,9 @@ def build_canonical_runner_dataset(runners_path: Path) -> pd.DataFrame:
     source["won"] = source["target_win"]
     source["finish_time"] = _finish_time_seconds(source["finish_time"])
 
-    source["horse_age"] = 0.0
+    source["horse_age"] = pd.to_numeric(
+        source["horse_age"], errors="coerce"
+    ) if "horse_age" in source else np.nan
     source["horse_rating"] = pd.to_numeric(source["rating"], errors="coerce")
     source["declared_weight"] = pd.to_numeric(source["declared_weight"], errors="coerce")
     source["actual_weight"] = pd.to_numeric(source["actual_weight"], errors="coerce")
@@ -117,8 +119,14 @@ def build_canonical_runner_dataset(runners_path: Path) -> pd.DataFrame:
     source["prize"] = pd.to_numeric(source["prize"], errors="coerce")
     source["config"] = source["course"].fillna("UNKNOWN").astype(str)
     source["going"] = source["going"].fillna("UNKNOWN").astype(str)
-    source["horse_country"] = "UNKNOWN"
-    source["horse_type"] = "UNKNOWN"
+    source["horse_country"] = (
+        source["horse_country"].fillna("UNKNOWN").astype(str)
+        if "horse_country" in source else "UNKNOWN"
+    )
+    source["horse_type"] = (
+        source["horse_type"].fillna("UNKNOWN").astype(str)
+        if "horse_type" in source else "UNKNOWN"
+    )
     source["horse_gear"] = (
         source["gear"].fillna("UNKNOWN").astype(str)
         if "gear" in source else "UNKNOWN"

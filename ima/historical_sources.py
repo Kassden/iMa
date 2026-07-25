@@ -11,10 +11,11 @@ import pandas as pd
 
 
 CANONICAL_COLUMNS = (
-    "race_date", "venue", "race_no", "horse_no", "horse_id", "horse_name", "result",
+    "race_date", "venue", "race_no", "horse_no", "horse_id", "horse_page_id", "horse_name", "result",
     "win_odds", "actual_weight", "declared_weight", "draw", "finish_time", "going",
     "rating", "jockey_id", "jockey_name", "trainer_id", "trainer_name", "distance",
-    "course", "race_class", "prize", "gear", "lengths_behind", "running_position", "source",
+    "course", "race_class", "prize", "horse_age", "horse_country", "horse_colour",
+    "horse_type", "gear", "lengths_behind", "running_position", "source",
 )
 
 POOL_NAMES = {
@@ -455,6 +456,7 @@ def normalize_official_archive(root: Path) -> pd.DataFrame:
                     "race_no": race["race_no"],
                     "horse_no": runner["horse_no"],
                     "horse_id": runner["horse_code"],
+                    "horse_page_id": runner.get("horse_page_id"),
                     "horse_name": runner["horse_name"],
                     "result": runner["place"],
                     "win_odds": runner["win_odds"],
@@ -478,6 +480,108 @@ def normalize_official_archive(root: Path) -> pd.DataFrame:
                     "source": "official:hkjc-results",
                 })
     return pd.DataFrame(records, columns=CANONICAL_COLUMNS)
+
+
+def enrich_horse_profiles(
+    frame: pd.DataFrame,
+    profiles_path: Path,
+    form_path: Path,
+) -> pd.DataFrame:
+    """Join official profile attributes without leaking current form into old races."""
+    enriched = frame.copy()
+    if not profiles_path.exists():
+        return enriched
+
+    profiles = pd.read_csv(profiles_path, low_memory=False)
+    if profiles.empty or "horse_page_id" not in profiles:
+        return enriched
+    static_columns = [
+        "horse_page_id", "horse_id", "horse_country", "horse_colour", "horse_type",
+        "horse_age_at_capture", "capture_year",
+    ]
+    profiles = profiles.reindex(columns=static_columns).drop_duplicates(
+        "horse_page_id", keep="last"
+    )
+    profiles["profile_year"] = pd.to_numeric(
+        profiles["horse_page_id"].astype("string").str.extract(r"HK_(\d{4})_")[0],
+        errors="coerce",
+    )
+    enriched["_row_id"] = range(len(enriched))
+    enriched = enriched.merge(
+        profiles, on="horse_page_id", how="left", suffixes=("", "_profile")
+    )
+    for column in ("horse_country", "horse_colour", "horse_type"):
+        profile_column = f"{column}_profile"
+        if profile_column in enriched:
+            enriched[column] = enriched[column].combine_first(enriched[profile_column])
+            enriched = enriched.drop(columns=profile_column)
+
+    race_year = pd.to_datetime(enriched["race_date"], errors="coerce").dt.year
+    captured_age = pd.to_numeric(enriched.pop("horse_age_at_capture"), errors="coerce")
+    capture_year = pd.to_numeric(enriched.pop("capture_year"), errors="coerce")
+    projected_age = captured_age - (capture_year - race_year)
+    projected_age = projected_age.where(projected_age.between(1, 20))
+    existing_age = pd.to_numeric(enriched["horse_age"], errors="coerce")
+    enriched["horse_age"] = existing_age.where(existing_age.notna(), projected_age)
+
+    missing_static = enriched[["horse_country", "horse_colour", "horse_type"]].isna().any(axis=1)
+    fallback_rows = enriched.loc[
+        missing_static & enriched["horse_id"].notna(), ["_row_id", "horse_id", "race_date"]
+    ].copy()
+    if not fallback_rows.empty:
+        fallback_rows["race_year"] = pd.to_datetime(
+            fallback_rows["race_date"], errors="coerce"
+        ).dt.year
+        fallback_profiles = profiles.dropna(subset=["horse_id", "profile_year"])[
+            ["horse_id", "profile_year", "horse_country", "horse_colour", "horse_type"]
+        ]
+        candidates = fallback_rows.merge(fallback_profiles, on="horse_id", how="inner")
+        candidates = candidates[
+            candidates["profile_year"].le(candidates["race_year"])
+            & candidates["race_year"].sub(candidates["profile_year"]).le(12)
+        ]
+        candidates = candidates.sort_values("profile_year").drop_duplicates(
+            "_row_id", keep="last"
+        )
+        if not candidates.empty:
+            candidate_values = candidates.set_index("_row_id")
+            row_ids = enriched["_row_id"]
+            for column in ("horse_country", "horse_colour", "horse_type"):
+                fallback = row_ids.map(candidate_values[column])
+                enriched[column] = enriched[column].where(enriched[column].notna(), fallback)
+
+    if form_path.exists():
+        form = pd.read_csv(form_path, low_memory=False)
+        if not form.empty and {"horse_page_id", "race_date", "horse_gear"}.issubset(form.columns):
+            form["race_date"] = pd.to_datetime(form["race_date"], errors="coerce").dt.normalize()
+            form["horse_gear"] = form["horse_gear"].replace({"": pd.NA, "--": pd.NA})
+            gear_by_code = None
+            if "horse_id" in form.columns:
+                gear_by_code = (
+                    form.dropna(subset=["horse_id", "race_date"])
+                    .drop_duplicates(["horse_id", "race_date"], keep="last")
+                    [["horse_id", "race_date", "horse_gear"]]
+                )
+            form_by_page = (
+                form.dropna(subset=["horse_page_id", "race_date"])
+                .drop_duplicates(["horse_page_id", "race_date"], keep="last")
+                [["horse_page_id", "race_date", "horse_gear"]]
+            )
+            enriched["race_date"] = pd.to_datetime(enriched["race_date"]).dt.normalize()
+            enriched = enriched.merge(form_by_page, on=["horse_page_id", "race_date"], how="left")
+            enriched["gear"] = enriched["gear"].combine_first(enriched.pop("horse_gear"))
+
+            missing_gear = enriched["gear"].isna() & enriched["horse_id"].notna()
+            if missing_gear.any() and gear_by_code is not None:
+                fallback_gear = enriched.loc[
+                    missing_gear, ["_row_id", "horse_id", "race_date"]
+                ].merge(gear_by_code, on=["horse_id", "race_date"], how="left")
+                gear_values = fallback_gear.set_index("_row_id")["horse_gear"]
+                enriched.loc[missing_gear, "gear"] = enriched.loc[
+                    missing_gear, "_row_id"
+                ].map(gear_values).to_numpy()
+
+    return enriched.reindex(columns=CANONICAL_COLUMNS)
 
 
 def reconcile_sources(frames: list[pd.DataFrame]) -> tuple[pd.DataFrame, pd.DataFrame]:

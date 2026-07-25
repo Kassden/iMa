@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 import pandas as pd
 
 from ima.historical_sources import (
-    CANONICAL_COLUMNS, extract_horse_identity, iter_mexwell_odds, normalize_mexwell_dividends,
+    CANONICAL_COLUMNS, enrich_horse_profiles, extract_horse_identity, iter_mexwell_odds, normalize_mexwell_dividends,
     normalize_official_archive, reconcile_sources, validate_canonical,
 )
 
@@ -93,6 +93,37 @@ class HistoricalSourceTests(unittest.TestCase):
         self.assertEqual(1400, frame.iloc[0]["distance"])
         self.assertEqual("Class 3", frame.iloc[0]["race_class"])
         self.assertEqual("5 4 1 1", frame.iloc[0]["running_position"])
+
+    def test_profile_enrichment_is_static_and_gear_is_race_specific(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profiles = root / "profiles.csv.gz"
+            form = root / "form.csv.gz"
+            pd.DataFrame([{
+                "horse_page_id": "HK_2020_A001", "horse_id": "A001",
+                "horse_country": "AUS",
+                "horse_colour": "Bay / Brown", "horse_type": "Gelding",
+                "horse_age_at_capture": 8, "capture_year": 2026,
+            }]).to_csv(profiles, index=False, compression="gzip")
+            pd.DataFrame([{
+                "horse_page_id": "HK_2020_A001", "horse_id": "A001",
+                "race_date": "2023-01-01",
+                "horse_gear": "B/TT",
+            }]).to_csv(form, index=False, compression="gzip")
+            row = self.row("official:hkjc-results", 4.8)
+            row.update({
+                "race_date": pd.Timestamp("2023-01-01"),
+                "horse_page_id": "HK_2020_A001", "horse_id": "A001",
+            })
+            fallback_row = dict(row)
+            fallback_row["horse_page_id"] = None
+            enriched = enrich_horse_profiles(pd.DataFrame([row, fallback_row]), profiles, form)
+        self.assertEqual("AUS", enriched.iloc[0]["horse_country"])
+        self.assertEqual("Gelding", enriched.iloc[0]["horse_type"])
+        self.assertEqual(5, enriched.iloc[0]["horse_age"])
+        self.assertEqual("B/TT", enriched.iloc[0]["gear"])
+        self.assertEqual("AUS", enriched.iloc[1]["horse_country"])
+        self.assertEqual("B/TT", enriched.iloc[1]["gear"])
 
 
 if __name__ == "__main__":
