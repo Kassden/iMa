@@ -311,12 +311,10 @@ def pipeline_manifest() -> dict:
             "excluded_market_fields": ["win_odds", "market_raw", "market_probability"],
         },
         "historical_placeholders": [
-            {"field": "horse_age", "value": "0.0", "reason": "Not populated in canonical result rows"},
-            {"field": "surface", "value": "0.0", "reason": "Not populated in canonical result rows"},
-            {"field": "prize", "value": "0.0", "reason": "Not populated in canonical result rows"},
-            {"field": "horse_country", "value": "UNKNOWN", "reason": "Not populated in canonical result rows"},
-            {"field": "horse_type", "value": "UNKNOWN", "reason": "Not populated in canonical result rows"},
-            {"field": "horse_gear", "value": "UNKNOWN", "reason": "Not populated in canonical result rows"},
+            {"field": "horse_age", "value": "UNKNOWN", "reason": "Available on the horse profile page; historical use requires a point-in-time age derivation rather than copying the current displayed age backward"},
+            {"field": "horse_country", "value": "UNKNOWN", "reason": "Available on the horse profile page and awaiting bulk historical profile backfill"},
+            {"field": "horse_type", "value": "UNKNOWN", "reason": "Available as Colour / Sex on the horse profile page and awaiting bulk historical profile backfill"},
+            {"field": "horse_gear", "value": "UNKNOWN", "reason": "Available from race cards and per-race form records; retained when supplied and awaiting official historical form backfill"},
         ],
         "live_defaults": [
             {"field": "venue", "value": "UNKNOWN", "reason": "Legacy model CSV mapping does not currently pass venue"},

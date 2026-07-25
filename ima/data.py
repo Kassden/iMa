@@ -109,13 +109,20 @@ def build_canonical_runner_dataset(runners_path: Path) -> pd.DataFrame:
     source["race_class"] = pd.to_numeric(
         source["race_class"].astype("string").str.extract(r"(\d+)")[0], errors="coerce"
     )
-    source["surface"] = 0.0
-    source["prize"] = 0.0
+    course_text = source["course"].astype("string").str.upper()
+    source["surface"] = np.where(
+        course_text.str.contains("ALL WEATHER|AWT", regex=True, na=False), 1.0,
+        np.where(course_text.notna(), 0.0, np.nan),
+    )
+    source["prize"] = pd.to_numeric(source["prize"], errors="coerce")
     source["config"] = source["course"].fillna("UNKNOWN").astype(str)
     source["going"] = source["going"].fillna("UNKNOWN").astype(str)
     source["horse_country"] = "UNKNOWN"
     source["horse_type"] = "UNKNOWN"
-    source["horse_gear"] = "UNKNOWN"
+    source["horse_gear"] = (
+        source["gear"].fillna("UNKNOWN").astype(str)
+        if "gear" in source else "UNKNOWN"
+    )
 
     frame = source.sort_values(
         ["date", "race_no", "race_id", "horse_no"], kind="stable"

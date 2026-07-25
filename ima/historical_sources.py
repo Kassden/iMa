@@ -14,7 +14,7 @@ CANONICAL_COLUMNS = (
     "race_date", "venue", "race_no", "horse_no", "horse_id", "horse_name", "result",
     "win_odds", "actual_weight", "declared_weight", "draw", "finish_time", "going",
     "rating", "jockey_id", "jockey_name", "trainer_id", "trainer_name", "distance",
-    "course", "race_class", "prize", "lengths_behind", "running_position", "source",
+    "course", "race_class", "prize", "gear", "lengths_behind", "running_position", "source",
 )
 
 POOL_NAMES = {
@@ -472,6 +472,7 @@ def normalize_official_archive(root: Path) -> pd.DataFrame:
                     "course": race.get("course"),
                     "race_class": race.get("race_class"),
                     "prize": race.get("prize"),
+                    "gear": runner.get("gear"),
                     "lengths_behind": runner.get("lengths_behind"),
                     "running_position": runner.get("running_position"),
                     "source": "official:hkjc-results",
