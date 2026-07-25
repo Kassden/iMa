@@ -3,7 +3,10 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from ima.pools import paid_place_count, rank_combinations, evaluate_top_pool_selections
+from ima.pools import (
+    OrderExponents, evaluate_top_pool_selections, paid_place_count, rank_combinations,
+)
+from scripts.enrich_pool_metrics import pool_metrics_for_artifact
 
 
 class PoolTests(unittest.TestCase):
@@ -50,6 +53,38 @@ class PoolTests(unittest.TestCase):
         report = evaluate_top_pool_selections(frame, "probability")
         self.assertEqual(1, report["FIRST4"]["hits"])
         self.assertEqual(0, report["QUARTET"]["hits"])
+
+    def test_artifact_enrichment_reports_fundamental_and_combined(self):
+        class Model:
+            def predict_proba(self, frame):
+                return frame["signal"].to_numpy()
+
+        class Calibrator:
+            def transform(self, values, race_ids):
+                return values
+
+        class Blend:
+            def transform(self, fundamental, market, race_ids):
+                return market
+
+        frame = pd.DataFrame({
+            "race_id": [f"r{i}" for i in range(10) for _ in range(4)],
+            "race_no": [i for i in range(10) for _ in range(4)],
+            "date": pd.to_datetime([f"2026-01-{i + 1:02d}" for i in range(10) for _ in range(4)]),
+            "horse_no": [1, 2, 3, 4] * 10,
+            "result": [1, 2, 3, 4] * 10,
+            "target_win": [1, 0, 0, 0] * 10,
+            "target_probability": [1.0, 0.0, 0.0, 0.0] * 10,
+            "market_probability": [0.4, 0.3, 0.2, 0.1] * 10,
+            "signal": [0.35, 0.30, 0.20, 0.15] * 10,
+        })
+        artifact = {
+            "model": Model(), "calibrator": Calibrator(), "blend": Blend(),
+            "order_exponents": OrderExponents(),
+        }
+        report = pool_metrics_for_artifact(frame, artifact)
+        self.assertEqual({"fundamental", "combined"}, set(report))
+        self.assertEqual(8, len(report["fundamental"]))
 
 
 if __name__ == "__main__":
