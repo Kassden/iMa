@@ -65,6 +65,7 @@ def main() -> int:
     parser.add_argument("--official", type=Path, default=Path("data/historical/hkjc-2005-2025"))
     parser.add_argument("--output", type=Path, default=Path("data/processed/historical"))
     args = parser.parse_args()
+    horses = normalize_mexwell_horses(args.third_party / "mexwell/horses.csv")
     frames = [
         normalize_mexwell(args.third_party / "mexwell/performances.csv"),
         normalize_2008_2009(args.third_party / "0809/08-09 season.xlsx"),
@@ -81,6 +82,7 @@ def main() -> int:
         canonical,
         args.output / "horse-profiles.csv.gz",
         args.output / "horse-form.csv.gz",
+        age_references=horses,
     )
     report = validate_canonical(canonical)
     profile_path = args.output / "horse-profiles.csv.gz"
@@ -117,7 +119,6 @@ def main() -> int:
         normalize_gdaley_dividends(additional / "gdaley-hkracing.zip"),
     ], ignore_index=True)
     sectionals = normalize_mexwell_sectionals(args.third_party / "mexwell/sectional_times.csv")
-    horses = normalize_mexwell_horses(args.third_party / "mexwell/horses.csv")
     incidents = pd.concat([
         normalize_2008_2009_incidents(args.third_party / "0809/08-09 season.xlsx"),
         normalize_lantanacamara_incidents(additional / "lantanacamara-2014-2017.zip"),
