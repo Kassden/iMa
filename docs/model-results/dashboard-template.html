@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iMa Model Experiments</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #18201d;
+      --muted: #66706b;
+      --line: #dce2de;
+      --soft: #f5f7f6;
+      --logit: #18794e;
+      --boosted: #b54708;
+      --market: #1d4ed8;
+      --selected: #edf5f1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #fff;
+      color: var(--ink);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+    button, select, a { font: inherit; }
+    button, select {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+    }
+    button { cursor: pointer; }
+    button:focus-visible, select:focus-visible, a:focus-visible {
+      outline: 3px solid rgba(29, 78, 216, .2);
+      outline-offset: 2px;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding: 28px clamp(18px, 4vw, 56px) 22px;
+    }
+    .header-row, .toolbar, .summary, .legend, .downloads {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .header-row { justify-content: space-between; }
+    h1 { margin: 0; font-size: 25px; font-weight: 680; }
+    h2 { margin: 0 0 14px; font-size: 16px; }
+    .subtitle { margin: 6px 0 0; color: var(--muted); }
+    .downloads a {
+      color: var(--ink);
+      text-decoration: none;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 11px;
+    }
+    main { padding: 24px clamp(18px, 4vw, 56px) 48px; }
+    .summary { margin-bottom: 22px; gap: 24px; }
+    .stat { min-width: 124px; }
+    .stat strong { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+    .stat span, .control label { color: var(--muted); font-size: 12px; }
+    .toolbar {
+      justify-content: space-between;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 12px 0;
+      margin-bottom: 24px;
+    }
+    .toolbar-group { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; }
+    .control { display: grid; gap: 4px; }
+    .control select { min-width: 190px; padding: 0 34px 0 10px; }
+    .segments { display: inline-grid; grid-template-columns: repeat(3, 1fr); }
+    .segments button { border-radius: 0; min-width: 82px; padding: 0 12px; }
+    .segments button:first-child { border-radius: 6px 0 0 6px; }
+    .segments button:last-child { border-radius: 0 6px 6px 0; }
+    .segments button + button { border-left: 0; }
+    .segments button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .visuals { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr); gap: 28px; }
+    .panel { min-width: 0; border-bottom: 1px solid var(--line); padding-bottom: 24px; }
+    .chart-wrap { position: relative; width: 100%; height: 390px; }
+    canvas { width: 100%; height: 100%; display: block; }
+    .legend { color: var(--muted); font-size: 12px; margin-top: 10px; }
+    .key { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; }
+    .detail { background: var(--soft); border-left: 3px solid var(--logit); padding: 18px; min-height: 390px; }
+    .detail.boosted { border-left-color: var(--boosted); }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+    .detail-grid div { min-width: 0; }
+    .detail-grid dt { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    .detail-grid dd { margin: 2px 0 0; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    pre { margin: 18px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #35403b; font-size: 12px; }
+    .table-section { margin-top: 28px; }
+    .table-scroll { overflow-x: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    table { border-collapse: collapse; width: 100%; min-width: 980px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; background: var(--soft); }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: #f8faf9; }
+    tbody tr.selected { background: var(--selected); }
+    tbody tr:last-child td { border-bottom: 0; }
+    .family { display: inline-flex; align-items: center; gap: 7px; }
+    .empty { color: var(--muted); padding: 32px 0; }
+    @media (max-width: 900px) {
+      .visuals { grid-template-columns: 1fr; }
+      .chart-wrap { height: 340px; }
+      .detail { min-height: 0; }
+    }
+    @media (max-width: 620px) {
+      header { padding-top: 20px; }
+      h1 { font-size: 21px; }
+      .header-row { align-items: flex-start; }
+      .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .toolbar { align-items: stretch; }
+      .toolbar, .toolbar-group { display: grid; grid-template-columns: 1fr; }
+      .segments { width: 100%; }
+      .segments button { min-width: 0; }
+      .control select { width: 100%; min-width: 0; }
+      .chart-wrap { height: 300px; }
+      .detail-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>iMa Model Experiments</h1>
+        <p class="subtitle" id="date-range"></p>
+      </div>
+      <nav class="downloads" aria-label="Experiment downloads">
+        <a href="results.csv" download>Download CSV</a>
+        <a href="results.json" download>Download JSON</a>
+        <a href="top_pick_accuracy.png" download>Accuracy PNG</a>
+        <a href="accuracy_vs_logloss.png" download>Quality PNG</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <section class="summary" aria-label="Dataset summary">
+      <div class="stat"><strong id="race-count"></strong><span>Total races</span></div>
+      <div class="stat"><strong id="runner-count"></strong><span>Total runners</span></div>
+      <div class="stat"><strong id="test-count"></strong><span>Held-out races</span></div>
+      <div class="stat"><strong id="market-score"></strong><span>Market Top-1</span></div>
+    </section>
+
+    <section class="toolbar" aria-label="Experiment controls">
+      <div class="toolbar-group">
+        <div class="control">
+          <label>Model family</label>
+          <div class="segments" id="family-filter">
+            <button type="button" class="active" data-family="all">All</button>
+            <button type="button" data-family="logit">Logistic</button>
+            <button type="button" data-family="boosted">Boosted</button>
+          </div>
+        </div>
+        <div class="control">
+          <label for="metric-select">Chart metric</label>
+          <select id="metric-select">
+            <option value="top_pick_win_rate">Top-1 accuracy</option>
+            <option value="winner_top3_rate">Top-3 accuracy</option>
+            <option value="race_log_loss">Race log loss</option>
+            <option value="race_brier">Race Brier score</option>
+            <option value="ece">Calibration error</option>
+            <option value="pseudo_r2">Pseudo-R2</option>
+          </select>
+        </div>
+      </div>
+      <div class="control">
+        <label for="sort-select">Rank runs by</label>
+        <select id="sort-select">
+          <option value="top_pick_win_rate">Top-1 accuracy</option>
+          <option value="winner_top3_rate">Top-3 accuracy</option>
+          <option value="race_log_loss">Race log loss</option>
+          <option value="race_brier">Race Brier score</option>
+          <option value="ece">Calibration error</option>
+          <option value="pseudo_r2">Pseudo-R2</option>
+          <option value="duration_seconds">Run duration</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="visuals">
+      <article class="panel">
+        <h2 id="chart-title">Top-1 accuracy by run</h2>
+        <div class="chart-wrap"><canvas id="bar-chart" role="img" aria-label="Run metric bar chart"></canvas></div>
+        <div class="legend">
+          <span class="key"><span class="dot" style="background:var(--logit)"></span>Logistic</span>
+          <span class="key"><span class="dot" style="background:var(--boosted)"></span>Boosted</span>
+          <span class="key"><span class="dot" style="background:var(--market)"></span>Market benchmark</span>
+        </div>
+      </article>
+      <aside class="detail" id="run-detail" aria-live="polite"></aside>
+    </section>
+
+    <section class="panel table-section">
+      <h2>Accuracy versus probability quality</h2>
+      <div class="chart-wrap"><canvas id="scatter-chart" role="img" aria-label="Accuracy versus log loss scatter chart"></canvas></div>
+    </section>
+
+    <section class="panel table-section">
+      <h2>Run progression</h2>
+      <div class="chart-wrap"><canvas id="progress-chart" role="img" aria-label="Top-1 accuracy by experiment sequence"></canvas></div>
+      <div class="legend">
+        <span class="key"><span class="dot" style="background:var(--logit)"></span>Logistic sequence</span>
+        <span class="key"><span class="dot" style="background:var(--boosted)"></span>Boosted sequence</span>
+        <span class="key"><span class="dot" style="background:var(--market)"></span>Market benchmark</span>
+      </div>
+    </section>
+
+    <section class="table-section">
+      <h2>Every parameter run</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th>Run</th><th>Family</th><th>Top-1</th><th>Top-3</th><th>Winner rank</th>
+            <th>Log loss</th><th>Brier</th><th>ECE</th><th>Pseudo-R2</th><th>Blend fund.</th>
+          </tr></thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
+      <p class="empty" id="empty-state" hidden>No runs match this filter.</p>
+    </section>
+  </main>
+
+  <script>
+    const DATA = __EXPERIMENT_DATA__;
+    const COLORS = { logit: "#18794e", boosted: "#b54708", market: "#1d4ed8" };
+    const METRICS = {
+      top_pick_win_rate: { label: "Top-1 accuracy", percent: true, higher: true },
+      winner_top3_rate: { label: "Top-3 accuracy", percent: true, higher: true },
+      race_log_loss: { label: "Race log loss", higher: false },
+      race_brier: { label: "Race Brier score", higher: false },
+      ece: { label: "Calibration error", higher: false },
+      pseudo_r2: { label: "Pseudo-R2", higher: true },
+      duration_seconds: { label: "Run duration", higher: false }
+    };
+    const state = { family: "all", metric: "top_pick_win_rate", sort: "top_pick_win_rate", selected: null };
+
+    const fmt = (value, digits = 4) => Number(value).toFixed(digits);
+    const pct = value => `${(Number(value) * 100).toFixed(2)}%`;
+    const metricText = (metric, value) => METRICS[metric].percent ? pct(value) : fmt(value);
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+    })[char]);
+    const filteredRuns = () => DATA.runs.filter(run => state.family === "all" || run.kind === state.family);
+    const sortedRuns = () => {
+      const metric = METRICS[state.sort];
+      return filteredRuns().slice().sort((a, b) => {
+        const av = state.sort === "duration_seconds" ? a.duration_seconds : a.test_fundamental[state.sort];
+        const bv = state.sort === "duration_seconds" ? b.duration_seconds : b.test_fundamental[state.sort];
+        return metric.higher ? bv - av : av - bv;
+      });
+    };
+
+    function prepareCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width = Math.round(rect.width * ratio);
+      canvas.height = Math.round(rect.height * ratio);
+      const context = canvas.getContext("2d");
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, rect.width, rect.height);
+      return { context, width: rect.width, height: rect.height };
+    }
+
+    function drawBarChart() {
+      const canvas = document.getElementById("bar-chart");
+      const { context: ctx, width, height } = prepareCanvas(canvas);
+      const runs = sortedRuns();
+      const metric = METRICS[state.metric];
+      document.getElementById("chart-title").textContent = `${metric.label} by run`;
+      if (!runs.length) return;
+      const values = runs.map(run => run.test_fundamental[state.metric]);
+      const benchmark = DATA.market_test[state.metric];
+      const allValues = Number.isFinite(benchmark) ? values.concat([benchmark]) : values;
+      let min = Math.min(...allValues);
+      let max = Math.max(...allValues);
+      const spread = Math.max(max - min, Math.abs(max) * .08, .001);
+      min = state.metric.includes("rate") ? Math.max(0, min - spread * .2) : min - spread * .2;
+      max += spread * .2;
+      const left = 190, right = 24, top = 18, bottom = 34;
+      const plotWidth = Math.max(20, width - left - right);
+      const row = (height - top - bottom) / runs.length;
+      const x = value => left + ((value - min) / (max - min || 1)) * plotWidth;
+      ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.textBaseline = "middle";
+      runs.forEach((run, index) => {
+        const y = top + index * row + row / 2;
+        ctx.fillStyle = "#56615c";
+        ctx.textAlign = "right";
+        const label = run.run_id.length > 25 ? `${run.run_id.slice(0, 23)}...` : run.run_id;
+        ctx.fillText(label, left - 10, y);
+        ctx.fillStyle = COLORS[run.kind];
+        const start = x(min);
+        ctx.fillRect(start, y - Math.min(8, row * .28), Math.max(2, x(values[index]) - start), Math.min(16, row * .56));
+      });
+      if (Number.isFinite(benchmark)) {
+        ctx.strokeStyle = COLORS.market;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x(benchmark), top); ctx.lineTo(x(benchmark), height - bottom); ctx.stroke();
+      }
+      ctx.strokeStyle = "#dce2de";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(left, height - bottom); ctx.lineTo(width - right, height - bottom); ctx.stroke();
+      ctx.fillStyle = "#66706b";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      [0, .5, 1].forEach(fraction => {
+        const value = min + (max - min) * fraction;
+        ctx.fillText(metric.percent ? pct(value) : fmt(value, 3), left + plotWidth * fraction, height - bottom + 8);
+      });
+    }
+
+    function drawScatterChart() {
+      const canvas = document.getElementById("scatter-chart");
+      const { context: ctx, width, height } = prepareCanvas(canvas);
+      const runs = filteredRuns();
+      if (!runs.length) return;
+      const points = runs.map(run => ({
+        x: run.test_fundamental.race_log_loss,
+        y: run.test_fundamental.top_pick_win_rate,
+        kind: run.kind,
+        selected: run.run_id === state.selected
+      }));
+      points.push({ x: DATA.market_test.race_log_loss, y: DATA.market_test.top_pick_win_rate, kind: "market" });
+      const xs = points.map(point => point.x), ys = points.map(point => point.y);
+      const xPad = Math.max((Math.max(...xs) - Math.min(...xs)) * .16, .01);
+      const yPad = Math.max((Math.max(...ys) - Math.min(...ys)) * .18, .005);
+      const minX = Math.min(...xs) - xPad, maxX = Math.max(...xs) + xPad;
+      const minY = Math.max(0, Math.min(...ys) - yPad), maxY = Math.max(...ys) + yPad;
+      const left = 62, right = 24, top = 20, bottom = 48;
+      const x = value => left + (value - minX) / (maxX - minX) * (width - left - right);
+      const y = value => height - bottom - (value - minY) / (maxY - minY) * (height - top - bottom);
+      ctx.strokeStyle = "#dce2de"; ctx.fillStyle = "#66706b"; ctx.font = "11px -apple-system, sans-serif";
+      [0, .5, 1].forEach(fraction => {
+        const px = left + fraction * (width - left - right);
+        const py = top + fraction * (height - top - bottom);
+        ctx.beginPath(); ctx.moveTo(px, top); ctx.lineTo(px, height - bottom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(left, py); ctx.lineTo(width - right, py); ctx.stroke();
+        ctx.textAlign = "center"; ctx.fillText(fmt(minX + (maxX - minX) * fraction, 3), px, height - bottom + 20);
+        ctx.textAlign = "right"; ctx.fillText(pct(maxY - (maxY - minY) * fraction), left - 9, py + 4);
+      });
+      points.forEach(point => {
+        ctx.beginPath();
+        ctx.arc(x(point.x), y(point.y), point.kind === "market" ? 7 : point.selected ? 7 : 5, 0, Math.PI * 2);
+        ctx.fillStyle = COLORS[point.kind]; ctx.fill();
+        if (point.selected) { ctx.strokeStyle = "#18201d"; ctx.lineWidth = 2; ctx.stroke(); }
+      });
+      ctx.fillStyle = "#66706b"; ctx.textAlign = "center";
+      ctx.fillText("Race log loss (lower is better)", (left + width - right) / 2, height - 8);
+      ctx.save(); ctx.translate(14, (top + height - bottom) / 2); ctx.rotate(-Math.PI / 2);
+      ctx.fillText("Top-1 accuracy", 0, 0); ctx.restore();
+    }
+
+    function drawProgressChart() {
+      const canvas = document.getElementById("progress-chart");
+      const { context: ctx, width, height } = prepareCanvas(canvas);
+      const runs = DATA.runs.filter(run => state.family === "all" || run.kind === state.family);
+      if (!runs.length) return;
+      const values = runs.map(run => run.test_fundamental.top_pick_win_rate);
+      const market = DATA.market_test.top_pick_win_rate;
+      const min = Math.max(0, Math.min(...values) - .015);
+      const max = Math.max(market, ...values) + .012;
+      const left = 62, right = 24, top = 20, bottom = 58;
+      const plotWidth = width - left - right;
+      const plotHeight = height - top - bottom;
+      const x = index => left + (runs.length === 1 ? plotWidth / 2 : index / (runs.length - 1) * plotWidth);
+      const y = value => top + (max - value) / (max - min) * plotHeight;
+
+      ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.strokeStyle = "#dce2de";
+      ctx.fillStyle = "#66706b";
+      [0, .5, 1].forEach(fraction => {
+        const py = top + fraction * plotHeight;
+        ctx.beginPath(); ctx.moveTo(left, py); ctx.lineTo(width - right, py); ctx.stroke();
+        ctx.textAlign = "right";
+        ctx.fillText(pct(max - fraction * (max - min)), left - 9, py + 4);
+      });
+      ctx.strokeStyle = COLORS.market;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(left, y(market)); ctx.lineTo(width - right, y(market)); ctx.stroke();
+
+      for (const kind of ["logit", "boosted"]) {
+        const indexes = runs.map((run, index) => ({ run, index })).filter(item => item.run.kind === kind);
+        if (!indexes.length) continue;
+        ctx.strokeStyle = COLORS[kind];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        indexes.forEach((item, sequence) => {
+          const px = x(item.index), py = y(item.run.test_fundamental.top_pick_win_rate);
+          if (sequence === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+        indexes.forEach(item => {
+          const px = x(item.index), py = y(item.run.test_fundamental.top_pick_win_rate);
+          ctx.beginPath(); ctx.arc(px, py, item.run.run_id === state.selected ? 6 : 4, 0, Math.PI * 2);
+          ctx.fillStyle = COLORS[kind]; ctx.fill();
+          if (item.run.run_id === state.selected) { ctx.strokeStyle = "#18201d"; ctx.lineWidth = 2; ctx.stroke(); }
+        });
+      }
+      ctx.fillStyle = "#66706b";
+      ctx.textAlign = "center";
+      runs.forEach((run, index) => {
+        if (index % Math.max(1, Math.ceil(runs.length / 8)) !== 0 && index !== runs.length - 1) return;
+        ctx.save(); ctx.translate(x(index), height - bottom + 12); ctx.rotate(-Math.PI / 5);
+        ctx.textAlign = "right"; ctx.fillText(run.run_id.replace("boost-", "b-").replace("logit-", "l-"), 0, 0); ctx.restore();
+      });
+    }
+
+    function selectRun(runId) {
+      state.selected = runId;
+      const run = DATA.runs.find(item => item.run_id === runId);
+      if (!run) return;
+      const detail = document.getElementById("run-detail");
+      detail.className = `detail ${run.kind}`;
+      detail.innerHTML = `
+        <h2>${escapeHtml(run.run_id)}</h2>
+        <dl class="detail-grid">
+          <div><dt>Top-1</dt><dd>${pct(run.test_fundamental.top_pick_win_rate)}</dd></div>
+          <div><dt>Top-3</dt><dd>${pct(run.test_fundamental.winner_top3_rate)}</dd></div>
+          <div><dt>Log loss</dt><dd>${fmt(run.test_fundamental.race_log_loss)}</dd></div>
+          <div><dt>Brier</dt><dd>${fmt(run.test_fundamental.race_brier)}</dd></div>
+          <div><dt>ECE</dt><dd>${fmt(run.test_fundamental.ece)}</dd></div>
+          <div><dt>Pseudo-R2</dt><dd>${fmt(run.test_fundamental.pseudo_r2)}</dd></div>
+          <div><dt>Mean winner rank</dt><dd>${fmt(run.test_fundamental.mean_winner_rank, 2)}</dd></div>
+          <div><dt>Temperature</dt><dd>${fmt(run.temperature, 3)}</dd></div>
+          <div><dt>Blend fundamental</dt><dd>${fmt(run.fundamental_weight, 3)}</dd></div>
+          <div><dt>Incremental Pseudo-R2</dt><dd>${fmt(run.incremental_pseudo_r2)}</dd></div>
+          <div><dt>2nd exponent</dt><dd>${fmt(run.second_place_exponent, 3)}</dd></div>
+          <div><dt>3rd exponent</dt><dd>${fmt(run.third_place_exponent, 3)}</dd></div>
+        </dl>
+        <pre>${escapeHtml(JSON.stringify(run.parameters, null, 2))}</pre>`;
+      renderTable();
+      drawScatterChart();
+      drawProgressChart();
+    }
+
+    function renderTable() {
+      const runs = sortedRuns();
+      document.getElementById("empty-state").hidden = runs.length > 0;
+      document.getElementById("results-body").innerHTML = runs.map(run => `
+        <tr data-run-id="${escapeHtml(run.run_id)}" class="${run.run_id === state.selected ? "selected" : ""}" tabindex="0">
+          <td>${escapeHtml(run.run_id)}</td>
+          <td><span class="family"><span class="dot" style="background:${COLORS[run.kind]}"></span>${escapeHtml(run.kind)}</span></td>
+          <td>${pct(run.test_fundamental.top_pick_win_rate)}</td>
+          <td>${pct(run.test_fundamental.winner_top3_rate)}</td>
+          <td>${fmt(run.test_fundamental.mean_winner_rank, 2)}</td>
+          <td>${fmt(run.test_fundamental.race_log_loss)}</td>
+          <td>${fmt(run.test_fundamental.race_brier)}</td>
+          <td>${fmt(run.test_fundamental.ece)}</td>
+          <td>${fmt(run.test_fundamental.pseudo_r2)}</td>
+          <td>${fmt(run.fundamental_weight, 3)}</td>
+        </tr>`).join("");
+      document.querySelectorAll("#results-body tr").forEach(row => {
+        row.addEventListener("click", () => selectRun(row.dataset.runId));
+        row.addEventListener("keydown", event => {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectRun(row.dataset.runId); }
+        });
+      });
+    }
+
+    function render() {
+      const runs = sortedRuns();
+      if (!runs.some(run => run.run_id === state.selected)) state.selected = runs[0]?.run_id || null;
+      drawBarChart();
+      renderTable();
+      drawScatterChart();
+      drawProgressChart();
+      if (state.selected) selectRun(state.selected);
+    }
+
+    document.getElementById("date-range").textContent = `${DATA.dataset.date_min} to ${DATA.dataset.date_max} | Held out ${DATA.dataset.test_date_min} to ${DATA.dataset.test_date_max}`;
+    document.getElementById("race-count").textContent = DATA.dataset.races.toLocaleString();
+    document.getElementById("runner-count").textContent = DATA.dataset.runners.toLocaleString();
+    document.getElementById("test-count").textContent = DATA.dataset.test_races.toLocaleString();
+    document.getElementById("market-score").textContent = pct(DATA.market_test.top_pick_win_rate);
+
+    document.getElementById("family-filter").addEventListener("click", event => {
+      const button = event.target.closest("button[data-family]");
+      if (!button) return;
+      state.family = button.dataset.family;
+      document.querySelectorAll("#family-filter button").forEach(item => item.classList.toggle("active", item === button));
+      render();
+    });
+    document.getElementById("metric-select").addEventListener("change", event => { state.metric = event.target.value; drawBarChart(); });
+    document.getElementById("sort-select").addEventListener("change", event => { state.sort = event.target.value; render(); });
+    let resizeTimer;
+    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawBarChart(); drawScatterChart(); drawProgressChart(); }, 100); });
+    render();
+  </script>
+</body>
+</html>
