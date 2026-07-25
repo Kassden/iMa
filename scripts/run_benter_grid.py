@@ -4,16 +4,20 @@ import argparse
 import json
 from pathlib import Path
 
+import joblib
+
+from ima.auxiliary import train_auxiliary_bundle
+from ima.data import chronological_race_split
 from ima.experiments import (
     ExperimentSpec, default_experiment_specs, merge_run_history, render_dashboard, results_frame,
     run_experiments,
 )
-from ima.feature_sets import RICH_SCHEMA
+from ima.feature_sets import FEATURE_SCHEMAS, NOTEBOOK_RICH_SCHEMA
 from ima.rich_features import load_full_rich_history
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the full parameter grid with benter-rich-v1")
+    parser = argparse.ArgumentParser(description="Run the full rich-feature parameter grid")
     parser.add_argument("--legacy-runs", type=Path, default=Path("track/hkracing 2/runs.csv"))
     parser.add_argument("--legacy-races", type=Path, default=Path("track/hkracing 2/races.csv"))
     parser.add_argument("--canonical", type=Path, default=Path("data/processed/historical/runners.csv.gz"))
@@ -23,25 +27,39 @@ def main() -> int:
     parser.add_argument(
         "--template", type=Path, default=Path("docs/model-results/dashboard-template.html"),
     )
+    parser.add_argument(
+        "--schema", choices=sorted(FEATURE_SCHEMAS), default=NOTEBOOK_RICH_SCHEMA.name,
+    )
     args = parser.parse_args()
+    feature_schema = FEATURE_SCHEMAS[args.schema]
 
     rich = load_full_rich_history(
         args.legacy_runs, args.legacy_races, args.canonical,
         args.processed / "trackwork.csv.gz", args.processed / "barrier-trials.csv.gz",
         args.processed / "sectionals.csv.gz",
+        args.processed / "horse-snapshots.csv.gz",
     )
     specs = [
-        ExperimentSpec(f"benter-{spec.run_id}", spec.kind, spec.parameters)
+        ExperimentSpec(f"notebook-{spec.run_id}", spec.kind, spec.parameters)
         for spec in default_experiment_specs()
     ]
     rich_summary = run_experiments(
-        rich, args.output, args.template, specs=specs, feature_schema=RICH_SCHEMA,
+        rich, args.output, args.template, specs=specs, feature_schema=feature_schema,
     )
+    auxiliary = train_auxiliary_bundle(chronological_race_split(rich), feature_schema)
+    joblib.dump(auxiliary, args.output / "models" / "auxiliary.joblib")
+    rich_summary["auxiliary_predictions"] = auxiliary.report()
+    (args.output / "results.json").write_text(
+        json.dumps(rich_summary, indent=2), encoding="utf-8"
+    )
+    render_dashboard(rich_summary, args.template, args.output / "dashboard.html")
 
     public_results = args.public / "results.json"
     summary = json.loads(public_results.read_text(encoding="utf-8"))
     previous_history = summary.get("run_history", summary["runs"])
-    baseline_runs = [run for run in summary["runs"] if run.get("feature_schema") != RICH_SCHEMA.name]
+    baseline_runs = [
+        run for run in summary["runs"] if run.get("feature_schema") != feature_schema.name
+    ]
     rich_runs = rich_summary["runs"]
     offset = len(baseline_runs)
     for run in rich_runs:
@@ -53,8 +71,9 @@ def main() -> int:
         default_execution_id=summary.get("created_at"),
     )
     summary["updated_at"] = rich_summary["created_at"]
+    summary["auxiliary_predictions"] = rich_summary["auxiliary_predictions"]
     summary["rich_grid"] = {
-        "schema": RICH_SCHEMA.name,
+        "schema": feature_schema.name,
         "run_count": len(rich_runs),
         "output": str(args.output),
     }
