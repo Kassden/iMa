@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ima-racing"
+version = "0.1.0"
+description = "Horse-racing probability research, live race ingestion, and wagering analysis"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "joblib>=1.4,<2",
+  "jupyterlab>=4.2,<5",
+  "lifelines>=0.30,<1",
+  "matplotlib>=3.9,<4",
+  "numpy>=1.26,<3",
+  "openpyxl>=3.1,<4",
+  "pandas>=2.2,<3",
+  "scikit-learn>=1.5,<2",
+  "scipy>=1.13,<2",
+  "seaborn>=0.13,<1",
+  "sqlalchemy>=2.0,<3",
+  "statsmodels>=0.14,<1",
+  "unidecode>=1.3,<2",
+  "websocket-client>=1.8,<2",
+  "xlrd>=2.0,<3",
+]
+
+[project.scripts]
+ima-scrape = "scrapper.cli:main"
+ima-train = "scripts.train:main"
+
+[tool.setuptools.packages.find]
+include = ["scrapper*", "ima*", "scripts*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
