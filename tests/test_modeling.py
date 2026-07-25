@@ -3,9 +3,10 @@ import unittest
 import numpy as np
 import pandas as pd
 
+from ima.feature_sets import FeatureSchema
 from ima.modeling import (
     MarketBlend, TemperatureCalibrator, apply_public_fallback,
-    evaluate_probabilities, incremental_pseudo_r2, normalize_by_race,
+    evaluate_probabilities, incremental_pseudo_r2, normalize_by_race, RaceProbabilityModel,
 )
 from ima.pools import OrderExponents, canonical_pool_name, rank_combinations
 
@@ -75,6 +76,18 @@ class ModelingTests(unittest.TestCase):
     def test_incremental_pseudo_r2_is_zero_for_identical_models(self):
         probability = np.array([0.6, 0.25, 0.15, 0.4, 0.6])
         self.assertAlmostEqual(0.0, incremental_pseudo_r2(probability, probability, self.frame))
+
+    def test_probability_model_accepts_explicit_feature_schema(self):
+        frame = pd.DataFrame({
+            "race_id": [1, 1, 2, 2, 3, 3],
+            "target_win": [1, 0, 0, 1, 1, 0],
+            "signal": [1.0, 0.0, 0.1, 0.9, 0.8, 0.2],
+            "venue": ["ST", "ST", "HV", "HV", "ST", "ST"],
+        })
+        schema = FeatureSchema("test", ("signal",), ("venue",))
+        model = RaceProbabilityModel(feature_schema=schema).fit(frame)
+        probability = model.predict_proba(frame)
+        np.testing.assert_allclose(pd.Series(probability).groupby(frame["race_id"]).sum(), 1.0)
 
 
 if __name__ == "__main__":
