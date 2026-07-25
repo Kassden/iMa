@@ -16,6 +16,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .data import CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES
+from .feature_sets import BASELINE_SCHEMA, FeatureSchema
 
 
 def normalize_by_race(values: np.ndarray, race_ids: pd.Series | np.ndarray) -> np.ndarray:
@@ -54,7 +55,7 @@ def apply_public_fallback(
     return result
 
 
-def _preprocessor() -> ColumnTransformer:
+def _preprocessor(feature_schema: FeatureSchema = BASELINE_SCHEMA) -> ColumnTransformer:
     numeric = Pipeline([
         ("impute", SimpleImputer(strategy="median", add_indicator=True)),
         ("scale", StandardScaler()),
@@ -64,8 +65,8 @@ def _preprocessor() -> ColumnTransformer:
         ("encode", OneHotEncoder(handle_unknown="ignore", min_frequency=20, sparse_output=False)),
     ])
     return ColumnTransformer([
-        ("numeric", numeric, list(NUMERIC_FEATURES)),
-        ("categorical", categorical, list(CATEGORICAL_FEATURES)),
+        ("numeric", numeric, list(feature_schema.numeric)),
+        ("categorical", categorical, list(feature_schema.categorical)),
     ])
 
 
@@ -75,6 +76,7 @@ class RaceProbabilityModel:
     random_state: int = 17
     parameters: dict[str, Any] | None = None
     pipeline: Pipeline | None = None
+    feature_schema: FeatureSchema = BASELINE_SCHEMA
 
     def fit(self, frame: pd.DataFrame) -> "RaceProbabilityModel":
         if self.kind == "logit":
@@ -93,14 +95,14 @@ class RaceProbabilityModel:
             estimator = HistGradientBoostingClassifier(**parameters)
         else:
             raise ValueError(f"Unknown model kind: {self.kind}")
-        self.pipeline = Pipeline([("features", _preprocessor()), ("model", estimator)])
-        self.pipeline.fit(frame[list(FEATURES)], frame["target_win"])
+        self.pipeline = Pipeline([("features", _preprocessor(self.feature_schema)), ("model", estimator)])
+        self.pipeline.fit(frame[list(self.feature_schema.features)], frame["target_win"])
         return self
 
     def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
         if self.pipeline is None:
             raise RuntimeError("Model has not been fitted")
-        raw = self.pipeline.predict_proba(frame[list(FEATURES)])[:, 1]
+        raw = self.pipeline.predict_proba(frame[list(self.feature_schema.features)])[:, 1]
         return normalize_by_race(raw, frame["race_id"])
 
 
