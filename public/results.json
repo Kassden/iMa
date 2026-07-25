@@ -1367,5 +1367,21 @@
         }
       ]
     }
+  ],
+  "prediction_sources": {
+    "fundamental": "Calibrated horse and race feature model without current odds.",
+    "market": "Probability implied by the available WIN market odds.",
+    "combined": "Fitted multiplicative blend of calibrated fundamental and market probabilities.",
+    "historical_market_limit": "Historical experiments use final WIN odds; live decisions must use odds observed before the wager timestamp."
+  },
+  "supported_pools": [
+    "WIN",
+    "PLACE",
+    "QIN",
+    "QPL",
+    "TRI",
+    "TIERCE",
+    "FIRST4",
+    "QUARTET"
   ]
 }
