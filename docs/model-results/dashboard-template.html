@@ -416,6 +416,14 @@
           </div>
         </div>
         <div class="control">
+          <label>Feature schema</label>
+          <div class="segments" id="schema-filter">
+            <button type="button" class="active" data-schema="all">All</button>
+            <button type="button" data-schema="baseline-v1">Baseline</button>
+            <button type="button" data-schema="benter-rich-v1">Benter rich</button>
+          </div>
+        </div>
+        <div class="control">
           <label for="metric-select">Chart metric</label>
           <select id="metric-select">
             <option value="top_pick_win_rate">Top-1 accuracy</option>
@@ -500,6 +508,7 @@
     const state = {
       source: "combined",
       family: "all",
+      schema: "all",
       metric: "top_pick_win_rate",
       sort: "top_pick_win_rate",
       selected: null,
@@ -520,7 +529,10 @@
       if (state.source === "combined") return run.test_blended;
       return run.test_fundamental;
     };
-    const filteredRuns = () => DATA.runs.filter(run => state.family === "all" || run.kind === state.family);
+    const filteredRuns = () => DATA.runs.filter(run =>
+      (state.family === "all" || run.kind === state.family)
+      && (state.schema === "all" || run.feature_schema === state.schema)
+    );
     const sortedRuns = () => {
       const metric = METRICS[state.sort];
       return filteredRuns().slice().sort((a, b) => {
@@ -890,7 +902,10 @@
     function drawProgressChart() {
       const canvas = document.getElementById("progress-chart");
       const { context: ctx, width, height } = prepareCanvas(canvas);
-      const runs = DATA.runs.filter(run => state.family === "all" || run.kind === state.family)
+      const runs = DATA.runs.filter(run =>
+        (state.family === "all" || run.kind === state.family)
+        && (state.schema === "all" || run.feature_schema === state.schema)
+      )
         .slice().sort((a, b) => (a.sequence ?? 999) - (b.sequence ?? 999));
       if (!runs.length) return;
       document.getElementById("progress-note").textContent = state.source === "fundamental"
@@ -1053,6 +1068,13 @@
       if (!button) return;
       state.family = button.dataset.family;
       document.querySelectorAll("#family-filter button").forEach(item => item.classList.toggle("active", item === button));
+      render();
+    });
+    document.getElementById("schema-filter").addEventListener("click", event => {
+      const button = event.target.closest("button[data-schema]");
+      if (!button) return;
+      state.schema = button.dataset.schema;
+      document.querySelectorAll("#schema-filter button").forEach(item => item.classList.toggle("active", item === button));
       render();
     });
     document.getElementById("metric-select").addEventListener("change", event => { state.metric = event.target.value; drawBarChart(); });
