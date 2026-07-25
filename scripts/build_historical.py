@@ -105,6 +105,17 @@ def main() -> int:
             "horse_type": float(canonical["horse_type"].notna().mean()),
             "horse_gear": float(canonical["gear"].notna().mean()),
         },
+        "age_reference_sources": canonical["horse_age_reference_source"].fillna(
+            "unavailable"
+        ).value_counts().to_dict(),
+        "age_identity_methods": canonical["horse_age_identity_method"].fillna(
+            "unavailable"
+        ).value_counts().to_dict(),
+        "age_year_offset": {
+            "min": float(canonical["horse_age_year_offset"].min()),
+            "median": float(canonical["horse_age_year_offset"].median()),
+            "max": float(canonical["horse_age_year_offset"].max()),
+        },
     }
     args.output.mkdir(parents=True, exist_ok=True)
     canonical.to_csv(args.output / "runners.csv.gz", index=False, compression="gzip")
