@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
   <title>iMa Model Experiments</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <style>
     :root {
       color-scheme: light;
@@ -85,6 +86,7 @@
     .panel { min-width: 0; border-bottom: 1px solid var(--line); padding-bottom: 24px; }
     .chart-wrap { position: relative; width: 100%; height: 390px; }
     canvas { width: 100%; height: 100%; display: block; }
+    .plot { width: 100%; height: 100%; min-height: 320px; }
     .legend { color: var(--muted); font-size: 12px; margin-top: 10px; }
     .key { display: inline-flex; align-items: center; gap: 6px; }
     .dot { width: 9px; height: 9px; border-radius: 50%; }
@@ -147,6 +149,14 @@
     .contract-summary { display: flex; gap: 28px; flex-wrap: wrap; margin-bottom: 18px; }
     .contract-summary strong { display: block; font-size: 20px; }
     .contract-summary span { color: var(--muted); font-size: 11px; }
+    .schema-contracts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
+    .schema-contract { border: 1px solid var(--line); border-radius: 6px; padding: 14px; text-align: left; background: #fff; }
+    .schema-contract.active { border-color: var(--logit); box-shadow: inset 3px 0 0 var(--logit); background: var(--selected); }
+    .schema-contract strong { display: block; font-size: 17px; }
+    .schema-contract span { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .schema-contract code { display: block; margin-top: 8px; font-size: 11px; }
+    .pool-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr); gap: 24px; }
+    .pool-table { min-width: 0; }
     .contract-grid { display: grid; grid-template-columns: 1.25fr .8fr 1fr; gap: 24px; }
     .field-list { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 18px; }
     .field-list li { break-inside: avoid; border-bottom: 1px solid #edf0ee; padding: 5px 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
@@ -234,6 +244,7 @@
       .stage-nav button.active { box-shadow: inset 0 -3px 0 var(--logit); }
       .stage-detail { padding: 20px 0 24px; }
       .stage-boundaries, .contract-grid { grid-template-columns: 1fr; }
+      .schema-contracts, .pool-grid { grid-template-columns: 1fr; }
       .field-list { columns: 1; }
       .source-comparison { grid-template-columns: 1fr 1fr 1fr; }
       .study-summary { grid-template-columns: 1fr 1fr; }
@@ -287,7 +298,8 @@
 
       <section class="feature-contract" aria-labelledby="feature-contract-title">
         <h3 id="feature-contract-title">What actually enters the fundamental model</h3>
-        <p class="pipeline-note">This contract is generated from the active Python feature constants. Current WIN odds remain outside the fundamental estimator and combine later.</p>
+        <p class="pipeline-note">There are two fitted estimator contracts. Baseline runs use 23 raw inputs; Benter-rich runs use 81. Select a contract or a run to inspect its exact variables. Current WIN odds remain outside both fundamental estimators and combine later.</p>
+        <div class="schema-contracts" id="schema-contracts"></div>
         <div class="contract-summary" id="feature-summary"></div>
         <div class="contract-grid">
           <div class="contract-block"><h4>Numeric features</h4><ul class="field-list" id="numeric-features"></ul></div>
@@ -470,11 +482,18 @@
     <section class="panel table-section">
       <h2>Run progression</h2>
       <p class="pipeline-note" id="progress-note"></p>
-      <div class="chart-wrap"><canvas id="progress-chart" role="img" aria-label="Top-1 accuracy by experiment sequence"></canvas></div>
-      <div class="legend">
-        <span class="key"><span class="dot" style="background:var(--logit)"></span>Logistic sequence</span>
-        <span class="key"><span class="dot" style="background:var(--boosted)"></span>Boosted sequence</span>
-        <span class="key"><span class="dot" style="background:var(--market)"></span>Market benchmark</span>
+      <div class="chart-wrap"><div class="plot" id="progress-chart" role="img" aria-label="Top-1 accuracy by complete experiment history"></div></div>
+    </section>
+
+    <section class="panel table-section" aria-labelledby="pool-title">
+      <h2 id="pool-title">Betting-pool probability and accuracy</h2>
+      <p class="pipeline-note" id="pool-note">For each held-out race, this evaluates the single highest-probability selection or combination from the selected run.</p>
+      <div class="pool-grid">
+        <div class="chart-wrap"><div class="plot" id="pool-chart" role="img" aria-label="Pool predicted probability and actual hit rate"></div></div>
+        <div class="table-scroll pool-table"><table class="compact-table">
+          <thead><tr><th>Pool</th><th>Source</th><th>Probability</th><th>Hit rate</th><th>Hits</th></tr></thead>
+          <tbody id="pool-results-body"></tbody>
+        </table></div>
       </div>
     </section>
 
@@ -483,7 +502,7 @@
       <div class="table-scroll">
         <table>
           <thead><tr>
-            <th>Run</th><th>Family</th><th>Feature set</th><th>Variables</th><th>Top-1</th><th>Top-3</th><th>Winner rank</th>
+            <th>Execution</th><th>Run</th><th>Family</th><th>Feature set</th><th>Variables</th><th>Top-1</th><th>Top-3</th><th>Winner rank</th>
             <th>Log loss</th><th>Brier</th><th>ECE</th><th>Pseudo-R2</th><th>Blend fund.</th>
           </tr></thead>
           <tbody id="results-body"></tbody>
@@ -512,6 +531,7 @@
       metric: "top_pick_win_rate",
       sort: "top_pick_win_rate",
       selected: null,
+      contractSchema: "benter-rich-v1",
       pipelineMode: "training",
       pipelineStage: 0,
       correlationRun: null,
@@ -529,7 +549,9 @@
       if (state.source === "combined") return run.test_blended;
       return run.test_fundamental;
     };
-    const filteredRuns = () => DATA.runs.filter(run =>
+    const runHistory = () => DATA.run_history?.length ? DATA.run_history : DATA.runs;
+    const runIdentity = run => run.run_key || `${run.execution_id || "legacy"}|${run.feature_schema || "baseline-v1"}|${run.run_id}`;
+    const filteredRuns = () => runHistory().filter(run =>
       (state.family === "all" || run.kind === state.family)
       && (state.schema === "all" || run.feature_schema === state.schema)
     );
@@ -586,12 +608,22 @@
       });
     }
 
-    function renderFeatureContract() {
+    function renderFeatureContract(schemaName = state.contractSchema) {
       const manifest = DATA.pipeline_manifest;
       if (!manifest) return;
-      const contract = manifest.feature_contract;
+      const contracts = manifest.feature_contracts || {
+        "baseline-v1": { ...manifest.feature_contract, name: "baseline-v1" }
+      };
+      state.contractSchema = contracts[schemaName] ? schemaName : Object.keys(contracts)[0];
+      const contract = contracts[state.contractSchema];
+      document.getElementById("schema-contracts").innerHTML = Object.values(contracts).map(item => `
+        <button type="button" class="schema-contract ${item.name === state.contractSchema ? "active" : ""}" data-contract-schema="${escapeHtml(item.name)}">
+          <strong>${item.count} estimator inputs</strong>
+          <span>${item.numeric.length} numeric + ${item.categorical.length} categorical</span>
+          <code>${escapeHtml(item.name)}</code>
+        </button>`).join("");
       document.getElementById("feature-summary").innerHTML = `
-        <div><strong>${contract.count}</strong><span>Total estimator features</span></div>
+        <div><strong>${contract.count}</strong><span>Inputs for ${escapeHtml(contract.name)}</span></div>
         <div><strong>${contract.numeric.length}</strong><span>Numeric</span></div>
         <div><strong>${contract.categorical.length}</strong><span>Categorical</span></div>
         <div><strong>0</strong><span>Current-odds features</span></div>`;
@@ -600,16 +632,23 @@
       };
       fields("numeric-features", contract.numeric);
       fields("categorical-features", contract.categorical);
-      fields("excluded-market-fields", contract.excluded_market_fields);
+      fields(
+        "excluded-market-fields",
+        contract.excluded_market_fields || manifest.feature_contract.excluded_market_fields || []
+      );
       document.getElementById("unused-data").innerHTML = `
-        <strong>Collected but not consumed by the current baseline</strong>
+        <strong>Collected but not consumed by baseline-v1</strong>
         <span>${manifest.collected_not_consumed_by_baseline.map(escapeHtml).join(" / ")}</span>`;
       const rows = [
+        ...(manifest.legacy_age_provenance ? [{ context: "Legacy anonymized timeline", ...manifest.legacy_age_provenance }] : []),
         ...manifest.historical_placeholders.map(item => ({ context: "Historical canonical", ...item })),
         ...manifest.live_defaults.map(item => ({ context: "Live mapping", ...item }))
       ];
       document.getElementById("pipeline-placeholders").innerHTML = rows.map(item => `
         <tr><td>${escapeHtml(item.context)}</td><td><code>${escapeHtml(item.field)}</code></td><td><code>${escapeHtml(item.value)}</code></td><td>${escapeHtml(item.reason)}</td></tr>`).join("");
+      document.querySelectorAll("[data-contract-schema]").forEach(button => {
+        button.addEventListener("click", () => renderFeatureContract(button.dataset.contractSchema));
+      });
     }
 
     function prepareCanvas(canvas) {
@@ -865,7 +904,7 @@
         x: sourceMetrics(run).race_log_loss,
         y: sourceMetrics(run).top_pick_win_rate,
         kind: state.source === "market" ? "market" : run.kind,
-        selected: run.run_id === state.selected
+        selected: runIdentity(run) === state.selected
       }));
       if (state.source !== "market") {
         points.push({ x: DATA.market_test.race_log_loss, y: DATA.market_test.top_pick_win_rate, kind: "market" });
@@ -900,80 +939,100 @@
     }
 
     function drawProgressChart() {
-      const canvas = document.getElementById("progress-chart");
-      const { context: ctx, width, height } = prepareCanvas(canvas);
-      const runs = DATA.runs.filter(run =>
+      const runs = runHistory().filter(run =>
         (state.family === "all" || run.kind === state.family)
         && (state.schema === "all" || run.feature_schema === state.schema)
       )
-        .slice().sort((a, b) => (a.sequence ?? 999) - (b.sequence ?? 999));
+        .slice().sort((a, b) => String(a.execution_id || "").localeCompare(String(b.execution_id || ""))
+          || (a.sequence ?? 999) - (b.sequence ?? 999));
       if (!runs.length) return;
       document.getElementById("progress-note").textContent = state.source === "fundamental"
-        ? "Configured hyperparameter-sweep order, not chronological retraining. Higher learning rates and larger boosted trees lose held-out accuracy here, consistent with overfitting."
+        ? `${runs.length} persisted executions are shown in timestamp and sweep order. Hover any point for the exact run, schema, parameters, and score.`
         : state.source === "combined"
-          ? "All combined runs are flat because validation selected a fundamental weight of 0.0; these historical combined predictions equal the final-odds market benchmark."
-          : "The market line is identical for every run because all models are evaluated against the same held-out races and final WIN odds.";
-      const values = runs.map(run => sourceMetrics(run).top_pick_win_rate);
-      const market = DATA.market_test.top_pick_win_rate;
-      const min = Math.max(0, Math.min(...values) - .015);
-      const max = Math.max(market, ...values) + .012;
-      const left = 62, right = 24, top = 20, bottom = 58;
-      const plotWidth = width - left - right;
-      const plotHeight = height - top - bottom;
-      const x = index => left + (runs.length === 1 ? plotWidth / 2 : index / (runs.length - 1) * plotWidth);
-      const y = value => top + (max - value) / (max - min) * plotHeight;
-
-      ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-      ctx.strokeStyle = "#dce2de";
-      ctx.fillStyle = "#66706b";
-      [0, .5, 1].forEach(fraction => {
-        const py = top + fraction * plotHeight;
-        ctx.beginPath(); ctx.moveTo(left, py); ctx.lineTo(width - right, py); ctx.stroke();
-        ctx.textAlign = "right";
-        ctx.fillText(pct(max - fraction * (max - min)), left - 9, py + 4);
+          ? "Combined history uses each run's validation-fitted market blend; hover to inspect its fundamental weight."
+          : "The market benchmark is repeated for comparability because each run uses the same held-out races.";
+      const traces = ["logit", "boosted"].map(kind => {
+        const group = runs.map((run, index) => ({ run, index })).filter(item => item.run.kind === kind);
+        return {
+          type: "scatter", mode: "lines+markers", name: kind === "logit" ? "Logistic" : "Boosted",
+          x: group.map(item => item.index + 1),
+          y: group.map(item => sourceMetrics(item.run).top_pick_win_rate),
+          text: group.map(item => item.run.run_id),
+          customdata: group.map(item => [
+            item.run.execution_id || "legacy import", item.run.feature_schema || "baseline-v1",
+            JSON.stringify(item.run.parameters), item.run.fundamental_weight
+          ]),
+          line: { color: COLORS[kind], width: 2 },
+          marker: { size: group.map(item => runIdentity(item.run) === state.selected ? 10 : 7) },
+          hovertemplate: "<b>%{text}</b><br>Execution %{customdata[0]}<br>Schema %{customdata[1]}<br>Top-1 %{y:.2%}<br>Fundamental weight %{customdata[3]:.3f}<br>%{customdata[2]}<extra></extra>"
+        };
+      }).filter(trace => trace.x.length);
+      traces.push({
+        type: "scatter", mode: "lines", name: "Market benchmark",
+        x: [1, runs.length], y: [DATA.market_test.top_pick_win_rate, DATA.market_test.top_pick_win_rate],
+        line: { color: COLORS.market, width: 2, dash: "dot" }, hoverinfo: "skip"
       });
-      ctx.strokeStyle = COLORS.market;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(left, y(market)); ctx.lineTo(width - right, y(market)); ctx.stroke();
-
-      for (const kind of ["logit", "boosted"]) {
-        const indexes = runs.map((run, index) => ({ run, index })).filter(item => item.run.kind === kind);
-        if (!indexes.length) continue;
-        ctx.strokeStyle = COLORS[kind];
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        indexes.forEach((item, sequence) => {
-          const px = x(item.index), py = y(sourceMetrics(item.run).top_pick_win_rate);
-          if (sequence === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-        });
-        ctx.stroke();
-        indexes.forEach(item => {
-          const px = x(item.index), py = y(sourceMetrics(item.run).top_pick_win_rate);
-          ctx.beginPath(); ctx.arc(px, py, item.run.run_id === state.selected ? 6 : 4, 0, Math.PI * 2);
-          ctx.fillStyle = COLORS[kind]; ctx.fill();
-          if (item.run.run_id === state.selected) { ctx.strokeStyle = "#18201d"; ctx.lineWidth = 2; ctx.stroke(); }
-        });
-      }
-      ctx.fillStyle = "#66706b";
-      ctx.textAlign = "center";
-      runs.forEach((run, index) => {
-        if (index % Math.max(1, Math.ceil(runs.length / 8)) !== 0 && index !== runs.length - 1) return;
-        ctx.save(); ctx.translate(x(index), height - bottom + 12); ctx.rotate(-Math.PI / 5);
-        ctx.textAlign = "right"; ctx.fillText(run.run_id.replace("boost-", "b-").replace("logit-", "l-"), 0, 0); ctx.restore();
-      });
+      Plotly.react("progress-chart", traces, {
+        margin: { l: 58, r: 18, t: 16, b: 50 },
+        paper_bgcolor: "#fff", plot_bgcolor: "#fff",
+        xaxis: { title: "Persisted execution sequence", gridcolor: "#edf0ee", zeroline: false },
+        yaxis: { title: "Top-1 winner accuracy", tickformat: ".1%", gridcolor: "#edf0ee", zeroline: false },
+        legend: { orientation: "h", y: 1.12 }, hovermode: "closest",
+        font: { family: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", color: "#18201d" }
+      }, { responsive: true, displaylogo: false });
     }
 
-    function selectRun(runId) {
-      state.selected = runId;
-      const run = DATA.runs.find(item => item.run_id === runId);
+    function drawPoolChart(run) {
+      const pools = DATA.supported_pools || [];
+      const metrics = run?.pool_metrics;
+      const body = document.getElementById("pool-results-body");
+      if (!metrics) {
+        body.innerHTML = `<tr><td colspan="5">Pool metrics are unavailable for this historical artifact.</td></tr>`;
+        Plotly.purge("pool-chart");
+        return;
+      }
+      const traces = [];
+      for (const [source, color] of [["fundamental", COLORS.logit], ["combined", COLORS.market]]) {
+        traces.push({
+          type: "bar", name: `${source} predicted probability`, x: pools,
+          y: pools.map(pool => metrics[source][pool].mean_top_probability),
+          marker: { color, opacity: .5 }, offsetgroup: source,
+          hovertemplate: "%{x}<br>Mean top probability %{y:.2%}<extra></extra>"
+        });
+        traces.push({
+          type: "scatter", mode: "lines+markers", name: `${source} actual hit rate`, x: pools,
+          y: pools.map(pool => metrics[source][pool].hit_rate),
+          line: { color, width: 2 }, marker: { size: 7 },
+          hovertemplate: "%{x}<br>Held-out hit rate %{y:.2%}<extra></extra>"
+        });
+      }
+      Plotly.react("pool-chart", traces, {
+        barmode: "group", margin: { l: 58, r: 18, t: 16, b: 52 },
+        paper_bgcolor: "#fff", plot_bgcolor: "#fff",
+        xaxis: { title: "HKJC pool", gridcolor: "#edf0ee" },
+        yaxis: { title: "Probability / hit rate", tickformat: ".1%", gridcolor: "#edf0ee", rangemode: "tozero" },
+        legend: { orientation: "h", y: 1.18 },
+        font: { family: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", color: "#18201d" }
+      }, { responsive: true, displaylogo: false });
+      body.innerHTML = ["fundamental", "combined"].flatMap(source => pools.map(pool => {
+        const item = metrics[source][pool];
+        return `<tr><td>${pool}</td><td>${source}</td><td>${pct(item.mean_top_probability)}</td><td>${pct(item.hit_rate)}</td><td>${item.hits.toLocaleString()} / ${item.races.toLocaleString()}</td></tr>`;
+      })).join("");
+      document.getElementById("pool-note").textContent = `${run.run_id}: probability of the top-ranked selection versus its actual held-out hit rate. FIRST4 is unordered; QUARTET is exact order.`;
+    }
+
+    function selectRun(runKey) {
+      state.selected = runKey;
+      const run = runHistory().find(item => runIdentity(item) === runKey);
       if (!run) return;
+      state.contractSchema = run.feature_schema || "baseline-v1";
       const metrics = sourceMetrics(run);
       const sourceLabel = state.source[0].toUpperCase() + state.source.slice(1);
       const detail = document.getElementById("run-detail");
       detail.className = `detail ${run.kind}`;
       detail.innerHTML = `
         <h2>${escapeHtml(run.run_id)}</h2>
-        <p class="subtitle">Displayed source: ${sourceLabel}</p>
+        <p class="subtitle">${escapeHtml(run.execution_id || "Legacy import")} | ${escapeHtml(run.feature_schema || "baseline-v1")} | Displayed source: ${sourceLabel}</p>
         <div class="source-comparison">
           <div><span>Fundamental Top-1</span><strong>${pct(run.test_fundamental.top_pick_win_rate)}</strong></div>
           <div><span>Market Top-1</span><strong>${pct(DATA.market_test.top_pick_win_rate)}</strong></div>
@@ -998,6 +1057,8 @@
         <div class="variable-disclosure"><strong>Estimator variables</strong><div>${(run.variables || []).map(variable => `<code>${escapeHtml(variable)}</code>`).join("")}</div></div>
         <pre>${escapeHtml(JSON.stringify(run.parameters, null, 2))}</pre>`;
       renderTable();
+      renderFeatureContract(state.contractSchema);
+      drawPoolChart(run);
       drawScatterChart();
       drawProgressChart();
     }
@@ -1008,7 +1069,8 @@
       document.getElementById("results-body").innerHTML = runs.map(run => {
         const metrics = sourceMetrics(run);
         return `
-        <tr data-run-id="${escapeHtml(run.run_id)}" class="${run.run_id === state.selected ? "selected" : ""}" tabindex="0">
+        <tr data-run-key="${escapeHtml(runIdentity(run))}" class="${runIdentity(run) === state.selected ? "selected" : ""}" tabindex="0">
+          <td>${escapeHtml((run.execution_id || "legacy").replace("T", " ").slice(0, 19))}</td>
           <td>${escapeHtml(run.run_id)}</td>
           <td><span class="family"><span class="dot" style="background:${COLORS[run.kind]}"></span>${escapeHtml(run.kind)}</span></td>
           <td>${escapeHtml(run.feature_schema || "baseline-v1")} (${run.feature_count || run.variables?.length || 0})</td>
@@ -1024,16 +1086,16 @@
         </tr>`;
       }).join("");
       document.querySelectorAll("#results-body tr").forEach(row => {
-        row.addEventListener("click", () => selectRun(row.dataset.runId));
+        row.addEventListener("click", () => selectRun(row.dataset.runKey));
         row.addEventListener("keydown", event => {
-          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectRun(row.dataset.runId); }
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectRun(row.dataset.runKey); }
         });
       });
     }
 
     function render() {
       const runs = sortedRuns();
-      if (!runs.some(run => run.run_id === state.selected)) state.selected = runs[0]?.run_id || null;
+      if (!runs.some(run => runIdentity(run) === state.selected)) state.selected = runs[0] ? runIdentity(runs[0]) : null;
       drawBarChart();
       renderTable();
       drawScatterChart();
