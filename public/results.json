@@ -1383,5 +1383,516 @@
     "TIERCE",
     "FIRST4",
     "QUARTET"
-  ]
+  ],
+  "pipeline_manifest": {
+    "feature_contract": {
+      "count": 23,
+      "numeric": [
+        "horse_age",
+        "horse_rating",
+        "declared_weight",
+        "actual_weight",
+        "draw",
+        "distance",
+        "race_class",
+        "surface",
+        "prize",
+        "field_size",
+        "prior_starts",
+        "prior_win_rate",
+        "prior_avg_result",
+        "prior_avg_odds",
+        "last_result",
+        "last_win_odds",
+        "last_finish_time"
+      ],
+      "categorical": [
+        "venue",
+        "config",
+        "going",
+        "horse_country",
+        "horse_type",
+        "horse_gear"
+      ],
+      "target": "target_win",
+      "excluded_market_fields": [
+        "win_odds",
+        "market_raw",
+        "market_probability"
+      ]
+    },
+    "historical_placeholders": [
+      {
+        "field": "horse_age",
+        "value": "0.0",
+        "reason": "Not populated in canonical result rows"
+      },
+      {
+        "field": "surface",
+        "value": "0.0",
+        "reason": "Not populated in canonical result rows"
+      },
+      {
+        "field": "prize",
+        "value": "0.0",
+        "reason": "Not populated in canonical result rows"
+      },
+      {
+        "field": "horse_country",
+        "value": "UNKNOWN",
+        "reason": "Not populated in canonical result rows"
+      },
+      {
+        "field": "horse_type",
+        "value": "UNKNOWN",
+        "reason": "Not populated in canonical result rows"
+      },
+      {
+        "field": "horse_gear",
+        "value": "UNKNOWN",
+        "reason": "Not populated in canonical result rows"
+      }
+    ],
+    "live_defaults": [
+      {
+        "field": "venue",
+        "value": "UNKNOWN",
+        "reason": "Legacy model CSV mapping does not currently pass venue"
+      },
+      {
+        "field": "config",
+        "value": "UNKNOWN",
+        "reason": "Legacy model CSV mapping does not currently pass course configuration"
+      },
+      {
+        "field": "going",
+        "value": "UNKNOWN",
+        "reason": "Legacy model CSV mapping does not currently pass going"
+      },
+      {
+        "field": "surface",
+        "value": "null",
+        "reason": "Not available in legacy model CSV mapping"
+      },
+      {
+        "field": "prize",
+        "value": "null",
+        "reason": "Not available in legacy model CSV mapping"
+      }
+    ],
+    "collected_not_consumed_by_baseline": [
+      "jockey_id",
+      "trainer_id",
+      "place_odds",
+      "last_speed",
+      "avg_2last",
+      "second_count",
+      "third_count",
+      "raced",
+      "prev_wt",
+      "prev_declar_wt",
+      "trackwork records",
+      "veterinary records",
+      "movement records",
+      "barrier trials"
+    ],
+    "training": [
+      {
+        "id": "train-source",
+        "name": "Load historical runner and race records",
+        "purpose": "Create one source row per horse entered in a completed race.",
+        "inputs": [
+          "Legacy runs.csv + races.csv for dates before 2005-01-01",
+          "Canonical normalized runners.csv.gz for 2005 onward"
+        ],
+        "operations": [
+          "Parse race dates and numeric finishing positions",
+          "Namespace legacy and canonical race_id and horse_id values",
+          "Concatenate non-overlapping timelines and sort by date, race number, race_id, horse number"
+        ],
+        "outputs": [
+          "Chronologically ordered runner table",
+          "One row per race_id + horse_no"
+        ],
+        "fit_scope": "No parameters fitted",
+        "leakage_boundary": "Canonical rows begin in 2005; legacy rows are cut at 2004-12-31 to prevent duplicate races."
+      },
+      {
+        "id": "train-filter",
+        "name": "Validate outcomes and market rows",
+        "purpose": "Keep races that have a usable winner target and complete WIN odds.",
+        "inputs": [
+          "result",
+          "win_odds",
+          "race_id"
+        ],
+        "operations": [
+          "Extract the leading integer from finishing position text",
+          "Drop runners without a numeric result",
+          "Drop races without at least one winner",
+          "Drop canonical races unless every runner has decimal WIN odds greater than 1",
+          "Set target_win = 1 when result = 1; split dead-heat target_probability across winners",
+          "Set market_raw = 1 / win_odds and normalize market_probability to sum to 1 per race"
+        ],
+        "outputs": [
+          "target_win",
+          "target_probability",
+          "market_probability"
+        ],
+        "fit_scope": "No parameters fitted",
+        "leakage_boundary": "Result and final odds are labels/benchmarks. They are not included in the 23 fundamental model features."
+      },
+      {
+        "id": "train-history",
+        "name": "Build point-in-time horse history",
+        "purpose": "Turn earlier runs into lagged form features without reading the current result.",
+        "inputs": [
+          "horse_id",
+          "date",
+          "won",
+          "result",
+          "win_odds",
+          "finish_time"
+        ],
+        "operations": [
+          "Group rows by horse_id after chronological sorting",
+          "prior_starts = count of earlier rows",
+          "prior_win_rate, prior_avg_result, prior_avg_odds = expanding statistics after shift(1)",
+          "last_result, last_win_odds, last_finish_time = group shift(1)",
+          "field_size = runner count within race_id"
+        ],
+        "outputs": [
+          "prior_starts",
+          "prior_win_rate",
+          "prior_avg_result",
+          "prior_avg_odds",
+          "last_result",
+          "last_win_odds",
+          "last_finish_time",
+          "field_size"
+        ],
+        "fit_scope": "No parameters fitted",
+        "leakage_boundary": "All horse-history calculations shift before expanding, so the current race result cannot enter its own features."
+      },
+      {
+        "id": "train-split",
+        "name": "Split complete races by time",
+        "purpose": "Create train, validation, and final test windows without splitting runners from the same race.",
+        "inputs": [
+          "Unique race_id ordered by date, race_no, race_id"
+        ],
+        "operations": [
+          "First 70% of races -> train",
+          "Next 15% of races -> validation",
+          "Final 15% of races -> test",
+          "Apply race_id sets back to runner rows"
+        ],
+        "outputs": [
+          "RaceSplits.train",
+          "RaceSplits.validation",
+          "RaceSplits.test"
+        ],
+        "fit_scope": "Split boundaries are deterministic fractions of chronologically ordered races",
+        "leakage_boundary": "All preprocessing and estimator fitting occurs after this split. Test races remain untouched until final evaluation."
+      },
+      {
+        "id": "train-preprocess",
+        "name": "Fit model preprocessing",
+        "purpose": "Convert the 23 raw feature columns into an estimator matrix.",
+        "inputs": [
+          "17 numeric features",
+          "6 categorical features"
+        ],
+        "operations": [
+          "Numeric: median imputation fitted on train rows",
+          "Numeric: add missing-value indicator columns",
+          "Numeric: StandardScaler mean and variance fitted on train rows",
+          "Categorical: most-frequent imputation fitted on train rows",
+          "Categorical: one-hot encoding; unknown values ignored; categories with frequency below 20 grouped"
+        ],
+        "outputs": [
+          "Dense numeric + one-hot model matrix"
+        ],
+        "fit_scope": "The scikit-learn Pipeline fits preprocessing only when model.fit(train) executes",
+        "leakage_boundary": "Validation and test rows only call transform; their medians, categories, means, and variances are never fitted."
+      },
+      {
+        "id": "train-model",
+        "name": "Fit fundamental winner model",
+        "purpose": "Estimate a raw winning strength from horse and race features only.",
+        "inputs": [
+          "Preprocessed train matrix",
+          "target_win"
+        ],
+        "operations": [
+          "Logistic option: max_iter=1000, configurable C and class_weight",
+          "Boosted option: HistGradientBoostingClassifier with configurable learning rate, leaves, iterations, and L2",
+          "predict_proba returns the positive-class score",
+          "Normalize raw scores within race_id so runner probabilities sum to 1"
+        ],
+        "outputs": [
+          "fundamental_raw_probability per runner"
+        ],
+        "fit_scope": "Estimator fitted on train races only",
+        "leakage_boundary": "Current WIN odds and market_probability are deliberately excluded from FEATURES and remain independently measurable."
+      },
+      {
+        "id": "train-validation",
+        "name": "Fit calibration, market blend, and order exponents",
+        "purpose": "Use validation races to tune probability corrections without touching test races.",
+        "inputs": [
+          "Validation fundamental probabilities",
+          "validation market_probability",
+          "validation results"
+        ],
+        "operations": [
+          "Temperature: minimize validation race log loss over exp(log_temperature), bounded to exp(-2.5)..exp(2.5)",
+          "Calibrate as p^(1 / temperature), then normalize within race",
+          "Market blend: minimize validation race log loss for fundamental^wf * market^wm, wf and wm each bounded 0..4",
+          "Fit Benter second- and third-place exponents independently in bounds 0.2..2.0"
+        ],
+        "outputs": [
+          "temperature",
+          "fundamental_weight",
+          "market_weight",
+          "second exponent",
+          "third exponent"
+        ],
+        "fit_scope": "All four parameter groups fitted on validation races only",
+        "leakage_boundary": "Final test metrics are not used to choose calibration, market weights, or finishing-order exponents."
+      },
+      {
+        "id": "train-test",
+        "name": "Evaluate untouched test races",
+        "purpose": "Measure ranking, probability quality, calibration, and market disagreement.",
+        "inputs": [
+          "Test features",
+          "frozen model artifact",
+          "test target_probability",
+          "test market_probability"
+        ],
+        "operations": [
+          "Compute fundamental and combined probabilities",
+          "Top-1, Top-3, mean winner rank",
+          "Race log loss, race Brier, ECE, pseudo-R2",
+          "Incremental pseudo-R2 versus market and disagreement buckets"
+        ],
+        "outputs": [
+          "results.json",
+          "results.csv",
+          "model artifacts",
+          "dashboard metrics"
+        ],
+        "fit_scope": "No fitting permitted",
+        "leakage_boundary": "Historical market benchmark currently uses result-page final WIN odds; it is not evidence of a tradable pre-race edge."
+      }
+    ],
+    "live": [
+      {
+        "id": "live-collect",
+        "name": "Collect one timestamped race snapshot",
+        "purpose": "Capture the current field, prices, and horse-page information before prediction.",
+        "inputs": [
+          "Rendered HKJC race application",
+          "Horse profile and form page",
+          "Trackwork, veterinary, movement, and barrier-trial pages"
+        ],
+        "operations": [
+          "Read runner status, saddle number, horse/jockey/trainer identifiers, weights, draw, rating and gear",
+          "Read WIN and PLACE prices plus odds_updated_at",
+          "Store raw response, normalized runners, horse details, model CSV, and missing-feature report"
+        ],
+        "outputs": [
+          "raw.json",
+          "runners.json",
+          "horse-details.json",
+          "model.csv",
+          "report.json"
+        ],
+        "fit_scope": "No parameters fitted",
+        "leakage_boundary": "received_at and odds_updated_at preserve what was known at prediction time. Scratched, withdrawn, and reserve runners are inactive."
+      },
+      {
+        "id": "live-enrich",
+        "name": "Join only earlier horse history",
+        "purpose": "Build form values from records dated before the live race.",
+        "inputs": [
+          "horse_id",
+          "race_date",
+          "historical runs",
+          "horse-page form records"
+        ],
+        "operations": [
+          "Filter historical rows where race_date < live race_date",
+          "Use the previous eligible race for last result, odds, distance, time, and weights",
+          "Compute starts, wins, seconds, thirds, average placing, recent placing average, and speed"
+        ],
+        "outputs": [
+          "Legacy-compatible model feature row",
+          "missing_features",
+          "prediction_ready"
+        ],
+        "fit_scope": "No parameters fitted",
+        "leakage_boundary": "Same-day or future form records are excluded. Missing required history marks the runner unratable instead of inventing values."
+      },
+      {
+        "id": "live-map",
+        "name": "Map scraper columns into the 23-feature contract",
+        "purpose": "Translate the live model CSV into the exact columns accepted by the trained pipeline.",
+        "inputs": [
+          "model.csv",
+          "prediction_ready"
+        ],
+        "operations": [
+          "Map exp -> prior_starts",
+          "Map won_odds / exp -> prior_win_rate",
+          "Map cum_avg_prev_resu -> prior_avg_result",
+          "Map prev_odds -> prior_avg_odds and last_win_odds",
+          "Map prev_resu -> last_result; fin_time -> last_finish_time; prev_dist -> distance",
+          "Set venue, config, and going to UNKNOWN when the legacy model CSV does not provide them",
+          "Create any absent feature as null for fitted imputation"
+        ],
+        "outputs": [
+          "Live DataFrame containing FEATURES",
+          "ratable boolean",
+          "win_odds"
+        ],
+        "fit_scope": "Uses preprocessing already fitted in the model artifact",
+        "leakage_boundary": "A feature may be collected but still not enter FEATURES. The feature contract below is authoritative."
+      },
+      {
+        "id": "live-fundamental",
+        "name": "Predict and calibrate fundamental probability",
+        "purpose": "Generate model-only runner probabilities using frozen training artifacts.",
+        "inputs": [
+          "Live FEATURES",
+          "fitted preprocessing",
+          "fitted estimator",
+          "temperature"
+        ],
+        "operations": [
+          "Apply train-fitted imputation, scaling, and one-hot encoding",
+          "Predict positive-class score",
+          "Normalize scores within race",
+          "Apply p^(1 / temperature) and normalize again"
+        ],
+        "outputs": [
+          "calibrated fundamental probability"
+        ],
+        "fit_scope": "No live fitting",
+        "leakage_boundary": "The runner's current WIN odds do not enter this fundamental path."
+      },
+      {
+        "id": "live-market",
+        "name": "Convert live WIN odds into market probability",
+        "purpose": "Represent the public market as a separate probability forecast.",
+        "inputs": [
+          "decimal win_odds",
+          "race_id",
+          "odds_updated_at"
+        ],
+        "operations": [
+          "market_raw = 1 / win_odds for odds greater than 1",
+          "Normalize market_raw within race so probabilities sum to 1"
+        ],
+        "outputs": [
+          "market_probability"
+        ],
+        "fit_scope": "No live fitting",
+        "leakage_boundary": "Only a snapshot observed before the decision may be used. Result-page final odds are invalid for live decisions."
+      },
+      {
+        "id": "live-combine",
+        "name": "Combine model and market forecasts",
+        "purpose": "Apply validation-fitted weights to produce the decision probability.",
+        "inputs": [
+          "calibrated fundamental",
+          "market_probability",
+          "fundamental_weight",
+          "market_weight"
+        ],
+        "operations": [
+          "score = fundamental^fundamental_weight * market^market_weight",
+          "Clip each input probability to at least 1e-12",
+          "Normalize score within race"
+        ],
+        "outputs": [
+          "combined runner probability"
+        ],
+        "fit_scope": "Weights frozen from validation races",
+        "leakage_boundary": "Fundamental and market remain separately reportable; live data never refits their weights."
+      },
+      {
+        "id": "live-fallback",
+        "name": "Handle first-time and unratable runners",
+        "purpose": "Keep every active runner in the probability distribution without pretending the model has missing history.",
+        "inputs": [
+          "combined probability",
+          "market_probability",
+          "ratable"
+        ],
+        "operations": [
+          "Assign unratable runners their normalized public-market probability",
+          "Compute remaining probability mass = 1 - unratable mass",
+          "Rescale rated runners proportionally into the remaining mass"
+        ],
+        "outputs": [
+          "final race-normalized runner strengths"
+        ],
+        "fit_scope": "No fitting",
+        "leakage_boundary": "Public fallback is explicit and test-covered; missing horse history cannot silently become a confident model prediction."
+      },
+      {
+        "id": "live-pools",
+        "name": "Expand runner strengths into pool combinations",
+        "purpose": "Calculate coherent ordered and unordered finishing probabilities.",
+        "inputs": [
+          "runner strengths",
+          "second exponent",
+          "third exponent",
+          "runner IDs"
+        ],
+        "operations": [
+          "Plackett-Luce/Benter sequential selection without replacement",
+          "WIN: first horse; PLACE: horse appears in top places",
+          "QIN: top two in either order; QPL: selected pair both appear in top three",
+          "TRI: top three unordered; TIERCE: exact top-three order",
+          "FIRST4 and QUARTET: exact top-four order",
+          "Rank combinations by probability; fair_odds = 1 / probability"
+        ],
+        "outputs": [
+          "Ranked pool combinations",
+          "model probability",
+          "model fair odds"
+        ],
+        "fit_scope": "Order exponents frozen from validation races",
+        "leakage_boundary": "Pool-specific live market odds are not assigned arbitrary blend weights; they remain downstream price comparisons until timestamped history supports fitting."
+      },
+      {
+        "id": "live-wager",
+        "name": "Compare price and size a paper wager",
+        "purpose": "Convert probability disagreement into a constrained decision.",
+        "inputs": [
+          "model probability",
+          "current pool decimal odds",
+          "bankroll",
+          "probability_std"
+        ],
+        "operations": [
+          "expected_value_per_unit = probability * odds - 1",
+          "Apply uncertainty haircut to probability when configured",
+          "Kelly fraction = (p * odds - 1) / (odds - 1), floored at zero",
+          "Multiply by fractional Kelly and enforce combination, race, meeting, and bankroll caps",
+          "Abstain when edge or limits fail"
+        ],
+        "outputs": [
+          "WagerRecommendation or abstention",
+          "paper execution receipt",
+          "ledger row"
+        ],
+        "fit_scope": "No model fitting",
+        "leakage_boundary": "Live authenticated submission remains fail-closed behind credentials, MFA verification, confirmation, and transaction limits."
+      }
+    ]
+  }
 }
