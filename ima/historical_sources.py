@@ -14,7 +14,7 @@ CANONICAL_COLUMNS = (
     "race_date", "venue", "race_no", "horse_no", "horse_id", "horse_name", "result",
     "win_odds", "actual_weight", "declared_weight", "draw", "finish_time", "going",
     "rating", "jockey_id", "jockey_name", "trainer_id", "trainer_name", "distance",
-    "course", "race_class", "source",
+    "course", "race_class", "prize", "lengths_behind", "running_position", "source",
 )
 
 POOL_NAMES = {
@@ -60,7 +60,7 @@ def normalize_mexwell(path: Path, start_year: int = 2005, end_year: int = 2012) 
         "race_class": source["race_class"],
         "source": "kaggle:mexwell-hkjc",
     })
-    return frame[list(CANONICAL_COLUMNS)]
+    return frame.reindex(columns=CANONICAL_COLUMNS)
 
 
 def normalize_2013_2020(races_path: Path, performances_path: Path) -> pd.DataFrame:
@@ -91,7 +91,7 @@ def normalize_2013_2020(races_path: Path, performances_path: Path) -> pd.DataFra
         "race_class": source["horse_class"],
         "source": "kaggle:jeffreymuller-2013-2020",
     })
-    return frame[list(CANONICAL_COLUMNS)]
+    return frame.reindex(columns=CANONICAL_COLUMNS)
 
 
 def normalize_2008_2009(path: Path) -> pd.DataFrame:
@@ -124,7 +124,7 @@ def normalize_2008_2009(path: Path) -> pd.DataFrame:
         "race_class": source["Race_class"],
         "source": "third-party:swords-2008-2009",
     })
-    return frame[list(CANONICAL_COLUMNS)]
+    return frame.reindex(columns=CANONICAL_COLUMNS)
 
 
 def iter_mexwell_odds(path: Path, chunksize: int = 5_000) -> Iterator[pd.DataFrame]:
@@ -462,15 +462,18 @@ def normalize_official_archive(root: Path) -> pd.DataFrame:
                     "declared_weight": runner["declared_weight"],
                     "draw": runner["draw"],
                     "finish_time": runner["finish_time"],
-                    "going": None,
+                    "going": race.get("going"),
                     "rating": None,
                     "jockey_id": None,
                     "jockey_name": runner["jockey"],
                     "trainer_id": None,
                     "trainer_name": runner["trainer"],
-                    "distance": None,
-                    "course": None,
-                    "race_class": None,
+                    "distance": race.get("distance"),
+                    "course": race.get("course"),
+                    "race_class": race.get("race_class"),
+                    "prize": race.get("prize"),
+                    "lengths_behind": runner.get("lengths_behind"),
+                    "running_position": runner.get("running_position"),
                     "source": "official:hkjc-results",
                 })
     return pd.DataFrame(records, columns=CANONICAL_COLUMNS)
