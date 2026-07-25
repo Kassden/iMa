@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from .data import RaceSplits, chronological_race_split, validate_runner_dataset
+from .feature_sets import BASELINE_SCHEMA
 from .modeling import (
     MarketBlend, RaceProbabilityModel, TemperatureCalibrator, disagreement_report,
     evaluate_probabilities, incremental_pseudo_r2,
@@ -186,7 +187,16 @@ def run_experiments(
     splits = chronological_race_split(frame)
     specs = specs or default_experiment_specs()
     market = evaluate_probabilities(splits.test["market_probability"].to_numpy(), splits.test)
-    runs = [_run_one(spec, splits, output_dir / "models") for spec in specs]
+    runs = []
+    for sequence, spec in enumerate(specs):
+        run = _run_one(spec, splits, output_dir / "models")
+        run.update({
+            "sequence": sequence,
+            "feature_schema": BASELINE_SCHEMA.name,
+            "feature_count": len(BASELINE_SCHEMA.features),
+            "variables": list(BASELINE_SCHEMA.features),
+        })
+        runs.append(run)
     runs.sort(key=lambda run: run["test_fundamental"]["race_log_loss"])
     summary = {
         "created_at": datetime.now(timezone.utc).isoformat(),
