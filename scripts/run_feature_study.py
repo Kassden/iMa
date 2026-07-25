@@ -9,6 +9,7 @@ import joblib
 import pandas as pd
 
 from ima.data import build_full_history_dataset, chronological_race_split
+from ima.experiments import render_dashboard
 from ima.feature_analysis import association_report, correlation_report, permutation_importance_report
 from ima.feature_sets import (
     BASELINE_SCHEMA, BENTER_COVERAGE, FEATURE_FAMILIES, FEATURE_ORIGINS, RICH_SCHEMA,
@@ -18,6 +19,51 @@ from ima.modeling import (
     incremental_pseudo_r2,
 )
 from ima.rich_features import load_full_rich_history
+
+
+def data_provenance(report: dict, canonical_path: Path) -> dict:
+    canonical_sources = pd.read_csv(canonical_path, usecols=["source"])["source"].value_counts()
+    study_rows = int(report["dataset"]["runners"])
+    canonical_rows = int(canonical_sources.sum())
+    legacy_rows = max(0, study_rows - canonical_rows)
+    roles = {
+        "official:hkjc-results": "Authoritative official result pages",
+        "kaggle:mexwell-hkjc": "Gap fill where official archive pages are absent",
+        "kaggle:jeffreymuller-2013-2020": "Gap fill where higher-priority sources are absent",
+        "third-party:swords-2008-2009": "Small residual gap fill",
+    }
+    rows = []
+    for source, count in canonical_sources.items():
+        rows.append({
+            "source": source,
+            "role": roles.get(source, "Documented canonical gap fill"),
+            "runner_rows": int(count),
+            "share": float(count / study_rows),
+        })
+    if legacy_rows:
+        rows.append({
+            "source": "kaggle:gdaley-hkracing",
+            "role": "Pre-2005 extension used only before official canonical coverage",
+            "runner_rows": legacy_rows,
+            "share": float(legacy_rows / study_rows),
+        })
+    return {
+        "policy": (
+            "HKJC is authoritative wherever an archived official result page exists. "
+            "Lower-priority archives fill missing races only, and source is retained per runner."
+        ),
+        "official_canonical_share": float(
+            canonical_sources.get("official:hkjc-results", 0) / canonical_rows
+        ),
+        "sources": rows,
+    }
+
+
+def publish_dashboard(report: dict, results_path: Path, template_path: Path, output_path: Path) -> None:
+    summary = json.loads(results_path.read_text(encoding="utf-8"))
+    summary["feature_study"] = report
+    results_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    render_dashboard(summary, template_path, output_path)
 
 
 def evaluate_candidate(kind: str, schema, splits) -> tuple[dict, dict]:
@@ -54,7 +100,24 @@ def main() -> int:
     parser.add_argument("--processed", type=Path, default=Path("data/processed/historical"))
     parser.add_argument("--output", type=Path, default=Path("artifacts/feature-study"))
     parser.add_argument("--permutation-repeats", type=int, default=2)
+    parser.add_argument("--dashboard-results", type=Path, default=Path("public/results.json"))
+    parser.add_argument(
+        "--dashboard-template", type=Path,
+        default=Path("docs/model-results/dashboard-template.html"),
+    )
+    parser.add_argument("--dashboard-output", type=Path, default=Path("public/index.html"))
+    parser.add_argument(
+        "--publish-only", action="store_true",
+        help="Publish an existing feature-study report without retraining models.",
+    )
     args = parser.parse_args()
+
+    if args.publish_only:
+        report = json.loads((args.output / "report.json").read_text(encoding="utf-8"))
+        report["data_provenance"] = data_provenance(report, args.canonical)
+        (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+        publish_dashboard(report, args.dashboard_results, args.dashboard_template, args.dashboard_output)
+        return 0
 
     rich = load_full_rich_history(
         args.legacy_runs, args.legacy_races, args.canonical,
@@ -138,7 +201,9 @@ def main() -> int:
         "family_ranking": family_importance.to_dict(orient="records"),
         "redundant_pairs": redundant.to_dict(orient="records"),
     }
+    report["data_provenance"] = data_provenance(report, args.canonical)
     (args.output / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    publish_dashboard(report, args.dashboard_results, args.dashboard_template, args.dashboard_output)
     print(json.dumps({
         "selected": selected["name"], "top_features": ranking.head(10)["feature"].tolist(),
         "candidates": candidates,
