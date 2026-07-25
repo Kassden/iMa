@@ -50,7 +50,26 @@ Run the complete 1997-2025 parameter grid and generate the interactive results d
 ```
 
 Open `artifacts/experiments/full-history/dashboard.html` to filter model families,
-rank parameter runs, inspect calibration metrics, and download the complete CSV or JSON results.
+rank parameter runs, switch between fundamental, market, and combined probabilities,
+inspect the complete transformation pipeline, and download the CSV or JSON results.
+
+Live inference first combines calibrated fundamental probabilities with timestamped
+WIN-market probabilities. The resulting race-normalized strengths produce ranked
+probabilities and fair odds for `WIN`, `PLACE`, `QIN`, `QPL`, `TRI`, `TIERCE`,
+`FIRST4`, and `QUARTET`. Pool-specific live prices remain comparison inputs for
+expected-value and Kelly decisions until enough timestamped historical pool prices
+exist to fit separate pool-level blend weights.
+
+Generate the top ranked pool outcomes from a scraped runner CSV and trusted model artifact:
+
+```sh
+.venv/bin/python -m scripts.predict_pools \
+  --model artifacts/models/latest/boosted.joblib \
+  --runners scrapper/snapshots/latest/model.csv \
+  --pools WIN PLACE QIN QPL TRI TIERCE FIRST4 QUARTET \
+  --top 20 \
+  --output artifacts/predictions/latest-pools.json
+```
 
 Run a fixture-backed scrape:
 
