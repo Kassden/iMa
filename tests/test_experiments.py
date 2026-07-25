@@ -39,6 +39,7 @@ class ExperimentTests(unittest.TestCase):
         self.assertNotIn("surface", placeholders)
         self.assertNotIn("prize", placeholders)
         self.assertIn("horse profile page", placeholders["horse_age"])
+        self.assertTrue(all("populated" in item["value"] for item in manifest["historical_placeholders"]))
         for stage in [*manifest["training"], *manifest["live"]]:
             self.assertEqual(
                 {"id", "name", "purpose", "inputs", "operations", "outputs", "fit_scope", "leakage_boundary"},

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pandas as pd
+
 from .data import CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES
 
 
@@ -25,6 +29,47 @@ def _stage(
         "fit_scope": fit_scope,
         "leakage_boundary": leakage_boundary,
     }
+
+
+def _historical_field_status(
+    runners_path: Path = Path("data/processed/historical/runners.csv.gz"),
+) -> list[dict[str, str]]:
+    fields = {
+        "horse_age": (
+            "horse_age",
+            "Derived point-in-time from the horse profile page only when HKJC publishes an age; retired pages often omit it",
+        ),
+        "horse_country": (
+            "horse_country",
+            "Static Country of Origin from the official HKJC horse profile page",
+        ),
+        "horse_type": (
+            "horse_type",
+            "Final component of official HKJC Colour / Sex from the horse profile page",
+        ),
+        "horse_gear": (
+            "gear",
+            "Race-specific gear from the official HKJC historical form row matched by horse profile ID and race date",
+        ),
+    }
+    available: dict[str, pd.Series] = {}
+    if runners_path.exists():
+        wanted = {column for column, _reason in fields.values()}
+        frame = pd.read_csv(runners_path, usecols=lambda column: column in wanted, low_memory=False)
+        available = {column: frame[column] for column in frame.columns}
+    status = []
+    for field, (column, reason) in fields.items():
+        values = available.get(column)
+        if values is None or values.empty:
+            coverage = 0.0
+        else:
+            valid = values.notna()
+            if not pd.api.types.is_numeric_dtype(values):
+                text = values.astype("string").str.strip().str.upper()
+                valid &= text.ne("") & text.ne("UNKNOWN")
+            coverage = float(valid.mean())
+        status.append({"field": field, "value": f"{coverage:.1%} populated", "reason": reason})
+    return status
 
 
 def pipeline_manifest() -> dict:
@@ -310,12 +355,7 @@ def pipeline_manifest() -> dict:
             "target": "target_win",
             "excluded_market_fields": ["win_odds", "market_raw", "market_probability"],
         },
-        "historical_placeholders": [
-            {"field": "horse_age", "value": "UNKNOWN", "reason": "Available on the horse profile page; historical use requires a point-in-time age derivation rather than copying the current displayed age backward"},
-            {"field": "horse_country", "value": "UNKNOWN", "reason": "Available on the horse profile page and awaiting bulk historical profile backfill"},
-            {"field": "horse_type", "value": "UNKNOWN", "reason": "Available as Colour / Sex on the horse profile page and awaiting bulk historical profile backfill"},
-            {"field": "horse_gear", "value": "UNKNOWN", "reason": "Available from race cards and per-race form records; retained when supplied and awaiting official historical form backfill"},
-        ],
+        "historical_placeholders": _historical_field_status(),
         "live_defaults": [
             {"field": "venue", "value": "UNKNOWN", "reason": "Legacy model CSV mapping does not currently pass venue"},
             {"field": "config", "value": "UNKNOWN", "reason": "Legacy model CSV mapping does not currently pass course configuration"},
