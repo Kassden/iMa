@@ -4,7 +4,7 @@ import pandas as pd
 
 from ima.data import FEATURES
 from ima.feature_sets import (
-    BASELINE_SCHEMA, BENTER_COVERAGE, FEATURE_FAMILIES, RICH_SCHEMA,
+    BASELINE_SCHEMA, BENTER_COVERAGE, FEATURE_FAMILIES, NOTEBOOK_RICH_SCHEMA, RICH_SCHEMA,
     validate_feature_contract,
 )
 from ima.rich_features import parse_lengths, prepare_rich_runner_dataset
@@ -43,6 +43,8 @@ class RichFeatureContractTests(unittest.TestCase):
         assigned = {feature for values in FEATURE_FAMILIES.values() for feature in values}
         self.assertEqual(set(RICH_SCHEMA.features), assigned)
         self.assertGreater(len(RICH_SCHEMA.features), 60)
+        self.assertGreater(len(NOTEBOOK_RICH_SCHEMA.features), len(RICH_SCHEMA.features))
+        self.assertEqual(len(NOTEBOOK_RICH_SCHEMA.features), len(set(NOTEBOOK_RICH_SCHEMA.features)))
 
     def test_benter_coverage_discloses_unsupported_factors(self):
         coverage = {row["factor"]: row["status"] for row in BENTER_COVERAGE}
@@ -60,6 +62,8 @@ class RichFeatureContractTests(unittest.TestCase):
         columns = [
             "prior_starts", "prior_win_rate", "last_result", "jockey_starts",
             "jockey_win_rate", "draw_bias_starts", "distance_band_starts",
+            "prior_second_count", "prior_third_count", "prior_second_rate",
+            "prior_third_rate", "avg_result_6", "avg_result_183d",
         ]
         pd.testing.assert_frame_equal(
             first[first.race_id.eq("R2")][columns].reset_index(drop=True),
@@ -80,6 +84,53 @@ class RichFeatureContractTests(unittest.TestCase):
         runner = frame[(frame.race_id.eq("R2")) & (frame.horse_id.eq("A"))].iloc[0]
         self.assertEqual(1.0, runner["trackwork_7d"])
         self.assertEqual(1.0, runner["days_since_trackwork"])
+
+    def test_notebook_features_use_prior_results_and_named_polynomials(self):
+        frame = prepare_rich_runner_dataset(self.source())
+        runner = frame[(frame.race_id.eq("R2")) & (frame.horse_id.eq("A"))].iloc[0]
+        self.assertEqual(0.0, runner["prior_second_count"])
+        self.assertEqual(0.0, runner["prior_third_count"])
+        self.assertEqual(1.0, runner["avg_result_6"])
+        self.assertEqual(1.0, runner["avg_result_183d"])
+        self.assertEqual(runner["horse_rating"] ** 2, runner["poly_rating_sq"])
+        self.assertEqual(
+            runner["horse_rating"] * runner["prior_win_rate"],
+            runner["poly_rating_prior_win"],
+        )
+
+    def test_profile_values_are_asof_and_not_backfilled_from_future(self):
+        profiles = pd.DataFrame({
+            "horse_id": ["A", "A"],
+            "snapshot_at": ["2019-12-01", "2020-01-10"],
+            "season_stake": [1000, 999999], "total_stake": [5000, 999999],
+            "start_of_season_rating": [55, 99], "no_of_start_past_10_meetings": [2, 9],
+            "colour": ["Bay", "Future"], "import_type": ["PPG", "Future"],
+            "sire": ["S1", "Future"], "dam_sire": ["D1", "Future"],
+        })
+        frame = prepare_rich_runner_dataset(self.source(), profiles=profiles)
+        runner = frame[(frame.race_id.eq("R2")) & (frame.horse_id.eq("A"))].iloc[0]
+        self.assertEqual(1000, runner["season_stakes"])
+        self.assertEqual("PPG", runner["import_type"])
+        self.assertEqual("Bay", runner["horse_colour"])
+
+    def test_veterinary_and_movement_features_exclude_race_day_events(self):
+        veterinary = pd.DataFrame({
+            "horse_id": ["A", "A"],
+            "event_date": ["2020-01-09", "2020-01-10"],
+            "details": ["minor injury", "surgery"],
+        })
+        movements = pd.DataFrame({
+            "horse_id": ["A"], "arrival_date": ["2020-01-08"],
+            "from": ["Conghua"], "to": ["Hong Kong"],
+        })
+        frame = prepare_rich_runner_dataset(
+            self.source(), veterinary=veterinary, movements=movements,
+        )
+        runner = frame[(frame.race_id.eq("R2")) & (frame.horse_id.eq("A"))].iloc[0]
+        self.assertEqual(1.0, runner["veterinary_events_30d"])
+        self.assertEqual(1.0, runner["injury_events_365d"])
+        self.assertEqual(0.0, runner["surgery_events_365d"])
+        self.assertEqual(2.0, runner["days_since_hk_arrival"])
 
 
 if __name__ == "__main__":

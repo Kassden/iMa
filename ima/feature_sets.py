@@ -60,9 +60,49 @@ RICH_CATEGORICAL_FEATURES = (
 )
 RICH_SCHEMA = FeatureSchema("benter-rich-v1", RICH_NUMERIC_FEATURES, RICH_CATEGORICAL_FEATURES)
 
+NOTEBOOK_NUMERIC_FEATURES = (
+    "prior_second_count", "prior_third_count", "prior_second_rate", "prior_third_rate",
+    "debut_flag", "last_win_odds", "last_place_odds",
+    "avg_win_odds_2", "avg_win_odds_3", "avg_win_odds_4", "avg_win_odds_6",
+    "avg_place_odds_2", "avg_place_odds_3", "avg_place_odds_4", "avg_place_odds_6",
+    "avg_result_6", "avg_speed_ratio_2", "avg_speed_ratio_4", "avg_speed_ratio_6",
+    "total_distance_4", "weight_change_per_day",
+    "avg_result_84d", "avg_result_112d", "avg_result_168d", "avg_result_183d",
+    "median_result_183d", "best_result_183d", "worst_result_183d",
+    "avg_speed_ratio_183d", "avg_same_distance_finish_time_183d",
+    "current_season_starts", "current_season_avg_result", "previous_season_avg_result",
+    "jockey_last_result", "jockey_last_speed_ratio", "jockey_avg_result_90d",
+    "trainer_last_result", "trainer_avg_result_90d",
+    "last_position_sec1", "last_position_sec2", "last_position_sec3", "last_position_sec4",
+    "age_rank", "rating_rank", "carried_weight_rank", "body_weight_rank",
+    "carried_weight_change_rank", "prior_speed_rank", "distance_experience_rank",
+    "prior_form_rank", "last_position_sec1_rank", "last_position_sec2_rank",
+    "last_position_sec3_rank", "last_position_sec4_rank",
+    "profile_available", "season_stakes", "total_stakes", "start_of_season_rating",
+    "rating_change_from_season_start", "starts_past_10_meetings",
+    "veterinary_available", "days_since_veterinary", "veterinary_events_30d",
+    "veterinary_events_90d", "injury_events_365d", "fracture_events_365d",
+    "surgery_events_365d", "movement_available", "days_since_movement",
+    "movements_365d", "days_since_hk_arrival",
+    "poly_age_sq", "poly_rating_sq", "poly_distance_sq", "poly_draw_sq",
+    "poly_rating_prior_win", "poly_rating_recent_speed", "poly_age_distance",
+    "poly_draw_distance", "poly_weight_change_distance", "poly_jockey_trainer_win",
+)
+
+NOTEBOOK_CATEGORICAL_FEATURES = (
+    "horse_colour", "import_type", "sire", "dam_sire",
+)
+
+NOTEBOOK_RICH_SCHEMA = FeatureSchema(
+    "notebook-rich-v2",
+    (*RICH_NUMERIC_FEATURES, *NOTEBOOK_NUMERIC_FEATURES),
+    (*RICH_CATEGORICAL_FEATURES, *NOTEBOOK_CATEGORICAL_FEATURES),
+)
+
 FEATURE_SCHEMAS = {
     BASELINE_SCHEMA.name: BASELINE_SCHEMA,
     RICH_SCHEMA.name: RICH_SCHEMA,
+    NOTEBOOK_RICH_SCHEMA.name: NOTEBOOK_RICH_SCHEMA,
 }
 
 
@@ -122,6 +162,7 @@ FEATURE_ORIGINS = {
         "last_lengths_behind", "avg_lengths_behind_3",
         "last_late_position_gain", "avg_late_position_gain_3",
     ),
+    "notebook_rich_v2": (*NOTEBOOK_NUMERIC_FEATURES, *NOTEBOOK_CATEGORICAL_FEATURES),
 }
 
 
@@ -153,3 +194,6 @@ def validate_feature_contract() -> None:
     missing = set(features) - assigned
     if missing:
         raise ValueError(f"Rich features without a family: {sorted(missing)}")
+    notebook_features = NOTEBOOK_RICH_SCHEMA.features
+    if len(notebook_features) != len(set(notebook_features)):
+        raise ValueError("Notebook-rich feature names must be unique")
