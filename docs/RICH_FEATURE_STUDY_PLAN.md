@@ -4,15 +4,15 @@
 - Build and evaluate a leakage-safe rich horse-racing feature set from Benter factor families and repository notebooks, with correlation, significance, redundancy, and out-of-sample contribution rankings.
 
 ## Acceptance Criteria
-- [ ] Preserve the current 23-feature baseline and evaluate the rich challenger on the identical chronological train, validation, and test races.
-- [ ] Implement a versioned rich feature contract derived only from information available before each race.
-- [ ] Cover every Benter factor family that the local archive can support and disclose unsupported or partial factors.
-- [ ] Incorporate leakage-safe notebook ideas: recent form, speed, distance, weight, odds history, jockey/trainer history, and days since last race.
-- [ ] Add auxiliary trackwork, barrier-trial, and sectional features with explicit availability indicators and coverage metrics.
-- [ ] Produce pairwise correlation, redundancy flags, target association significance, mutual information, and held-out permutation importance.
-- [ ] Rank individual variables and feature families by deterioration in race log loss when permuted.
-- [ ] Publish baseline-versus-rich metrics and feature rankings in the browser dashboard.
-- [ ] Full tests, compilation, scope checks, Playwright desktop/mobile QA, commits, push, and Vercel production verification pass.
+- [x] Preserve the current 23-feature baseline and evaluate the rich challenger on the identical chronological train, validation, and test races.
+- [x] Implement a versioned rich feature contract derived only from information available before each race.
+- [x] Cover every Benter factor family that the local archive can support and disclose unsupported or partial factors.
+- [x] Incorporate leakage-safe notebook ideas: recent form, speed, distance, weight, odds history, jockey/trainer history, and days since last race.
+- [x] Add auxiliary trackwork, barrier-trial, and sectional features with explicit availability indicators and coverage metrics.
+- [x] Produce pairwise correlation, redundancy flags, target association significance, mutual information, and held-out permutation importance.
+- [x] Rank individual variables and feature families by deterioration in race log loss when permuted.
+- [x] Publish baseline-versus-rich metrics and feature rankings in the browser dashboard.
+- [x] Full tests, compilation, scope checks, Playwright desktop/mobile QA, commits, push, and Vercel production verification pass.
 
 ## Out Of Scope
 - Treating Benter's unpublished proprietary factor definitions as known.
@@ -113,7 +113,7 @@
   - `artifacts/feature-study/correlation.csv`
   - `docs/RICH_FEATURE_STUDY_PLAN.md`
 - Checklist:
-  - [ ] Run the full feature study on the 1997-2025 archive.
-  - [ ] Render browser tables and charts with methodology notes.
-  - [ ] Verify desktop and mobile through Playwright.
-  - [ ] Commit, push, deploy, and verify production.
+  - [x] Run the full feature study on the 1997-2025 archive.
+  - [x] Render browser tables and charts with methodology notes.
+  - [x] Verify desktop and mobile through Playwright.
+  - [x] Commit, push, deploy, and verify production.
