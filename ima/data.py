@@ -54,6 +54,11 @@ def build_runner_dataset(runs_path: Path, races_path: Path) -> pd.DataFrame:
     frame["market_raw"] = inverse_odds
     market_total = frame.groupby("race_id")["market_raw"].transform("sum")
     frame["market_probability"] = frame["market_raw"] / market_total
+    frame["horse_age_reference_source"] = "kaggle:gdaley-hkracing-race-row"
+    frame["horse_age_reference_year"] = np.nan
+    frame["horse_age_reference_value"] = frame["horse_age"]
+    frame["horse_age_year_offset"] = 0.0
+    frame["horse_age_identity_method"] = "source-anonymized-horse-id"
     return frame
 
 

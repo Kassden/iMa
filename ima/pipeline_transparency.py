@@ -361,6 +361,15 @@ def pipeline_manifest() -> dict:
             "excluded_market_fields": ["win_odds", "market_raw", "market_probability"],
         },
         "historical_placeholders": _historical_field_status(),
+        "legacy_age_provenance": {
+            "field": "horse_age",
+            "value": "100% populated on legacy runner rows",
+            "reason": (
+                "Direct race-row age from gdaley. Horse IDs are anonymized integers and source "
+                "dates are deliberately obscured, so they are not presented as HKJC profile IDs "
+                "or true calendar timestamps."
+            ),
+        },
         "live_defaults": [
             {"field": "venue", "value": "UNKNOWN", "reason": "Legacy model CSV mapping does not currently pass venue"},
             {"field": "config", "value": "UNKNOWN", "reason": "Legacy model CSV mapping does not currently pass course configuration"},

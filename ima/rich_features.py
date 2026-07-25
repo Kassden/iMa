@@ -316,6 +316,11 @@ def load_full_rich_history(
     legacy["race_id"] = "legacy:" + legacy["race_id"].astype(str)
     legacy["horse_id"] = "legacy:" + legacy["horse_id"].astype(str)
     legacy["source"] = "kaggle:gdaley-hkracing"
+    legacy["horse_age_reference_source"] = "kaggle:gdaley-hkracing-race-row"
+    legacy["horse_age_reference_year"] = np.nan
+    legacy["horse_age_reference_value"] = legacy["horse_age"]
+    legacy["horse_age_year_offset"] = 0.0
+    legacy["horse_age_identity_method"] = "source-anonymized-horse-id"
     legacy["course"] = legacy["config"]
     position_columns = [column for column in runs.columns if column.startswith("position_sec")]
     legacy["running_position"] = legacy[position_columns].apply(
