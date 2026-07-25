@@ -1,9 +1,11 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from ima.experiments import default_experiment_specs, render_dashboard, results_frame
 from ima.pipeline_transparency import pipeline_manifest
+from scripts.run_feature_study import publish_dashboard
 
 
 class ExperimentTests(unittest.TestCase):
@@ -78,12 +80,35 @@ class ExperimentTests(unittest.TestCase):
             'id="pipeline-stage-detail"',
             'id="numeric-features"',
             'id="unused-data"',
+            'id="feature-study"',
+            'id="feature-importance-chart"',
+            'id="feature-ranking-body"',
+            'id="family-ranking-body"',
+            'id="redundancy-body"',
+            'id="benter-coverage-body"',
+            'id="model-comparison-body"',
             'id="results-body"',
             'href="results.csv"',
             'href="results.json"',
             "__EXPERIMENT_DATA__",
         ):
             self.assertIn(marker, template)
+
+    def test_feature_study_publication_merges_results_and_renders_dashboard(self):
+        summary = {"dataset": {"races": 1}, "runs": []}
+        report = {"selected_rich_model": "benter-rich-v1-boosted", "feature_ranking": []}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            results = root / "results.json"
+            template = root / "template.html"
+            output = root / "index.html"
+            results.write_text(json.dumps(summary), encoding="utf-8")
+            template.write_text("<script>const DATA=__EXPERIMENT_DATA__;</script>", encoding="utf-8")
+            publish_dashboard(report, results, template, output)
+            published = json.loads(results.read_text(encoding="utf-8"))
+            rendered = output.read_text(encoding="utf-8")
+        self.assertEqual(report, published["feature_study"])
+        self.assertIn('"selected_rich_model":"benter-rich-v1-boosted"', rendered)
 
 
 if __name__ == "__main__":
