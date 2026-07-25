@@ -42,6 +42,7 @@ Generated from `data/processed/historical/coverage.json` on 2026-07-25.
 - 257 known meetings before the reliable official archive boundary are marked `archive_unavailable`, not `no_meeting`.
 - Earliest recovered official meeting: 2008-04-02 at Happy Valley.
 - Raw HTML is immutable under `data/historical/hkjc-2005-2025/raw/`; normalized JSON can be reproducibly rebuilt with `scripts.reparse_official_history`.
+- The official reparse retains race class, distance, prize, going, course, lengths behind, running positions, jockey name, and trainer name for all 173,456 official runner rows. These fields were present in the immutable HKJC pages but were discarded by the earlier parser.
 
 ## Supplemental Tables
 
@@ -63,5 +64,5 @@ Generated from `data/processed/historical/coverage.json` on 2026-07-25.
 - Reject races without exactly one winner unless the evaluation explicitly supports dead heats.
 - Never use dividends, result-page odds, final pool totals, incident outcomes, or post-race comments as pre-race features.
 - Keep `odds-snapshots.csv.gz` timestamps source-naive until the timezone is independently verified.
-- Use source and field missingness in `coverage.json`; official results do not contain race class, distance, course, going, ratings, or stable jockey/trainer IDs, so those fields require point-in-time joins from race cards or horse history.
+- Use source and field missingness in `coverage.json`; official results provide race class, distance, course, going, prize, jockey/trainer names, lengths behind, and running positions. Ratings, horse demographics, and stable jockey/trainer IDs still require point-in-time race-card or horse-history joins.
 - Review `source-registry.json` before redistribution or commercial use. Several archives have unknown, share-alike, or non-commercial terms.
