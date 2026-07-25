@@ -76,10 +76,10 @@
   - `tests/test_rich_features.py`
   - `tests/test_modeling.py`
 - Checklist:
-  - [ ] Implement shifted rolling horse-form and normalized-time features.
-  - [ ] Implement jockey, trainer, draw, venue, distance, course, and going histories.
-  - [ ] Implement timestamp-safe auxiliary event features with availability flags.
-  - [ ] Make model preprocessing accept an explicit named feature schema.
+  - [x] Implement shifted rolling horse-form and normalized-time features.
+  - [x] Implement jockey, trainer, draw, venue, distance, course, and going histories.
+  - [x] Implement timestamp-safe auxiliary event features with availability flags.
+  - [x] Make model preprocessing accept an explicit named feature schema.
 
 ## Phase 3: Model comparison and importance analysis
 
