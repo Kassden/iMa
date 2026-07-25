@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from .data import RaceSplits, chronological_race_split, validate_runner_dataset
-from .feature_sets import BASELINE_SCHEMA
+from .feature_sets import BASELINE_SCHEMA, FeatureSchema
 from .modeling import (
     MarketBlend, RaceProbabilityModel, TemperatureCalibrator, disagreement_report,
     evaluate_probabilities, incremental_pseudo_r2,
@@ -54,9 +54,16 @@ def default_experiment_specs() -> list[ExperimentSpec]:
     ]
 
 
-def _run_one(spec: ExperimentSpec, splits: RaceSplits, models_dir: Path) -> dict:
+def _run_one(
+    spec: ExperimentSpec,
+    splits: RaceSplits,
+    models_dir: Path,
+    feature_schema: FeatureSchema = BASELINE_SCHEMA,
+) -> dict:
     started = time.perf_counter()
-    model = RaceProbabilityModel(kind=spec.kind, parameters=spec.parameters).fit(splits.train)
+    model = RaceProbabilityModel(
+        kind=spec.kind, parameters=spec.parameters, feature_schema=feature_schema,
+    ).fit(splits.train)
     validation_raw = model.predict_proba(splits.validation)
     calibrator = TemperatureCalibrator.fit(validation_raw, splits.validation)
     validation = calibrator.transform(validation_raw, splits.validation["race_id"])
@@ -79,6 +86,7 @@ def _run_one(spec: ExperimentSpec, splits: RaceSplits, models_dir: Path) -> dict
         "blend": blend,
         "order_exponents": exponents,
         "experiment": asdict(spec),
+        "feature_schema": feature_schema.name,
     }
     models_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(artifact, models_dir / f"{spec.run_id}.joblib")
@@ -182,6 +190,7 @@ def run_experiments(
     output_dir: Path,
     template_path: Path,
     specs: list[ExperimentSpec] | None = None,
+    feature_schema: FeatureSchema = BASELINE_SCHEMA,
 ) -> dict:
     validate_runner_dataset(frame)
     splits = chronological_race_split(frame)
@@ -189,12 +198,12 @@ def run_experiments(
     market = evaluate_probabilities(splits.test["market_probability"].to_numpy(), splits.test)
     runs = []
     for sequence, spec in enumerate(specs):
-        run = _run_one(spec, splits, output_dir / "models")
+        run = _run_one(spec, splits, output_dir / "models", feature_schema)
         run.update({
             "sequence": sequence,
-            "feature_schema": BASELINE_SCHEMA.name,
-            "feature_count": len(BASELINE_SCHEMA.features),
-            "variables": list(BASELINE_SCHEMA.features),
+            "feature_schema": feature_schema.name,
+            "feature_count": len(feature_schema.features),
+            "variables": list(feature_schema.features),
         })
         runs.append(run)
     runs.sort(key=lambda run: run["test_fundamental"]["race_log_loss"])
