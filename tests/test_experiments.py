@@ -12,6 +12,12 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(len(specs), len({spec.run_id for spec in specs}))
         self.assertEqual({"logit", "boosted"}, {spec.kind for spec in specs})
 
+    def test_dashboard_source_contract_names_market_combined_path(self):
+        source = Path("ima/experiments.py").read_text(encoding="utf-8")
+        self.assertIn('"prediction_sources"', source)
+        self.assertIn('"combined"', source)
+        self.assertIn('"supported_pools"', source)
+
     def test_results_flatten_and_dashboard_embed_runs(self):
         summary = {
             "created_at": "2026-01-01T00:00:00Z",

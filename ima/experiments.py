@@ -15,7 +15,7 @@ from .modeling import (
     MarketBlend, RaceProbabilityModel, TemperatureCalibrator, disagreement_report,
     evaluate_probabilities, incremental_pseudo_r2,
 )
-from .pools import fit_order_exponents
+from .pools import SUPPORTED_POOLS, fit_order_exponents
 
 
 @dataclass(frozen=True)
@@ -201,6 +201,16 @@ def run_experiments(
             "test_date_max": splits.test["date"].max().date().isoformat(),
         },
         "market_test": market,
+        "prediction_sources": {
+            "fundamental": "Calibrated horse and race feature model without current odds.",
+            "market": "Probability implied by the available WIN market odds.",
+            "combined": "Fitted multiplicative blend of calibrated fundamental and market probabilities.",
+            "historical_market_limit": (
+                "Historical experiments use final WIN odds; live decisions must use odds observed "
+                "before the wager timestamp."
+            ),
+        },
+        "supported_pools": list(SUPPORTED_POOLS),
         "runs": runs,
     }
     output_dir.mkdir(parents=True, exist_ok=True)
