@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
   <title>iMa Model Experiments</title>
   <style>
     :root {
@@ -162,6 +163,32 @@
     .source-comparison div:nth-child(3) { border-color: var(--logit); }
     .source-comparison span { display: block; color: var(--muted); font-size: 11px; }
     .source-comparison strong { font-variant-numeric: tabular-nums; }
+    .study-section { margin: 8px 0 34px; border-top: 1px solid var(--line); padding-top: 24px; }
+    .study-summary { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 18px; margin: 16px 0 24px; }
+    .study-stat { border-top: 3px solid var(--line); padding-top: 9px; }
+    .study-stat:nth-child(2) { border-color: var(--logit); }
+    .study-stat:nth-child(3) { border-color: var(--boosted); }
+    .study-stat:nth-child(4) { border-color: var(--market); }
+    .study-stat strong { display: block; font-size: 20px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .study-stat span { color: var(--muted); font-size: 11px; }
+    .study-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 28px; margin-bottom: 28px; }
+    .study-block { min-width: 0; }
+    .study-block h3 { margin: 0 0 5px; font-size: 14px; }
+    .study-block > p { color: var(--muted); margin: 0 0 12px; font-size: 12px; }
+    .feature-chart-wrap { height: 430px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 10px 0; }
+    .compact-table { min-width: 720px; }
+    .compact-table th, .compact-table td { padding: 8px 10px; font-size: 12px; }
+    .compact-table tbody tr { cursor: default; }
+    .method-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 16px 0 28px; }
+    .method-item { border-left: 3px solid var(--line); padding: 4px 10px; }
+    .method-item strong { display: block; font-size: 12px; margin-bottom: 3px; }
+    .method-item span { color: var(--muted); font-size: 11px; }
+    .status { display: inline-block; border: 1px solid var(--line); padding: 2px 6px; font-size: 10px; text-transform: uppercase; }
+    .status.supported { border-color: var(--logit); color: var(--logit); }
+    .status.partial { border-color: var(--boosted); color: var(--boosted); }
+    .status.unsupported { color: var(--muted); }
+    .positive { color: var(--logit); }
+    .negative { color: #a13d2d; }
     @media (max-width: 900px) {
       .visuals { grid-template-columns: 1fr; }
       .chart-wrap { height: 340px; }
@@ -169,6 +196,8 @@
       .pipeline-explorer { grid-template-columns: 220px minmax(0, 1fr); }
       .stage-columns { grid-template-columns: 1fr; }
       .contract-grid { grid-template-columns: 1fr 1fr; }
+      .study-grid { grid-template-columns: 1fr; }
+      .method-grid { grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 620px) {
       header { padding-top: 20px; }
@@ -192,6 +221,8 @@
       .stage-boundaries, .contract-grid { grid-template-columns: 1fr; }
       .field-list { columns: 1; }
       .source-comparison { grid-template-columns: 1fr 1fr 1fr; }
+      .study-summary { grid-template-columns: 1fr 1fr; }
+      .method-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -262,6 +293,72 @@
         </div>
       </section>
       <p class="pipeline-note" id="market-limitation"></p>
+    </section>
+
+    <section class="study-section" id="feature-study" aria-labelledby="feature-study-title">
+      <h2 id="feature-study-title">Benter-inspired rich feature study</h2>
+      <p class="pipeline-note">A leakage-safe challenger built from official HKJC race context, prior horse form, jockey and trainer histories, preferences, post-position bias, and available auxiliary events. Third-party records fill documented archive gaps only.</p>
+      <div class="study-summary" id="feature-study-summary"></div>
+
+      <div class="study-grid">
+        <section class="study-block">
+          <h3>Held-out variable contribution</h3>
+          <p>Increase in race log loss after permuting one variable. Larger positive values mean the fitted model depended more on that variable.</p>
+          <div class="feature-chart-wrap"><canvas id="feature-importance-chart" role="img" aria-label="Top held-out feature contributions"></canvas></div>
+        </section>
+        <section class="study-block">
+          <h3>Model comparison</h3>
+          <p>All candidates use identical chronological race splits. Selection uses validation race log loss only.</p>
+          <div class="table-scroll"><table class="compact-table">
+            <thead><tr><th>Model</th><th>Features</th><th>Top-1</th><th>Top-3</th><th>Log loss</th><th>Pseudo-R2</th></tr></thead>
+            <tbody id="model-comparison-body"></tbody>
+          </table></div>
+          <h3 style="margin-top:22px">Source provenance</h3>
+          <p id="source-policy"></p>
+          <div class="table-scroll"><table class="compact-table">
+            <thead><tr><th>Source</th><th>Role</th><th>Runner rows</th><th>Share</th></tr></thead>
+            <tbody id="source-provenance-body"></tbody>
+          </table></div>
+        </section>
+      </div>
+
+      <section class="study-block">
+        <h3>All variables ranked</h3>
+        <p>Association and significance use training data only. Contribution uses the untouched test period and is not reused for feature selection.</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Rank</th><th>Feature</th><th>Family</th><th>Delta log loss</th><th>Association</th><th>FDR q</th><th>Mutual info</th><th>Coverage</th></tr></thead>
+          <tbody id="feature-ranking-body"></tbody>
+        </table></div>
+      </section>
+
+      <div class="study-grid" style="margin-top:28px">
+        <section class="study-block">
+          <h3>Feature-family contribution</h3>
+          <p>Permutation of each complete Benter factor family.</p>
+          <div class="table-scroll"><table class="compact-table">
+            <thead><tr><th>Family</th><th>Features</th><th>Delta log loss</th><th>Std. dev.</th></tr></thead>
+            <tbody id="family-ranking-body"></tbody>
+          </table></div>
+        </section>
+        <section class="study-block">
+          <h3>High-correlation redundancy</h3>
+          <p>Training-only Spearman pairs with absolute rho of at least 0.80.</p>
+          <div class="table-scroll"><table class="compact-table">
+            <thead><tr><th>Feature A</th><th>Feature B</th><th>Spearman rho</th></tr></thead>
+            <tbody id="redundancy-body"></tbody>
+          </table></div>
+        </section>
+      </div>
+
+      <section class="study-block">
+        <h3>Benter factor coverage</h3>
+        <p>Supported means a point-in-time feature is implemented. Partial and unsupported factors remain visible rather than silently approximated.</p>
+        <div class="table-scroll"><table class="compact-table">
+          <thead><tr><th>Factor</th><th>Status</th><th>Technical note</th></tr></thead>
+          <tbody id="benter-coverage-body"></tbody>
+        </table></div>
+      </section>
+      <div class="method-grid" id="feature-methodology"></div>
     </section>
 
     <section class="toolbar" aria-label="Experiment controls">
@@ -473,6 +570,85 @@
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, rect.width, rect.height);
       return { context, width: rect.width, height: rect.height };
+    }
+
+    function renderFeatureStudy() {
+      const study = DATA.feature_study;
+      if (!study) {
+        document.getElementById("feature-study").hidden = true;
+        return;
+      }
+      const significant = study.feature_ranking.filter(item => item.significant_fdr_05).length;
+      const baseline = study.candidates.find(item => item.name === "baseline-v1-boosted");
+      const rich = study.candidates.find(item => item.name === "benter-rich-v1-boosted");
+      const improvement = baseline && rich
+        ? baseline.test_fundamental.race_log_loss - rich.test_fundamental.race_log_loss
+        : 0;
+      document.getElementById("feature-study-summary").innerHTML = `
+        <div class="study-stat"><strong>${study.schemas["benter-rich-v1"].features.length}</strong><span>Leakage-safe rich features</span></div>
+        <div class="study-stat"><strong>${significant}</strong><span>Significant at FDR 0.05</span></div>
+        <div class="study-stat"><strong>${escapeHtml(study.selected_rich_model)}</strong><span>Validation-selected challenger</span></div>
+        <div class="study-stat"><strong>${fmt(improvement, 4)}</strong><span>Held-out log-loss improvement</span></div>`;
+
+      document.getElementById("model-comparison-body").innerHTML = study.candidates.map(candidate => {
+        const metrics = candidate.test_fundamental;
+        return `<tr>
+          <td>${escapeHtml(candidate.name)}${candidate.name === study.selected_rich_model ? " *" : ""}</td>
+          <td>${candidate.feature_count}</td><td>${pct(metrics.top_pick_win_rate)}</td>
+          <td>${pct(metrics.winner_top3_rate)}</td><td>${fmt(metrics.race_log_loss)}</td>
+          <td>${fmt(metrics.pseudo_r2)}</td></tr>`;
+      }).join("");
+
+      const provenance = study.data_provenance || { policy: "HKJC is authoritative where official pages are available; other sources fill explicit gaps.", sources: [] };
+      document.getElementById("source-policy").textContent = provenance.policy;
+      document.getElementById("source-provenance-body").innerHTML = provenance.sources.map(source => `
+        <tr><td>${escapeHtml(source.source)}</td><td>${escapeHtml(source.role)}</td>
+        <td>${Number(source.runner_rows).toLocaleString()}</td><td>${pct(source.share)}</td></tr>`).join("");
+
+      const probability = value => Number(value) === 0 ? "0" : Number(value).toExponential(2);
+      document.getElementById("feature-ranking-body").innerHTML = study.feature_ranking.map(item => `
+        <tr><td>${item.rank}</td><td><code>${escapeHtml(item.feature)}</code></td><td>${escapeHtml(item.family)}</td>
+        <td class="${item.delta_race_log_loss_mean >= 0 ? "positive" : "negative"}">${fmt(item.delta_race_log_loss_mean, 5)}</td>
+        <td>${fmt(item.association, 4)}</td><td>${probability(item.p_value_fdr)}</td>
+        <td>${fmt(item.mutual_information, 5)}</td><td>${pct(item.coverage)}</td></tr>`).join("");
+      document.getElementById("family-ranking-body").innerHTML = study.family_ranking.map(item => `
+        <tr><td>${escapeHtml(item.family)}</td><td>${item.features.length}</td>
+        <td>${fmt(item.delta_race_log_loss_mean, 5)}</td><td>${fmt(item.delta_race_log_loss_std, 5)}</td></tr>`).join("");
+      document.getElementById("redundancy-body").innerHTML = study.redundant_pairs.map(item => `
+        <tr><td><code>${escapeHtml(item.feature_a)}</code></td><td><code>${escapeHtml(item.feature_b)}</code></td>
+        <td>${fmt(item.spearman, 4)}</td></tr>`).join("");
+      document.getElementById("benter-coverage-body").innerHTML = study.benter_coverage.map(item => `
+        <tr><td>${escapeHtml(item.factor)}</td><td><span class="status ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
+        <td>${escapeHtml(item.note || "Implemented with point-in-time race data")}</td></tr>`).join("");
+      document.getElementById("feature-methodology").innerHTML = Object.entries(study.methodology).map(([name, description]) => `
+        <div class="method-item"><strong>${escapeHtml(name.replaceAll("_", " "))}</strong><span>${escapeHtml(description)}</span></div>`).join("");
+      drawFeatureImportance();
+    }
+
+    function drawFeatureImportance() {
+      const study = DATA.feature_study;
+      if (!study) return;
+      const canvas = document.getElementById("feature-importance-chart");
+      const { context: ctx, width, height } = prepareCanvas(canvas);
+      const rows = study.feature_ranking.slice(0, 12);
+      const max = Math.max(...rows.map(item => Math.max(0, item.delta_race_log_loss_mean)), .001);
+      const left = Math.min(190, width * .42), right = 28, top = 8, bottom = 28;
+      const plotWidth = Math.max(20, width - left - right);
+      const rowHeight = (height - top - bottom) / rows.length;
+      ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.textBaseline = "middle";
+      rows.forEach((item, index) => {
+        const y = top + index * rowHeight + rowHeight / 2;
+        ctx.fillStyle = "#56615c"; ctx.textAlign = "right";
+        ctx.fillText(item.feature, left - 10, y);
+        ctx.fillStyle = item.delta_race_log_loss_mean >= 0 ? COLORS.logit : "#a13d2d";
+        const bar = Math.max(2, Math.abs(item.delta_race_log_loss_mean) / max * plotWidth);
+        ctx.fillRect(left, y - Math.min(8, rowHeight * .28), bar, Math.min(16, rowHeight * .56));
+      });
+      ctx.strokeStyle = "#dce2de";
+      ctx.beginPath(); ctx.moveTo(left, height - bottom); ctx.lineTo(width - right, height - bottom); ctx.stroke();
+      ctx.fillStyle = "#66706b"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+      [0, .5, 1].forEach(fraction => ctx.fillText(fmt(max * fraction, 3), left + plotWidth * fraction, height - bottom + 7));
     }
 
     function drawBarChart() {
@@ -727,9 +903,10 @@
     document.getElementById("metric-select").addEventListener("change", event => { state.metric = event.target.value; drawBarChart(); });
     document.getElementById("sort-select").addEventListener("change", event => { state.sort = event.target.value; render(); });
     let resizeTimer;
-    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawBarChart(); drawScatterChart(); drawProgressChart(); }, 100); });
+    window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawFeatureImportance(); drawBarChart(); drawScatterChart(); drawProgressChart(); }, 100); });
     renderFeatureContract();
     renderPipeline();
+    renderFeatureStudy();
     render();
   </script>
 </body>
