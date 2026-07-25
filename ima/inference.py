@@ -83,12 +83,12 @@ def legacy_live_frame(model_csv: pd.DataFrame) -> pd.DataFrame:
 def _model_ready_frame(frame: pd.DataFrame, artifact: dict) -> pd.DataFrame:
     ready = frame.copy()
     schema = getattr(artifact.get("model"), "feature_schema", BASELINE_SCHEMA)
-    for feature in schema.numeric:
-        if feature not in ready:
-            ready[feature] = np.nan
-    for feature in schema.categorical:
-        if feature not in ready:
-            ready[feature] = "UNKNOWN"
+    missing = {feature: np.nan for feature in schema.numeric if feature not in ready}
+    missing.update({
+        feature: "UNKNOWN" for feature in schema.categorical if feature not in ready
+    })
+    if missing:
+        ready = pd.concat([ready, pd.DataFrame(missing, index=ready.index)], axis=1)
     return ready
 
 

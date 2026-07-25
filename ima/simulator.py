@@ -151,6 +151,7 @@ def simulate_race(
     candidates = priced_candidates(predictions, prices, model_version)
     recommendations = recommend_wagers(candidates, bankroll, budget)
     auxiliary_predictions = auxiliary.predict(live_frame).to_dict("records") if auxiliary else []
+    ratable_count = int(live_frame["ratable"].sum()) if "ratable" in live_frame else len(live_frame)
     return {
         "race_ids": sorted(predictions),
         "model_version": model_version,
@@ -158,6 +159,15 @@ def simulate_race(
             "WIN": "timestamped current runner WIN odds",
             "PLACE": "timestamped current runner PLACE odds",
             "exotics": "timestamped pool-specific HKJC combination odds when rendered",
+        },
+        "prediction_basis": {
+            "runners": len(live_frame),
+            "fundamental_ratable_runners": ratable_count,
+            "basis": "fundamental_plus_market" if ratable_count else "public_win_market_fallback",
+            "warning": None if ratable_count else (
+                "No runner had the complete live historical feature row required by the model; "
+                "runner strengths therefore use the documented public WIN fallback."
+            ),
         },
         "summary": summarize_recommendations(recommendations, len(candidates)),
         "recommendations": [asdict(item) for item in recommendations],

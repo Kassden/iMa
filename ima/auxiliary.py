@@ -126,12 +126,18 @@ class AuxiliaryModelBundle:
 
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
         frame = frame.copy()
-        for feature in self.feature_schema.numeric:
-            if feature not in frame:
-                frame[feature] = np.nan
-        for feature in self.feature_schema.categorical:
-            if feature not in frame:
-                frame[feature] = "UNKNOWN"
+        missing = {
+            feature: np.nan
+            for feature in self.feature_schema.numeric
+            if feature not in frame
+        }
+        missing.update({
+            feature: "UNKNOWN"
+            for feature in self.feature_schema.categorical
+            if feature not in frame
+        })
+        if missing:
+            frame = pd.concat([frame, pd.DataFrame(missing, index=frame.index)], axis=1)
         output = pd.DataFrame(index=frame.index)
         output["race_id"] = frame["race_id"].astype(str)
         if "horse_no" in frame:

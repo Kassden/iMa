@@ -76,6 +76,7 @@ class SimulatorTests(unittest.TestCase):
         self.assertAlmostEqual(cost, report["summary"]["total_cost"])
         self.assertAlmostEqual(gross, report["summary"]["expected_gross_return"])
         self.assertAlmostEqual(gross - cost, report["summary"]["expected_net_return"])
+        self.assertEqual("fundamental_plus_market", report["prediction_basis"]["basis"])
 
 
 if __name__ == "__main__":
