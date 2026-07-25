@@ -23,6 +23,8 @@ class ExperimentTests(unittest.TestCase):
         self.assertIn('"prediction_sources"', source)
         self.assertIn('"combined"', source)
         self.assertIn('"supported_pools"', source)
+        self.assertIn("feature_schema=feature_schema", source)
+        self.assertTrue(Path("scripts/run_benter_grid.py").exists())
 
     def test_pipeline_manifest_matches_active_feature_contract(self):
         manifest = pipeline_manifest()
@@ -76,6 +78,7 @@ class ExperimentTests(unittest.TestCase):
         for marker in (
             'id="family-filter"',
             'id="source-filter"',
+            'id="schema-filter"',
             'id="metric-select"',
             'id="sort-select"',
             'id="bar-chart"',
