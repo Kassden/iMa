@@ -59,6 +59,7 @@ def normalize_mexwell(path: Path, start_year: int = 2005, end_year: int = 2012) 
         "distance": source["distance"],
         "course": source["course"],
         "race_class": source["race_class"],
+        "gear": source["gears"].replace({"": "NONE", "--": "NONE"}),
         "source": "kaggle:mexwell-hkjc",
     })
     return frame.reindex(columns=CANONICAL_COLUMNS)
@@ -486,6 +487,7 @@ def enrich_horse_profiles(
     frame: pd.DataFrame,
     profiles_path: Path,
     form_path: Path,
+    age_references: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Join official profile attributes without leaking current form into old races."""
     enriched = frame.copy()
@@ -513,7 +515,9 @@ def enrich_horse_profiles(
     for column in ("horse_country", "horse_colour", "horse_type"):
         profile_column = f"{column}_profile"
         if profile_column in enriched:
-            enriched[column] = enriched[column].combine_first(enriched[profile_column])
+            enriched[column] = enriched[column].where(
+                enriched[column].notna(), enriched[profile_column]
+            )
             enriched = enriched.drop(columns=profile_column)
 
     race_year = pd.to_datetime(enriched["race_date"], errors="coerce").dt.year
@@ -523,6 +527,77 @@ def enrich_horse_profiles(
     projected_age = projected_age.where(projected_age.between(1, 20))
     existing_age = pd.to_numeric(enriched["horse_age"], errors="coerce")
     enriched["horse_age"] = existing_age.where(existing_age.notna(), projected_age)
+
+    references = profiles.rename(columns={
+        "horse_age_at_capture": "age_at_reference",
+        "capture_year": "reference_year",
+    })[[
+        "horse_page_id", "horse_id", "profile_year", "age_at_reference", "reference_year",
+    ]].dropna(subset=["age_at_reference", "reference_year"])
+    references["reference_priority"] = 2
+    if age_references is not None and not age_references.empty:
+        snapshots = age_references.copy()
+        if "horse_country" in snapshots:
+            snapshots = snapshots[snapshots["horse_country"].eq("HK")]
+        snapshots["age_at_reference"] = pd.to_numeric(snapshots["age"], errors="coerce")
+        snapshots["reference_year"] = pd.to_datetime(
+            snapshots["snapshot_at"], errors="coerce"
+        ).dt.year
+        snapshots = snapshots.dropna(subset=["horse_id", "age_at_reference", "reference_year"])
+        snapshots["_reference_id"] = range(len(snapshots))
+        identity_candidates = snapshots[[
+            "_reference_id", "horse_id", "age_at_reference", "reference_year",
+        ]].merge(
+            profiles[["horse_page_id", "horse_id", "profile_year"]].dropna(),
+            on="horse_id", how="inner",
+        )
+        identity_candidates = identity_candidates[
+            identity_candidates["profile_year"].le(identity_candidates["reference_year"])
+            & identity_candidates["reference_year"].sub(
+                identity_candidates["profile_year"]
+            ).le(12)
+        ]
+        identity_candidates = identity_candidates.sort_values("profile_year").drop_duplicates(
+            "_reference_id", keep="last"
+        )
+        snapshot_references = identity_candidates[[
+            "horse_page_id", "horse_id", "profile_year", "age_at_reference", "reference_year",
+        ]].copy()
+        snapshot_references["reference_priority"] = 1
+        references = pd.concat([references, snapshot_references], ignore_index=True)
+
+    missing_age = enriched["horse_age"].isna()
+    if missing_age.any() and not references.empty:
+        age_rows = enriched.loc[
+            missing_age, ["_row_id", "horse_page_id", "horse_id", "race_date"]
+        ].copy()
+        age_rows["race_year"] = pd.to_datetime(age_rows["race_date"], errors="coerce").dt.year
+        direct = age_rows.dropna(subset=["horse_page_id"]).merge(
+            references, on="horse_page_id", how="inner", suffixes=("", "_reference")
+        )
+        fallback = age_rows[age_rows["horse_page_id"].isna()].merge(
+            references, on="horse_id", how="inner", suffixes=("", "_reference")
+        )
+        fallback = fallback[
+            fallback["profile_year"].le(fallback["race_year"])
+            & fallback["race_year"].sub(fallback["profile_year"]).le(12)
+        ]
+        age_candidates = pd.concat([direct, fallback], ignore_index=True)
+        if not age_candidates.empty:
+            age_candidates["projected_age"] = age_candidates["age_at_reference"] + (
+                age_candidates["race_year"] - age_candidates["reference_year"]
+            )
+            age_candidates = age_candidates[age_candidates["projected_age"].between(2, 20)]
+            age_candidates["reference_distance"] = (
+                age_candidates["race_year"] - age_candidates["reference_year"]
+            ).abs()
+            age_candidates = age_candidates.sort_values(
+                ["reference_distance", "reference_priority"], ascending=[True, False]
+            ).drop_duplicates("_row_id", keep="first")
+            age_values = age_candidates.set_index("_row_id")["projected_age"]
+            enriched.loc[missing_age, "horse_age"] = enriched.loc[
+                missing_age, "_row_id"
+            ].map(age_values).to_numpy()
 
     missing_static = enriched[["horse_country", "horse_colour", "horse_type"]].isna().any(axis=1)
     fallback_rows = enriched.loc[
@@ -554,7 +629,7 @@ def enrich_horse_profiles(
         form = pd.read_csv(form_path, low_memory=False)
         if not form.empty and {"horse_page_id", "race_date", "horse_gear"}.issubset(form.columns):
             form["race_date"] = pd.to_datetime(form["race_date"], errors="coerce").dt.normalize()
-            form["horse_gear"] = form["horse_gear"].replace({"": pd.NA, "--": pd.NA})
+            form["horse_gear"] = form["horse_gear"].replace({"": "NONE", "--": "NONE"})
             gear_by_code = None
             if "horse_id" in form.columns:
                 gear_by_code = (
@@ -580,6 +655,8 @@ def enrich_horse_profiles(
                 enriched.loc[missing_gear, "gear"] = enriched.loc[
                     missing_gear, "_row_id"
                 ].map(gear_values).to_numpy()
+
+    enriched["gear"] = enriched["gear"].fillna("NONE")
 
     return enriched.reindex(columns=CANONICAL_COLUMNS)
 

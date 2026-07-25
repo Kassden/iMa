@@ -125,6 +125,37 @@ class HistoricalSourceTests(unittest.TestCase):
         self.assertEqual("AUS", enriched.iloc[1]["horse_country"])
         self.assertEqual("B/TT", enriched.iloc[1]["gear"])
 
+    def test_timestamped_age_reference_propagates_backward_and_forward(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profiles = root / "profiles.csv.gz"
+            form = root / "form.csv.gz"
+            pd.DataFrame([{
+                "horse_page_id": "HK_2020_A001", "horse_id": "A001",
+                "horse_country": "AUS", "horse_type": "Gelding",
+                "fetched_at": "2026-07-26T00:00:00+08:00",
+            }]).to_csv(profiles, index=False, compression="gzip")
+            pd.DataFrame(columns=["horse_page_id", "horse_id", "race_date", "horse_gear"]).to_csv(
+                form, index=False, compression="gzip"
+            )
+            references = pd.DataFrame([{
+                "horse_id": "A001", "horse_country": "HK", "age": 6,
+                "snapshot_at": "2024-06-01", "country": "AUS", "sex": "Gelding",
+            }])
+            rows = []
+            for race_date in ("2023-01-01", "2025-01-01"):
+                row = self.row("official:hkjc-results", 4.8)
+                row.update({
+                    "race_date": pd.Timestamp(race_date),
+                    "horse_page_id": "HK_2020_A001", "horse_id": "A001",
+                })
+                rows.append(row)
+            enriched = enrich_horse_profiles(
+                pd.DataFrame(rows), profiles, form, age_references=references
+            )
+        self.assertEqual([5, 7], enriched["horse_age"].tolist())
+        self.assertTrue(enriched["gear"].eq("NONE").all())
+
 
 if __name__ == "__main__":
     unittest.main()
