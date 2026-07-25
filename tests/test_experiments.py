@@ -50,11 +50,14 @@ class ExperimentTests(unittest.TestCase):
         template = Path("docs/model-results/dashboard-template.html").read_text(encoding="utf-8")
         for marker in (
             'id="family-filter"',
+            'id="source-filter"',
             'id="metric-select"',
             'id="sort-select"',
             'id="bar-chart"',
             'id="scatter-chart"',
             'id="progress-chart"',
+            'id="prediction-pipeline"',
+            'id="supported-pools"',
             'id="results-body"',
             'href="results.csv"',
             'href="results.json"',
