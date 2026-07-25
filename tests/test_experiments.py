@@ -33,6 +33,10 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(8, len(manifest["training"]))
         self.assertEqual(9, len(manifest["live"]))
         self.assertIn("trackwork records", manifest["collected_not_consumed_by_baseline"])
+        placeholders = {item["field"]: item["reason"] for item in manifest["historical_placeholders"]}
+        self.assertNotIn("surface", placeholders)
+        self.assertNotIn("prize", placeholders)
+        self.assertIn("horse profile page", placeholders["horse_age"])
         for stage in [*manifest["training"], *manifest["live"]]:
             self.assertEqual(
                 {"id", "name", "purpose", "inputs", "operations", "outputs", "fit_scope", "leakage_boundary"},
@@ -77,6 +81,7 @@ class ExperimentTests(unittest.TestCase):
             'id="bar-chart"',
             'id="scatter-chart"',
             'id="progress-chart"',
+            'id="progress-note"',
             'id="prediction-pipeline"',
             'id="pipeline-mode"',
             'id="pipeline-stage-nav"',
@@ -102,7 +107,7 @@ class ExperimentTests(unittest.TestCase):
             self.assertIn(marker, template)
 
     def test_feature_study_publication_merges_results_and_renders_dashboard(self):
-        summary = {"dataset": {"races": 1}, "runs": []}
+        summary = {"dataset": {"races": 1}, "runs": [{"run_id": "logit-c005-balanced"}]}
         report = {"selected_rich_model": "benter-rich-v1-boosted", "feature_ranking": []}
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -115,6 +120,9 @@ class ExperimentTests(unittest.TestCase):
             published = json.loads(results.read_text(encoding="utf-8"))
             rendered = output.read_text(encoding="utf-8")
         self.assertEqual(report, published["feature_study"])
+        self.assertEqual("baseline-v1", published["runs"][0]["feature_schema"])
+        self.assertEqual(23, published["runs"][0]["feature_count"])
+        self.assertEqual(23, len(published["runs"][0]["variables"]))
         self.assertIn('"selected_rich_model":"benter-rich-v1-boosted"', rendered)
 
     def test_correlation_matrix_payload_is_json_safe_and_labeled(self):

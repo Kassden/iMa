@@ -42,6 +42,9 @@ class DataTests(unittest.TestCase):
         self.assertTrue(frame.groupby("race_id")["market_probability"].sum().sub(1).abs().lt(1e-9).all())
         first_starts = frame.groupby("horse_id").head(1)
         self.assertTrue(first_starts["prior_starts"].eq(0).all())
+        self.assertGreater(frame["prize"].notna().mean(), 0.80)
+        self.assertTrue(set(frame["surface"].dropna().unique()).issubset({0.0, 1.0}))
+        self.assertIn(1.0, set(frame["surface"].dropna().unique()))
 
     def test_full_history_has_no_2005_overlap(self):
         frame = build_full_history_dataset(
