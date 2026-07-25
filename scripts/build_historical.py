@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from ima.historical_sources import (
-    iter_mexwell_odds, normalize_2008_2009, normalize_2008_2009_dividends,
+    enrich_horse_profiles, iter_mexwell_odds, normalize_2008_2009, normalize_2008_2009_dividends,
     normalize_2008_2009_incidents, normalize_2013_2020, normalize_datasetlabs_barriers,
     normalize_datasetlabs_racecards, normalize_gdaley_dividends,
     normalize_gdaley_final_odds, normalize_hrosebaby_barriers, normalize_hrosebaby_comments,
@@ -77,7 +77,33 @@ def main() -> int:
     if not official.empty:
         frames.append(official)
     canonical, conflicts = reconcile_sources(frames)
+    canonical = enrich_horse_profiles(
+        canonical,
+        args.output / "horse-profiles.csv.gz",
+        args.output / "horse-form.csv.gz",
+    )
     report = validate_canonical(canonical)
+    profile_path = args.output / "horse-profiles.csv.gz"
+    form_path = args.output / "horse-form.csv.gz"
+    profile_count = (
+        len(pd.read_csv(profile_path, usecols=["horse_page_id"]))
+        if profile_path.exists() else 0
+    )
+    form_count = (
+        len(pd.read_csv(form_path, usecols=["horse_page_id"]))
+        if form_path.exists() else 0
+    )
+    report["profile_enrichment"] = {
+        "source": "official:hkjc-horse-profile-and-form",
+        "profiles": profile_count,
+        "form_records": form_count,
+        "runner_coverage": {
+            "horse_age": float(canonical["horse_age"].notna().mean()),
+            "horse_country": float(canonical["horse_country"].notna().mean()),
+            "horse_type": float(canonical["horse_type"].notna().mean()),
+            "horse_gear": float(canonical["gear"].notna().mean()),
+        },
+    }
     args.output.mkdir(parents=True, exist_ok=True)
     canonical.to_csv(args.output / "runners.csv.gz", index=False, compression="gzip")
     conflicts.to_csv(args.output / "source-conflicts.csv.gz", index=False, compression="gzip")
