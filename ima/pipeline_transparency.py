@@ -37,7 +37,7 @@ def _historical_field_status(
     fields = {
         "horse_age": (
             "horse_age",
-            "Derived point-in-time from the horse profile page only when HKJC publishes an age; retired pages often omit it",
+            "Year-propagated from timestamped HKJC profile ages and identity-matched archived horse snapshots",
         ),
         "horse_country": (
             "horse_country",
@@ -49,7 +49,7 @@ def _historical_field_status(
         ),
         "horse_gear": (
             "gear",
-            "Race-specific gear from the official HKJC historical form row matched by horse profile ID and race date",
+            "Race-specific HKJC gear; blank or -- is the explicit NONE category rather than missing data",
         ),
     }
     available: dict[str, pd.Series] = {}
