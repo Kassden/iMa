@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 
 from ima.experiments import (
-    ExperimentSpec, default_experiment_specs, render_dashboard, results_frame, run_experiments,
+    ExperimentSpec, default_experiment_specs, merge_run_history, render_dashboard, results_frame,
+    run_experiments,
 )
 from ima.feature_sets import RICH_SCHEMA
 from ima.rich_features import load_full_rich_history
@@ -39,12 +40,19 @@ def main() -> int:
 
     public_results = args.public / "results.json"
     summary = json.loads(public_results.read_text(encoding="utf-8"))
+    previous_history = summary.get("run_history", summary["runs"])
     baseline_runs = [run for run in summary["runs"] if run.get("feature_schema") != RICH_SCHEMA.name]
     rich_runs = rich_summary["runs"]
     offset = len(baseline_runs)
     for run in rich_runs:
         run["sequence"] += offset
     summary["runs"] = [*baseline_runs, *rich_runs]
+    summary["run_history"] = merge_run_history(
+        previous_history,
+        rich_summary.get("run_history", rich_runs),
+        default_execution_id=summary.get("created_at"),
+    )
+    summary["updated_at"] = rich_summary["created_at"]
     summary["rich_grid"] = {
         "schema": RICH_SCHEMA.name,
         "run_count": len(rich_runs),

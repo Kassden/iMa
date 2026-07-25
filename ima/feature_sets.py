@@ -17,6 +17,16 @@ class FeatureSchema:
     def features(self) -> tuple[str, ...]:
         return (*self.numeric, *self.categorical)
 
+    def contract(self) -> dict:
+        return {
+            "name": self.name,
+            "count": len(self.features),
+            "numeric_count": len(self.numeric),
+            "categorical_count": len(self.categorical),
+            "numeric": list(self.numeric),
+            "categorical": list(self.categorical),
+        }
+
 
 BASELINE_SCHEMA = FeatureSchema("baseline-v1", NUMERIC_FEATURES, CATEGORICAL_FEATURES)
 
@@ -49,6 +59,11 @@ RICH_CATEGORICAL_FEATURES = (
     "venue", "course", "going", "surface", "horse_country", "horse_type", "horse_gear",
 )
 RICH_SCHEMA = FeatureSchema("benter-rich-v1", RICH_NUMERIC_FEATURES, RICH_CATEGORICAL_FEATURES)
+
+FEATURE_SCHEMAS = {
+    BASELINE_SCHEMA.name: BASELINE_SCHEMA,
+    RICH_SCHEMA.name: RICH_SCHEMA,
+}
 
 
 FEATURE_FAMILIES = {

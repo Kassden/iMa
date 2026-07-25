@@ -6,7 +6,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ima.experiments import default_experiment_specs, render_dashboard, results_frame
+from ima.experiments import (
+    default_experiment_specs, merge_run_history, render_dashboard, results_frame,
+)
 from ima.pipeline_transparency import pipeline_manifest
 from scripts.run_feature_study import matrix_payload, publish_dashboard
 
@@ -29,7 +31,11 @@ class ExperimentTests(unittest.TestCase):
     def test_pipeline_manifest_matches_active_feature_contract(self):
         manifest = pipeline_manifest()
         contract = manifest["feature_contract"]
+        contracts = manifest["feature_contracts"]
         self.assertEqual(23, contract["count"])
+        self.assertEqual("baseline-v1", contract["name"])
+        self.assertEqual(23, contracts["baseline-v1"]["count"])
+        self.assertEqual(81, contracts["benter-rich-v1"]["count"])
         self.assertEqual(17, len(contract["numeric"]))
         self.assertEqual(6, len(contract["categorical"]))
         self.assertEqual(8, len(manifest["training"]))
@@ -73,6 +79,13 @@ class ExperimentTests(unittest.TestCase):
             rendered = output.read_text(encoding="utf-8")
         self.assertIn('"run_id":"demo"', rendered)
         self.assertNotIn("__EXPERIMENT_DATA__", rendered)
+
+    def test_run_history_retains_repeated_run_ids_from_different_executions(self):
+        first = {"run_id": "demo", "feature_schema": "baseline-v1", "execution_id": "a"}
+        second = {"run_id": "demo", "feature_schema": "baseline-v1", "execution_id": "b"}
+        history = merge_run_history([first], [second])
+        self.assertEqual(2, len(history))
+        self.assertEqual(2, len({run["run_key"] for run in history}))
 
     def test_dashboard_template_contains_interactive_controls(self):
         template = Path("docs/model-results/dashboard-template.html").read_text(encoding="utf-8")

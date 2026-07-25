@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from .data import CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES
+from .feature_sets import FEATURE_SCHEMAS
 
 
 def _stage(
@@ -37,7 +38,7 @@ def _historical_field_status(
     fields = {
         "horse_age": (
             "horse_age",
-            "Year-propagated from timestamped HKJC profile ages and identity-matched archived horse snapshots",
+            "Year-propagated from timestamped HKJC horse profile page ages and identity-matched archived horse snapshots",
         ),
         "horse_country": (
             "horse_country",
@@ -348,7 +349,11 @@ def pipeline_manifest() -> dict:
     ]
 
     return {
+        "feature_contracts": {
+            name: schema.contract() for name, schema in FEATURE_SCHEMAS.items()
+        },
         "feature_contract": {
+            "name": "baseline-v1",
             "count": len(FEATURES),
             "numeric": list(NUMERIC_FEATURES),
             "categorical": list(CATEGORICAL_FEATURES),

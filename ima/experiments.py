@@ -117,8 +117,10 @@ def _run_one(
 
 def results_frame(summary: dict) -> pd.DataFrame:
     rows = []
-    for run in summary["runs"]:
+    for run in summary.get("run_history", summary["runs"]):
         row = {
+            "run_key": run.get("run_key"),
+            "execution_id": run.get("execution_id"),
             "run_id": run["run_id"],
             "kind": run["kind"],
             "parameters": json.dumps(run["parameters"], sort_keys=True),
@@ -135,6 +137,25 @@ def results_frame(summary: dict) -> pd.DataFrame:
                 row[f"{scope}_{metric}"] = value
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def merge_run_history(*collections: list[dict], default_execution_id: str | None = None) -> list[dict]:
+    """Merge persisted experiment executions without collapsing repeated run IDs."""
+    merged: dict[str, dict] = {}
+    for collection in collections:
+        for source in collection:
+            run = dict(source)
+            execution_id = run.get("execution_id") or default_execution_id or "legacy-import"
+            run["execution_id"] = execution_id
+            run_key = run.get("run_key") or (
+                f"{execution_id}|{run.get('feature_schema', 'baseline-v1')}|{run['run_id']}"
+            )
+            run["run_key"] = run_key
+            merged[run_key] = run
+    return sorted(
+        merged.values(),
+        key=lambda run: (run.get("execution_id", ""), run.get("sequence", 0), run["run_id"]),
+    )
 
 
 def _save_accuracy_graph(frame: pd.DataFrame, market: dict, output: Path) -> None:
@@ -196,10 +217,13 @@ def run_experiments(
     splits = chronological_race_split(frame)
     specs = specs or default_experiment_specs()
     market = evaluate_probabilities(splits.test["market_probability"].to_numpy(), splits.test)
+    execution_id = datetime.now(timezone.utc).isoformat()
     runs = []
     for sequence, spec in enumerate(specs):
         run = _run_one(spec, splits, output_dir / "models", feature_schema)
         run.update({
+            "execution_id": execution_id,
+            "run_key": f"{execution_id}|{feature_schema.name}|{spec.run_id}",
             "sequence": sequence,
             "feature_schema": feature_schema.name,
             "feature_count": len(feature_schema.features),
@@ -208,7 +232,7 @@ def run_experiments(
         runs.append(run)
     runs.sort(key=lambda run: run["test_fundamental"]["race_log_loss"])
     summary = {
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": execution_id,
         "dataset": {
             "runners": len(frame),
             "races": int(frame["race_id"].nunique()),
@@ -233,6 +257,7 @@ def run_experiments(
         "supported_pools": list(SUPPORTED_POOLS),
         "pipeline_manifest": pipeline_manifest(),
         "runs": runs,
+        "run_history": runs,
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "results.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
