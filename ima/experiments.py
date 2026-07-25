@@ -17,7 +17,7 @@ from .modeling import (
     evaluate_probabilities, incremental_pseudo_r2,
 )
 from .pipeline_transparency import pipeline_manifest
-from .pools import SUPPORTED_POOLS, fit_order_exponents
+from .pools import SUPPORTED_POOLS, evaluate_top_pool_selections, fit_order_exponents
 
 
 @dataclass(frozen=True)
@@ -80,6 +80,10 @@ def _run_one(
         splits.test["market_probability"].to_numpy(),
         splits.test["race_id"],
     )
+    pool_frame = splits.test.assign(
+        fundamental_probability=fundamental,
+        blended_probability=blended,
+    )
     artifact = {
         "model": model,
         "calibrator": calibrator,
@@ -112,6 +116,14 @@ def _run_one(
             blended,
             splits.test,
         ),
+        "pool_metrics": {
+            "fundamental": evaluate_top_pool_selections(
+                pool_frame, "fundamental_probability", exponents,
+            ),
+            "combined": evaluate_top_pool_selections(
+                pool_frame, "blended_probability", exponents,
+            ),
+        },
     }
 
 

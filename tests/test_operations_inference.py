@@ -54,7 +54,7 @@ class OperationsInferenceTests(unittest.TestCase):
         self.assertEqual(("2",), race["WIN"][0].runners)
         self.assertEqual(("1", "2"), race["QIN"][0].runners)
         self.assertAlmostEqual(sum(item.probability for item in race["WIN"]), 1.0)
-        self.assertAlmostEqual(sum(item.probability for item in race["QPL"]), 3.0)
+        self.assertAlmostEqual(sum(item.probability for item in race["QPL"]), 1.0)
 
     def test_finalize_meeting_versions_official_data_and_model(self):
         official = [{

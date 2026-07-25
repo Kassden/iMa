@@ -42,8 +42,8 @@ class ModelingTests(unittest.TestCase):
         self.assertAlmostEqual(sum(x.probability for x in rank_combinations(runners, strengths, "TIERCE")), 1.0)
 
     def test_quinella_place_means_both_horses_finish_in_top_three(self):
-        runners = ["1", "2", "3", "4"]
-        strengths = np.array([0.4, 0.3, 0.2, 0.1])
+        runners = ["1", "2", "3", "4", "5", "6", "7"]
+        strengths = np.array([0.28, 0.22, 0.18, 0.12, 0.09, 0.06, 0.05])
         quinella = {
             item.runners: item.probability
             for item in rank_combinations(runners, strengths, "QIN")

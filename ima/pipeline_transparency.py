@@ -323,7 +323,7 @@ def pipeline_manifest() -> dict:
                 "WIN: first horse; PLACE: horse appears in top places",
                 "QIN: top two in either order; QPL: selected pair both appear in top three",
                 "TRI: top three unordered; TIERCE: exact top-three order",
-                "FIRST4 and QUARTET: exact top-four order",
+                "FIRST4: first four in any order; QUARTET: exact top-four order",
                 "Rank combinations by probability; fair_odds = 1 / probability",
             ],
             ["Ranked pool combinations", "model probability", "model fair odds"],
