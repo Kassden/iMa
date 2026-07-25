@@ -42,6 +42,8 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(9, len(manifest["live"]))
         self.assertIn("trackwork records", manifest["collected_not_consumed_by_baseline"])
         placeholders = {item["field"]: item["reason"] for item in manifest["historical_placeholders"]}
+        self.assertIn("anonymized integers", manifest["legacy_age_provenance"]["reason"])
+        self.assertIn("obscured", manifest["legacy_age_provenance"]["reason"])
         self.assertNotIn("surface", placeholders)
         self.assertNotIn("prize", placeholders)
         self.assertIn("horse profile page", placeholders["horse_age"])
@@ -99,6 +101,9 @@ class ExperimentTests(unittest.TestCase):
             'id="scatter-chart"',
             'id="progress-chart"',
             'id="progress-note"',
+            'id="schema-contracts"',
+            'id="pool-chart"',
+            'id="pool-results-body"',
             'id="prediction-pipeline"',
             'id="pipeline-mode"',
             'id="pipeline-stage-nav"',
@@ -120,6 +125,8 @@ class ExperimentTests(unittest.TestCase):
             'href="results.csv"',
             'href="results.json"',
             "__EXPERIMENT_DATA__",
+            "Plotly.react",
+            "run_history",
         ):
             self.assertIn(marker, template)
 
