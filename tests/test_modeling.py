@@ -5,7 +5,7 @@ import pandas as pd
 
 from ima.feature_sets import FeatureSchema
 from ima.modeling import (
-    MarketBlend, TemperatureCalibrator, apply_public_fallback,
+    MarketBlend, MultiMarketBlend, TemperatureCalibrator, apply_public_fallback,
     evaluate_probabilities, incremental_pseudo_r2, normalize_by_race, RaceProbabilityModel,
 )
 from ima.pools import OrderExponents, canonical_pool_name, rank_combinations
@@ -33,6 +33,15 @@ class ModelingTests(unittest.TestCase):
         combined = blend.transform(calibrated, market, self.frame["race_id"])
         self.assertGreater(evaluate_probabilities(combined, self.frame)["top_pick_win_rate"], 0)
         np.testing.assert_allclose(pd.Series(combined).groupby(self.frame["race_id"]).sum(), 1.0)
+
+    def test_place_market_can_be_fitted_as_separate_market_source(self):
+        fundamental = np.array([0.6, 0.25, 0.15, 0.4, 0.6])
+        win_market = np.array([0.5, 0.3, 0.2, 0.55, 0.45])
+        place_market = np.array([0.45, 0.35, 0.20, 0.35, 0.65])
+        blend = MultiMarketBlend.fit(fundamental, win_market, place_market, self.frame)
+        combined = blend.transform(fundamental, win_market, self.frame["race_id"], place_market)
+        np.testing.assert_allclose(pd.Series(combined).groupby(self.frame["race_id"]).sum(), 1.0)
+        self.assertGreaterEqual(blend.place_market_weight, 0.0)
 
     def test_pool_probabilities_are_coherent(self):
         runners = ["1", "2", "3"]

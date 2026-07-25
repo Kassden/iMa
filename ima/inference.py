@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from .data import FEATURES
+from .feature_sets import BASELINE_SCHEMA
 from .modeling import apply_public_fallback, normalize_by_race
 from .pools import (
     CombinationProbability,
@@ -46,6 +47,13 @@ def legacy_live_frame(model_csv: pd.DataFrame) -> pd.DataFrame:
     frame["last_result"] = model_csv.get("prev_resu")
     frame["last_win_odds"] = model_csv.get("prev_odds")
     frame["last_finish_time"] = model_csv.get("fin_time")
+    frame["prior_second_count"] = model_csv.get("second_count")
+    frame["prior_third_count"] = model_csv.get("third_count")
+    frame["prior_second_rate"] = pd.to_numeric(frame["prior_second_count"], errors="coerce") / starts.replace(0, np.nan)
+    frame["prior_third_rate"] = pd.to_numeric(frame["prior_third_count"], errors="coerce") / starts.replace(0, np.nan)
+    frame["debut_flag"] = starts.fillna(0).eq(0).astype(float)
+    frame["last_place_odds"] = model_csv.get("place_odds")
+    frame["avg_result_2"] = model_csv.get("avg_2last")
     frame["venue"] = "UNKNOWN"
     frame["config"] = "UNKNOWN"
     frame["going"] = "UNKNOWN"
@@ -59,15 +67,45 @@ def legacy_live_frame(model_csv: pd.DataFrame) -> pd.DataFrame:
     raw_market = np.divide(1.0, odds, out=np.zeros_like(odds), where=odds > 1)
     frame["market_probability"] = normalize_by_race(raw_market, frame["race_id"])
     frame["win_odds"] = odds
+    place_odds = pd.to_numeric(
+        model_csv.get("place_odds", pd.Series(np.nan, index=model_csv.index)), errors="coerce"
+    ).to_numpy()
+    place_raw = np.divide(
+        1.0, place_odds, out=np.full_like(place_odds, np.nan), where=place_odds > 1,
+    )
+    place_strength = np.where(np.isfinite(place_raw), place_raw, raw_market)
+    frame["place_market_probability"] = normalize_by_race(place_strength, frame["race_id"])
+    frame["place_odds"] = place_odds
     frame["ratable"] = model_csv["prediction_ready"].astype(str).str.lower().isin({"true", "1"})
     return frame
 
 
+def _model_ready_frame(frame: pd.DataFrame, artifact: dict) -> pd.DataFrame:
+    ready = frame.copy()
+    schema = getattr(artifact.get("model"), "feature_schema", BASELINE_SCHEMA)
+    for feature in schema.numeric:
+        if feature not in ready:
+            ready[feature] = np.nan
+    for feature in schema.categorical:
+        if feature not in ready:
+            ready[feature] = "UNKNOWN"
+    return ready
+
+
 def predict_live_win(frame: pd.DataFrame, artifact: dict) -> np.ndarray:
+    frame = _model_ready_frame(frame, artifact)
     market = frame["market_probability"].to_numpy()
     raw = artifact["model"].predict_proba(frame)
     calibrated = artifact["calibrator"].transform(raw, frame["race_id"])
-    combined = artifact["blend"].transform(calibrated, market, frame["race_id"])
+    if hasattr(artifact["blend"], "place_market_weight"):
+        combined = artifact["blend"].transform(
+            calibrated,
+            market,
+            frame["race_id"],
+            frame["place_market_probability"].to_numpy(),
+        )
+    else:
+        combined = artifact["blend"].transform(calibrated, market, frame["race_id"])
     return apply_public_fallback(
         combined, market, frame["race_id"], frame["ratable"].to_numpy()
     )

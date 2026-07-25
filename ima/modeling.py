@@ -166,6 +166,52 @@ class MarketBlend:
         )
 
 
+@dataclass(frozen=True)
+class MultiMarketBlend:
+    fundamental_weight: float
+    win_market_weight: float
+    place_market_weight: float
+
+    @classmethod
+    def fit(
+        cls,
+        fundamental: np.ndarray,
+        win_market: np.ndarray,
+        place_market: np.ndarray,
+        frame: pd.DataFrame,
+    ) -> "MultiMarketBlend":
+        def objective(weights: np.ndarray) -> float:
+            combined = blend_multi_market_probabilities(
+                fundamental, win_market, place_market, frame["race_id"], *weights,
+            )
+            return race_log_loss(combined, frame)
+
+        result = minimize(
+            objective,
+            x0=np.array([1.0, 1.0, 0.5]),
+            bounds=((0.0, 4.0), (0.0, 4.0), (0.0, 4.0)),
+        )
+        return cls(float(result.x[0]), float(result.x[1]), float(result.x[2]))
+
+    def transform(
+        self,
+        fundamental: np.ndarray,
+        win_market: np.ndarray,
+        race_ids: pd.Series | np.ndarray,
+        place_market: np.ndarray | None = None,
+    ) -> np.ndarray:
+        place = win_market if place_market is None else place_market
+        return blend_multi_market_probabilities(
+            fundamental,
+            win_market,
+            place,
+            race_ids,
+            self.fundamental_weight,
+            self.win_market_weight,
+            self.place_market_weight,
+        )
+
+
 def blend_probabilities(
     fundamental: np.ndarray,
     market: np.ndarray,
@@ -175,6 +221,26 @@ def blend_probabilities(
 ) -> np.ndarray:
     score = np.power(np.clip(fundamental, 1e-12, 1.0), fundamental_weight)
     score *= np.power(np.clip(market, 1e-12, 1.0), market_weight)
+    return normalize_by_race(score, race_ids)
+
+
+def blend_multi_market_probabilities(
+    fundamental: np.ndarray,
+    win_market: np.ndarray,
+    place_market: np.ndarray,
+    race_ids: pd.Series | np.ndarray,
+    fundamental_weight: float,
+    win_market_weight: float,
+    place_market_weight: float,
+) -> np.ndarray:
+    win = normalize_by_race(np.asarray(win_market, dtype=float), race_ids)
+    place = np.asarray(place_market, dtype=float)
+    valid_place = np.isfinite(place) & (place > 0)
+    place = np.where(valid_place, place, win)
+    place = normalize_by_race(place, race_ids)
+    score = np.power(np.clip(fundamental, 1e-12, 1.0), fundamental_weight)
+    score *= np.power(np.clip(win, 1e-12, 1.0), win_market_weight)
+    score *= np.power(np.clip(place, 1e-12, 1.0), place_market_weight)
     return normalize_by_race(score, race_ids)
 
 

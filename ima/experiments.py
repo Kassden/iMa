@@ -13,7 +13,7 @@ import pandas as pd
 from .data import RaceSplits, chronological_race_split, validate_runner_dataset
 from .feature_sets import BASELINE_SCHEMA, FeatureSchema
 from .modeling import (
-    MarketBlend, RaceProbabilityModel, TemperatureCalibrator, disagreement_report,
+    MarketBlend, MultiMarketBlend, RaceProbabilityModel, TemperatureCalibrator, disagreement_report,
     evaluate_probabilities, incremental_pseudo_r2,
 )
 from .pipeline_transparency import pipeline_manifest
@@ -69,17 +69,35 @@ def _run_one(
     validation = calibrator.transform(validation_raw, splits.validation["race_id"])
     order_frame = splits.validation.assign(model_probability=validation)
     exponents = fit_order_exponents(order_frame, "model_probability")
-    blend = MarketBlend.fit(
-        validation,
-        splits.validation["market_probability"].to_numpy(),
-        splits.validation,
-    )
+    if "place_market_probability" in splits.validation and splits.validation[
+        "place_market_probability"
+    ].notna().any():
+        blend = MultiMarketBlend.fit(
+            validation,
+            splits.validation["market_probability"].to_numpy(),
+            splits.validation["place_market_probability"].to_numpy(),
+            splits.validation,
+        )
+    else:
+        blend = MarketBlend.fit(
+            validation,
+            splits.validation["market_probability"].to_numpy(),
+            splits.validation,
+        )
     fundamental = calibrator.transform(model.predict_proba(splits.test), splits.test["race_id"])
-    blended = blend.transform(
-        fundamental,
-        splits.test["market_probability"].to_numpy(),
-        splits.test["race_id"],
-    )
+    if isinstance(blend, MultiMarketBlend):
+        blended = blend.transform(
+            fundamental,
+            splits.test["market_probability"].to_numpy(),
+            splits.test["race_id"],
+            splits.test["place_market_probability"].to_numpy(),
+        )
+    else:
+        blended = blend.transform(
+            fundamental,
+            splits.test["market_probability"].to_numpy(),
+            splits.test["race_id"],
+        )
     pool_frame = splits.test.assign(
         fundamental_probability=fundamental,
         blended_probability=blended,
@@ -101,7 +119,8 @@ def _run_one(
         "duration_seconds": round(time.perf_counter() - started, 4),
         "temperature": calibrator.temperature,
         "fundamental_weight": blend.fundamental_weight,
-        "market_weight": blend.market_weight,
+        "market_weight": getattr(blend, "market_weight", getattr(blend, "win_market_weight", 0.0)),
+        "place_market_weight": getattr(blend, "place_market_weight", 0.0),
         "second_place_exponent": exponents.second,
         "third_place_exponent": exponents.third,
         "validation": evaluate_probabilities(validation, splits.validation),
@@ -140,6 +159,7 @@ def results_frame(summary: dict) -> pd.DataFrame:
             "temperature": run["temperature"],
             "fundamental_weight": run["fundamental_weight"],
             "market_weight": run["market_weight"],
+            "place_market_weight": run.get("place_market_weight", 0.0),
             "incremental_pseudo_r2": run["incremental_pseudo_r2"],
             "second_place_exponent": run["second_place_exponent"],
             "third_place_exponent": run["third_place_exponent"],
