@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import asdict
 from pathlib import Path
 
-from scrapper.historical.results import parse_results
+from scrapper.historical.results import parse_race
 
 
 def race_number(path: Path) -> int:
@@ -39,10 +39,11 @@ def main() -> int:
             race_no = race_number(path)
             try:
                 with gzip.open(path, "rt", encoding="utf-8") as handle:
-                    runners = parse_results(handle.read())
+                    race = parse_race(handle.read())
             except (OSError, ValueError) as exc:
                 report["errors"].append({"path": str(path), "error": str(exc)})
                 continue
+            runners = race.runners
             winners = sum(runner.place == 1 for runner in runners)
             report["dead_heat_races"] += int(winners > 1)
             report["races"] += 1
@@ -52,6 +53,12 @@ def main() -> int:
                 "venue": venue,
                 "race_no": race_no,
                 "source_url": existing.get(race_no),
+                "race_class": race.race_class,
+                "distance": race.distance,
+                "prize": race.prize,
+                "going": race.going,
+                "course": race.course,
+                "race_name": race.race_name,
                 "runners": [asdict(runner) for runner in runners],
             })
         destination.parent.mkdir(parents=True, exist_ok=True)
