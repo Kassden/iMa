@@ -71,6 +71,20 @@ Generate the top ranked pool outcomes from a scraped runner CSV and trusted mode
   --output artifacts/predictions/latest-pools.json
 ```
 
+Simulate tomorrow's displayed HKJC meeting with $10 stake units. The command
+uses current WIN, PLACE, and rendered exotic combination prices, writes exact
+cost and expected-return arithmetic, and never submits a wager:
+
+```sh
+.venv/bin/python -m scripts.simulate_tomorrow \
+  --bankroll 1000 \
+  --output artifacts/simulations/tomorrow
+```
+
+By default the command refuses to call a different displayed meeting
+"tomorrow". Pass `--allow-next-available` only when intentionally simulating
+the next meeting currently offered by HKJC.
+
 Run a fixture-backed scrape:
 
 ```sh
