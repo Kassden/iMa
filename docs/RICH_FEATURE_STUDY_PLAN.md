@@ -60,9 +60,9 @@
   - `ima/feature_sets.py`
   - `tests/test_rich_features.py`
 - Checklist:
-  - [ ] Define rich numeric and categorical feature names.
-  - [ ] Map features to Benter factor families and notebook origins.
-  - [ ] Keep the baseline schema byte-for-byte compatible.
+  - [x] Define rich numeric and categorical feature names.
+  - [x] Map features to Benter factor families and notebook origins.
+  - [x] Keep the baseline schema byte-for-byte compatible.
 
 ## Phase 2: Leakage-safe feature engineering
 
