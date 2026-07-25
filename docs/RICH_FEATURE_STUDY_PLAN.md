@@ -92,10 +92,10 @@
   - `scripts/run_feature_study.py`
   - `tests/test_feature_analysis.py`
 - Checklist:
-  - [ ] Calculate correlation and high-redundancy pairs.
-  - [ ] Calculate target association, FDR-adjusted significance, and mutual information.
-  - [ ] Calculate held-out feature and family permutation importance using race log loss.
-  - [ ] Train baseline and rich logistic/boosted challengers on the same race splits.
+  - [x] Calculate correlation and high-redundancy pairs.
+  - [x] Calculate target association, FDR-adjusted significance, and mutual information.
+  - [x] Calculate held-out feature and family permutation importance using race log loss.
+  - [x] Train baseline and rich logistic/boosted challengers on the same race splits.
 
 ## Phase 4: Dashboard publication and verification
 
