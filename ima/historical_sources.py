@@ -15,7 +15,9 @@ CANONICAL_COLUMNS = (
     "win_odds", "actual_weight", "declared_weight", "draw", "finish_time", "going",
     "rating", "jockey_id", "jockey_name", "trainer_id", "trainer_name", "distance",
     "course", "race_class", "prize", "horse_age", "horse_country", "horse_colour",
-    "horse_type", "gear", "lengths_behind", "running_position", "source",
+    "horse_type", "gear", "horse_age_reference_source", "horse_age_reference_year",
+    "horse_age_reference_value", "horse_age_year_offset", "horse_age_identity_method", "lengths_behind",
+    "running_position", "source",
 )
 
 POOL_NAMES = {
@@ -512,6 +514,12 @@ def enrich_horse_profiles(
     enriched = enriched.merge(
         profiles, on="horse_page_id", how="left", suffixes=("", "_profile")
     )
+    enriched["horse_age_reference_source"] = enriched[
+        "horse_age_reference_source"
+    ].astype("string")
+    enriched["horse_age_identity_method"] = enriched[
+        "horse_age_identity_method"
+    ].astype("string")
     for column in ("horse_country", "horse_colour", "horse_type"):
         profile_column = f"{column}_profile"
         if profile_column in enriched:
@@ -526,7 +534,17 @@ def enrich_horse_profiles(
     projected_age = captured_age - (capture_year - race_year)
     projected_age = projected_age.where(projected_age.between(1, 20))
     existing_age = pd.to_numeric(enriched["horse_age"], errors="coerce")
+    direct_reference = existing_age.isna() & projected_age.notna()
     enriched["horse_age"] = existing_age.where(existing_age.notna(), projected_age)
+    enriched.loc[direct_reference, "horse_age_reference_source"] = (
+        "official:hkjc-horse-profile"
+    )
+    enriched.loc[direct_reference, "horse_age_reference_year"] = capture_year[direct_reference]
+    enriched.loc[direct_reference, "horse_age_reference_value"] = captured_age[direct_reference]
+    enriched.loc[direct_reference, "horse_age_year_offset"] = (
+        race_year[direct_reference] - capture_year[direct_reference]
+    )
+    enriched.loc[direct_reference, "horse_age_identity_method"] = "horse-page-id-exact"
 
     references = profiles.rename(columns={
         "horse_age_at_capture": "age_at_reference",
@@ -535,6 +553,8 @@ def enrich_horse_profiles(
         "horse_page_id", "horse_id", "profile_year", "age_at_reference", "reference_year",
     ]].dropna(subset=["age_at_reference", "reference_year"])
     references["reference_priority"] = 2
+    references["reference_source"] = "official:hkjc-horse-profile"
+    references["reference_identity_method"] = "horse-page-id-exact"
     if age_references is not None and not age_references.empty:
         snapshots = age_references.copy()
         if "horse_country" in snapshots:
@@ -564,6 +584,8 @@ def enrich_horse_profiles(
             "horse_page_id", "horse_id", "profile_year", "age_at_reference", "reference_year",
         ]].copy()
         snapshot_references["reference_priority"] = 1
+        snapshot_references["reference_source"] = "kaggle:mexwell-hkjc-horse-snapshot"
+        snapshot_references["reference_identity_method"] = "horse-code-profile-cycle"
         references = pd.concat([references, snapshot_references], ignore_index=True)
 
     missing_age = enriched["horse_age"].isna()
@@ -575,9 +597,11 @@ def enrich_horse_profiles(
         direct = age_rows.dropna(subset=["horse_page_id"]).merge(
             references, on="horse_page_id", how="inner", suffixes=("", "_reference")
         )
+        direct["identity_method"] = direct["reference_identity_method"]
         fallback = age_rows[age_rows["horse_page_id"].isna()].merge(
             references, on="horse_id", how="inner", suffixes=("", "_reference")
         )
+        fallback["identity_method"] = "horse-code-profile-cycle"
         fallback = fallback[
             fallback["profile_year"].le(fallback["race_year"])
             & fallback["race_year"].sub(fallback["profile_year"]).le(12)
@@ -598,6 +622,23 @@ def enrich_horse_profiles(
             enriched.loc[missing_age, "horse_age"] = enriched.loc[
                 missing_age, "_row_id"
             ].map(age_values).to_numpy()
+            selected = age_candidates.set_index("_row_id")
+            selected_rows = enriched["_row_id"].map(selected["projected_age"]).notna()
+            enriched.loc[selected_rows, "horse_age_reference_source"] = enriched.loc[
+                selected_rows, "_row_id"
+            ].map(selected["reference_source"]).to_numpy()
+            enriched.loc[selected_rows, "horse_age_reference_year"] = enriched.loc[
+                selected_rows, "_row_id"
+            ].map(selected["reference_year"]).to_numpy()
+            enriched.loc[selected_rows, "horse_age_reference_value"] = enriched.loc[
+                selected_rows, "_row_id"
+            ].map(selected["age_at_reference"]).to_numpy()
+            enriched.loc[selected_rows, "horse_age_year_offset"] = enriched.loc[
+                selected_rows, "_row_id"
+            ].map(selected["race_year"] - selected["reference_year"]).to_numpy()
+            enriched.loc[selected_rows, "horse_age_identity_method"] = enriched.loc[
+                selected_rows, "_row_id"
+            ].map(selected["identity_method"]).to_numpy()
 
     missing_static = enriched[["horse_country", "horse_colour", "horse_type"]].isna().any(axis=1)
     fallback_rows = enriched.loc[

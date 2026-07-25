@@ -121,6 +121,11 @@ class HistoricalSourceTests(unittest.TestCase):
         self.assertEqual("AUS", enriched.iloc[0]["horse_country"])
         self.assertEqual("Gelding", enriched.iloc[0]["horse_type"])
         self.assertEqual(5, enriched.iloc[0]["horse_age"])
+        self.assertEqual(
+            "official:hkjc-horse-profile", enriched.iloc[0]["horse_age_reference_source"]
+        )
+        self.assertEqual(-3, enriched.iloc[0]["horse_age_year_offset"])
+        self.assertEqual("horse-page-id-exact", enriched.iloc[0]["horse_age_identity_method"])
         self.assertEqual("B/TT", enriched.iloc[0]["gear"])
         self.assertEqual("AUS", enriched.iloc[1]["horse_country"])
         self.assertEqual("B/TT", enriched.iloc[1]["gear"])
@@ -154,6 +159,15 @@ class HistoricalSourceTests(unittest.TestCase):
                 pd.DataFrame(rows), profiles, form, age_references=references
             )
         self.assertEqual([5, 7], enriched["horse_age"].tolist())
+        self.assertEqual(
+            ["kaggle:mexwell-hkjc-horse-snapshot"] * 2,
+            enriched["horse_age_reference_source"].tolist(),
+        )
+        self.assertEqual([-1, 1], enriched["horse_age_year_offset"].tolist())
+        self.assertEqual(
+            ["horse-code-profile-cycle"] * 2,
+            enriched["horse_age_identity_method"].tolist(),
+        )
         self.assertTrue(enriched["gear"].eq("NONE").all())
 
 
