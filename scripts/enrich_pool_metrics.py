@@ -7,7 +7,7 @@ from pathlib import Path
 import joblib
 
 from ima.data import build_full_history_dataset, chronological_race_split
-from ima.experiments import render_dashboard, results_frame
+from ima.experiments import merge_run_history, render_dashboard, results_frame
 from ima.pools import evaluate_top_pool_selections
 from ima.rich_features import load_full_rich_history
 
@@ -47,6 +47,21 @@ def main() -> int:
     args = parser.parse_args()
 
     summary = json.loads(args.results.read_text(encoding="utf-8"))
+    execution_by_schema = {}
+    for schema, report_path in {
+        "baseline-v1": Path("artifacts/experiments/full-history/results.json"),
+        "benter-rich-v1": Path("artifacts/experiments/benter-rich-grid/results.json"),
+    }.items():
+        execution_by_schema[schema] = json.loads(
+            report_path.read_text(encoding="utf-8")
+        )["created_at"]
+    for run in summary["runs"]:
+        schema = run.get("feature_schema", "baseline-v1")
+        run.setdefault("execution_id", execution_by_schema[schema])
+        run.setdefault("run_key", f"{run['execution_id']}|{schema}|{run['run_id']}")
+    summary["run_history"] = merge_run_history(
+        summary.get("run_history", []), summary["runs"],
+    )
     baseline = build_full_history_dataset(
         Path("track/hkracing 2/runs.csv"),
         Path("track/hkracing 2/races.csv"),

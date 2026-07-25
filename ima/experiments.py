@@ -147,6 +147,10 @@ def results_frame(summary: dict) -> pd.DataFrame:
         for scope in ("validation", "test_fundamental", "test_blended"):
             for metric, value in run[scope].items():
                 row[f"{scope}_{metric}"] = value
+        for source, pools in run.get("pool_metrics", {}).items():
+            for pool, metrics in pools.items():
+                for metric, value in metrics.items():
+                    row[f"pool_{source}_{pool.lower()}_{metric}"] = value
         rows.append(row)
     return pd.DataFrame(rows)
 
