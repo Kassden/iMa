@@ -32,9 +32,51 @@ class HistoricalResult:
     win_odds: float
 
 
-def parse_results(html: str) -> list[HistoricalResult]:
+@dataclass(frozen=True)
+class HistoricalRace:
+    race_class: str | None
+    distance: int | None
+    prize: float | None
+    going: str | None
+    course: str | None
+    race_name: str | None
+    runners: list[HistoricalResult]
+
+
+def _money(value: str) -> float | None:
+    match = re.search(r"(?:HK\$|\$)\s*([\d,]+(?:\.\d+)?)", value)
+    return float(match.group(1).replace(",", "")) if match else None
+
+
+def parse_race(html: str) -> HistoricalRace:
+    rows = table_rows(html)
+    race_class = None
+    distance = None
+    prize = None
+    going = None
+    course = None
+    race_name = None
+    for index, row in enumerate(rows):
+        if not row:
+            continue
+        details = re.match(r"^(.+?)\s+-\s+(\d+)M(?:\s+-\s+.*)?$", row[0].strip())
+        if not details:
+            continue
+        race_class = details.group(1).strip()
+        distance = int(details.group(2))
+        if len(row) >= 3 and row[1].strip().lower().startswith("going"):
+            going = row[2].strip() or None
+        if index + 1 < len(rows):
+            next_row = rows[index + 1]
+            race_name = (next_row[0].strip() or None) if next_row else None
+            if len(next_row) >= 3 and next_row[1].strip().lower().startswith("course"):
+                course = next_row[2].strip() or None
+        if index + 2 < len(rows):
+            prize = _money(rows[index + 2][0])
+        break
+
     results = []
-    for row in table_rows(html):
+    for row in rows:
         placing = re.match(r"(\d+)", row[0]) if row else None
         if len(row) < 12 or not placing or not row[1].isdigit():
             continue
@@ -53,7 +95,14 @@ def parse_results(html: str) -> list[HistoricalResult]:
             continue
     if not results:
         raise ValueError("No result runners found in HKJC archive page")
-    return results
+    return HistoricalRace(
+        race_class=race_class, distance=distance, prize=prize, going=going,
+        course=course, race_name=race_name, runners=results,
+    )
+
+
+def parse_results(html: str) -> list[HistoricalResult]:
+    return parse_race(html).runners
 
 
 def fetch_results(race_date: str, venue: str, race_no: int, timeout: float = 20.0) -> tuple[str, str]:
@@ -66,7 +115,7 @@ def fetch_results(race_date: str, venue: str, race_no: int, timeout: float = 20.
 
 def collect_result(race_date: str, venue: str, race_no: int, output_dir: Path) -> dict:
     html, source_url = fetch_results(race_date, venue, race_no)
-    results = parse_results(html)
+    race = parse_race(html)
     token = f"{race_date.replace('/', '-')}_{venue}_R{race_no}"
     raw_dir = output_dir / "raw"
     normalized_dir = output_dir / "normalized"
@@ -81,7 +130,13 @@ def collect_result(race_date: str, venue: str, race_no: int, output_dir: Path) -
         "venue": venue,
         "race_no": race_no,
         "source_url": source_url,
-        "runners": [asdict(result) for result in results],
+        "race_class": race.race_class,
+        "distance": race.distance,
+        "prize": race.prize,
+        "going": race.going,
+        "course": race.course,
+        "race_name": race.race_name,
+        "runners": [asdict(result) for result in race.runners],
     }
     normalized_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     return record
