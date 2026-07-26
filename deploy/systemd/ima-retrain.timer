@@ -1,0 +1,10 @@
+[Unit]
+Description=Retrain iMa after typical Hong Kong race meetings
+
+[Timer]
+OnCalendar=Wed,Sun *-*-* 23:30:00 Asia/Hong_Kong
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

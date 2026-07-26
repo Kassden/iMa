@@ -1,0 +1,16 @@
+{
+  "artifact_hashes": {
+    "boundary": "1ffb9c21f898f6d0d1bbd3514f3ded295b3bb8c45077d870f614d63d8d4d55fa",
+    "index": "38a0dbd899d3d8662cc91630d0cb0bdee54039afcf4af2338c113c324f5710a1",
+    "inventory": "88516d317455f738bd6fbd06bdf789b4f1ef4874b69feabae8829461b496ff9a",
+    "pattern_fit": "6e69207a503e12dc11e084ed64eac9182139c6fd079681b953c9d84b3cdbd6a0",
+    "scorecard": "cf2dc4dc9d87acf8b9a50863e1d7a1b1d68ca934aa032d405d4722370ae7d7e2"
+  },
+  "generated_at": "2025-02-01T15:57:48+08:00",
+  "generated_branch": "main",
+  "generated_commit": "2d5a6cb2d11b670087f68e16cdb481b7f255916d",
+  "megatect_version": "b158df8f994acdee2d4066891442b6551fc4bf4b",
+  "repo_root": "/Users/milkingthesun/Projects/iMa",
+  "schema_version": 1,
+  "source_files_hash": "33b116cfe63ecf2865c2c678f8c29662a24added4b369bdaba05af22794ff417"
+}

@@ -1,0 +1,4 @@
+digraph architecture {
+  rankdir="LR";
+  "scrapper";
+}

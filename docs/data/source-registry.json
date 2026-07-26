@@ -1,0 +1,136 @@
+{
+  "version": 2,
+  "updated_at": "2026-07-25",
+  "sources": [
+    {
+      "id": "hkjc-official-results",
+      "status": "bulk-acquisition-in-progress",
+      "url_template": "https://racing.hkjc.com/racing/information/English/Racing/LocalResults.aspx?RaceDate={YYYY/MM/DD}&Racecourse={ST|HV}&RaceNo={N}",
+      "verified_coverage": "2008-09 onward; 2018-2025 bulk scan in progress",
+      "fields": ["finish_order", "runner", "jockey", "trainer", "weights", "draw", "running_position", "finish_time", "win_odds"],
+      "odds_semantics": "Result-page WIN odds without an observation timestamp; final odds only.",
+      "license": "HKJC terms review required before redistribution"
+    },
+    {
+      "id": "mexwell-hkjc",
+      "status": "downloaded-normalized",
+      "url": "https://www.kaggle.com/datasets/mexwell/hong-kong-jockey-club-and-singapore-turfclub",
+      "sha256": "6448fa0d0948c0fd9e3c9d09e09ec0c0fbbef262a6533bb58a20e23cd7183546",
+      "coverage": "HK performances 1977-2018; canonical use 2005-2012; timestamped WIN/PLACE snapshots 2016-09-28 through 2018-06-27",
+      "fields": ["runners", "results", "win_odds", "timestamped_win_place_odds", "dividends", "sectionals", "horse_profiles"],
+      "odds_semantics": "capture_time is source-naive and timezone is unverified; preserve without conversion until validated",
+      "license": "Other, specified in dataset description; scraped public websites, no correctness guarantee; redistribution review required"
+    },
+    {
+      "id": "jeffreymuller-2013-2020",
+      "status": "downloaded-normalized",
+      "url": "https://www.kaggle.com/datasets/jeffreymuller/hong-kong-horse-races-from-2013-to-2020",
+      "sha256": "87b023fe72596615e4afdf8bca8321c88921c3200c5d3b85ae13156147469a44",
+      "coverage": "2013-2020, 6,361 races and 80,320 performance rows before reconciliation",
+      "fields": ["races", "results", "weights", "win_odds", "win_place_dividends", "conditions"],
+      "odds_semantics": "final/result odds; no timestamped trajectory",
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "id": "swords-2008-2009",
+      "status": "downloaded-normalized",
+      "url": "https://www.kaggle.com/datasets/frederickmau/0809-hong-kong-horse-racing-data",
+      "upstream": "https://www.swords-consulting.com/data-acquisition/horse-racing",
+      "sha256": "0a279c6b3d227c739f8689ccaf91a9c71c8c70e0a169dfc4c81a8518dd78c5e8",
+      "coverage": "2008-09 season; 9,383 runner results and 733 race incident reports",
+      "fields": ["runners", "results", "win_odds", "place_dividends", "incident_reports"],
+      "odds_semantics": "final/result odds and post-race dividends; observation time unavailable",
+      "license": "Unknown; not approved for redistribution"
+    },
+    {
+      "id": "gdaley-hkracing",
+      "status": "downloaded-supplemental",
+      "url": "https://www.kaggle.com/datasets/gdaley/hkracing",
+      "sha256": "c7cf1924ea2a3708b1186213bd5b55a6ed71c0493cca05a6689fa0da66d63f84",
+      "coverage": "Obscured source dates labeled 1997-06-02 through 2005-08-28; model use is limited to rows labeled before 2005 to avoid canonical overlap",
+      "fields": ["runners", "results", "win_place_final_odds", "win_place_dividends", "sectionals"],
+      "odds_semantics": "final/result odds; observation time unavailable",
+      "identity_semantics": "Horse, jockey, and trainer identities are anonymized integers. Kaggle states race dates are obscured and are not real calendar dates, although intervals are preserved. These IDs cannot be treated as HKJC horse codes.",
+      "license": "CC0 Public Domain"
+    },
+    {
+      "id": "hrosebaby-experts",
+      "status": "downloaded-supplemental",
+      "url": "https://www.kaggle.com/datasets/hrosebaby/horse-racing-dataset-for-experts-hong-kong",
+      "sha256": "ef7cd7507b858c05f70ac234c7e533bb71f426b0d6e0e1eb842633bc4de77167",
+      "coverage": "2015-06 through 2017-07",
+      "fields": ["648016_trackwork_events", "9219_barrier_trials", "21164_runner_comments", "horse_profiles", "results"],
+      "odds_semantics": "result odds only; no timestamped trajectory",
+      "license": "CC BY-NC-SA 4.0; non-commercial restriction applies"
+    },
+    {
+      "id": "lantanacamara-2014-2017",
+      "status": "downloaded-supplemental",
+      "url": "https://www.kaggle.com/datasets/lantanacamara/hong-kong-horse-racing",
+      "sha256": "8686bef80736e4fde65b3d1052c1e0e851ceeca57f803621a47436d49ab4959c",
+      "coverage": "2014-09-14 through 2017-07-16",
+      "fields": ["results", "sectionals", "2367_incident_reports"],
+      "odds_semantics": "final/result odds; observation time unavailable",
+      "license": "Unknown; not approved for redistribution"
+    },
+    {
+      "id": "bogdandoicin-2017-2020",
+      "status": "downloaded-quarantined-overlap",
+      "url": "https://www.kaggle.com/datasets/bogdandoicin/horse-racing-results-2017-2020",
+      "sha256": "1b6a58485b19bb7c547a6f672568bc4efdaf1d234636d598fcb5a92710742867",
+      "coverage": "2017-2020",
+      "fields": ["results", "odds", "ratings"],
+      "odds_semantics": "final/result odds",
+      "license": "Apache 2.0"
+    },
+    {
+      "id": "p768lwy3-horse-history",
+      "status": "downloaded-quarantined-overlap",
+      "url": "https://www.kaggle.com/datasets/p768lwy3/hongkonghorseracing",
+      "sha256": "225fc481d8d6988c586baaf6d3c1b3bf178e864b9531cda5db80ce33049eba10",
+      "coverage": "horse profiles and past records centered on 2016-2018",
+      "fields": ["horse_profiles", "past_performances"],
+      "odds_semantics": "final/result odds; zero values require missingness audit",
+      "license": "GPL 2.0"
+    },
+    {
+      "id": "github-heodi510-hk-horse-racing",
+      "status": "downloaded-quarantined-overlap",
+      "url": "https://github.com/heodi510/hk-horse-racing",
+      "sha256": "1b3b243defa56fe016d06f3e8e6f793f0718ce27b555b75ae7d5e13d2520fe71",
+      "coverage": "74,165 all-season runner rows from 2013-09-08 through 2021-01-06",
+      "fields": ["results", "win_odds", "weights", "running_positions", "season_files"],
+      "odds_semantics": "final/result odds; observation time unavailable",
+      "license": "No repository license detected; not approved for redistribution"
+    },
+    {
+      "id": "github-leowongco-ml-research",
+      "status": "downloaded-quarantined-unparsed",
+      "url": "https://github.com/leowongco/HKJC-Horse-Racing-ML-Research-Project",
+      "sha256": "9d0970c57bf8a4cbc7ee697ad43f54023724e8a511be04c769dc1b13f90ed47f",
+      "coverage": "Repository labels result parquet files for 2024, 2025, and 2026",
+      "fields": ["result_parquet"],
+      "odds_semantics": "Requires schema audit before use",
+      "license": "No repository license detected; not approved for redistribution"
+    },
+    {
+      "id": "datasetlabs-2024-sample",
+      "status": "downloaded-supplemental",
+      "url": "https://www.kaggle.com/datasets/datasetlabs/hong-kong-horse-racing-ml-dataset-2024-sample",
+      "sha256": "f2d941db37596cd63327be47f6df480e2e5be6f4e4ff95ffc15c77bdb897f73d",
+      "coverage": "Despite the title, observed files cover 2025-03-02 through 2025-04-15; 11 race-card dates and 1,000 barrier-trial rows",
+      "fields": ["point_in_time_racecards", "barrier_trials", "sample_results"],
+      "odds_semantics": "Race records contain final odds; race cards have no exact capture timestamp",
+      "license": "CC BY-NC-SA 4.0; non-commercial restriction applies"
+    },
+    {
+      "id": "internet-archive-wayback",
+      "status": "investigated-not-selected",
+      "url": "https://web.archive.org/",
+      "coverage": "A CDX query for the modern LocalResults route in 2005 returned no captures",
+      "fields": [],
+      "odds_semantics": "No reliable timestamped race-odds archive identified",
+      "license": "Per-capture source rights still apply"
+    }
+  ]
+}

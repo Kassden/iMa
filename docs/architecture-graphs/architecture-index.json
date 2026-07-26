@@ -1,0 +1,110 @@
+{
+  "root": "/Users/milkingthesun/Projects/iMa",
+  "system_root": "/Users/milkingthesun/Projects/iMa",
+  "files": 9,
+  "file_edges": 11,
+  "systems": {
+    "scrapper": [
+      "scrapper/__init__.py",
+      "scrapper/cli.py",
+      "scrapper/contracts.py",
+      "scrapper/history.py",
+      "scrapper/hkjc.py",
+      "scrapper/horse_pages.py",
+      "scrapper/pipeline.py",
+      "scrapper/tests/__init__.py",
+      "scrapper/tests/test_scrapper.py"
+    ]
+  },
+  "system_edges": [],
+  "edges": [
+    [
+      "scrapper/__init__.py",
+      "scrapper/pipeline.py"
+    ],
+    [
+      "scrapper/cli.py",
+      "scrapper/history.py"
+    ],
+    [
+      "scrapper/cli.py",
+      "scrapper/pipeline.py"
+    ],
+    [
+      "scrapper/pipeline.py",
+      "scrapper/contracts.py"
+    ],
+    [
+      "scrapper/pipeline.py",
+      "scrapper/history.py"
+    ],
+    [
+      "scrapper/pipeline.py",
+      "scrapper/hkjc.py"
+    ],
+    [
+      "scrapper/pipeline.py",
+      "scrapper/horse_pages.py"
+    ],
+    [
+      "scrapper/tests/test_scrapper.py",
+      "scrapper/contracts.py"
+    ],
+    [
+      "scrapper/tests/test_scrapper.py",
+      "scrapper/history.py"
+    ],
+    [
+      "scrapper/tests/test_scrapper.py",
+      "scrapper/horse_pages.py"
+    ],
+    [
+      "scrapper/tests/test_scrapper.py",
+      "scrapper/pipeline.py"
+    ]
+  ],
+  "cycles": [],
+  "system_cycles": [],
+  "top_hubs": {
+    "incoming": [
+      {
+        "node": "scrapper/history.py",
+        "count": 3
+      },
+      {
+        "node": "scrapper/pipeline.py",
+        "count": 3
+      },
+      {
+        "node": "scrapper/horse_pages.py",
+        "count": 2
+      },
+      {
+        "node": "scrapper/contracts.py",
+        "count": 2
+      },
+      {
+        "node": "scrapper/hkjc.py",
+        "count": 1
+      }
+    ],
+    "outgoing": [
+      {
+        "node": "scrapper/tests/test_scrapper.py",
+        "count": 4
+      },
+      {
+        "node": "scrapper/pipeline.py",
+        "count": 4
+      },
+      {
+        "node": "scrapper/cli.py",
+        "count": 2
+      },
+      {
+        "node": "scrapper/__init__.py",
+        "count": 1
+      }
+    ]
+  }
+}

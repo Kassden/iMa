@@ -1,0 +1,14 @@
+.venv/
+.mega/
+artifacts/
+data/
+deploy/
+docs/
+ima/
+notebooks/
+research/
+scrapper/
+scripts/
+tests/
+track/
+*.egg-info/

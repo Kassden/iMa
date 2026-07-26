@@ -1,0 +1,94 @@
+{
+  "data": {
+    "raceMeetings": [
+      {
+        "id": "meeting-1",
+        "venueCode": "ST",
+        "date": "2005-08-29",
+        "status": "Defined",
+        "races": [
+          {
+            "id": "race-live-1",
+            "no": "1",
+            "status": "Defined",
+            "postTime": "2005-08-29T13:00:00+08:00",
+            "distance": 1400,
+            "wageringFieldSize": 2,
+            "claCode": "5",
+            "raceClass_en": "Class 5",
+            "go_en": "GOOD",
+            "raceCourse": {"displayCode": "A", "description_en": "Course A"},
+            "runners": [
+              {
+                "id": "runner-1",
+                "no": "1",
+                "standbyNo": "",
+                "status": "Declared",
+                "name_en": "TEST HORSE",
+                "barrierDrawNumber": 7,
+                "handicapWeight": 133,
+                "currentWeight": 1020,
+                "currentRating": 60,
+                "internationalRating": 0,
+                "gearInfo": "--",
+                "allowance": 0,
+                "last6run": "321456",
+                "saddleClothNo": "1",
+                "winOdds": 10.5,
+                "horse": {"id": "HK_2023_J534", "code": "3917"},
+                "jockey": {"code": "2", "name_en": "JOCKEY"},
+                "trainer": {"code": "118", "name_en": "TRAINER"}
+              },
+              {
+                "id": "runner-2",
+                "no": "2",
+                "standbyNo": "",
+                "status": "Scratched",
+                "name_en": "SCRATCHED HORSE",
+                "barrierDrawNumber": 4,
+                "handicapWeight": 126,
+                "currentWeight": 1088,
+                "currentRating": 55,
+                "internationalRating": 0,
+                "gearInfo": "B",
+                "allowance": 0,
+                "last6run": "987654",
+                "saddleClothNo": "2",
+                "winOdds": 20,
+                "horse": {"id": "HK_2024_K001", "code": "CURRENT01"},
+                "jockey": {"code": "9", "name_en": "JOCKEY 2"},
+                "trainer": {"code": "10", "name_en": "TRAINER 2"}
+              }
+            ]
+          }
+        ],
+        "pmPools": [
+          {
+            "id": "place-pool",
+            "status": "Open",
+            "sellStatus": "Available",
+            "oddsType": "PLA",
+            "lastUpdateTime": "2005-08-29T12:55:02+08:00",
+            "minTicketCost": 10,
+            "oddsNodes": [
+              {"combString": "1", "oddsValue": "3.7", "hotFavourite": false, "oddsDropValue": null},
+              {"combString": "2", "oddsValue": "5.2", "hotFavourite": false, "oddsDropValue": null}
+            ]
+          },
+          {
+            "id": "win-pool",
+            "status": "Open",
+            "sellStatus": "Available",
+            "oddsType": "WIN",
+            "lastUpdateTime": "2005-08-29T12:55:03+08:00",
+            "minTicketCost": 10,
+            "oddsNodes": [
+              {"combString": "1", "oddsValue": "9.7", "hotFavourite": true, "oddsDropValue": "-0.5"},
+              {"combString": "2", "oddsValue": "18.0", "hotFavourite": false, "oddsDropValue": null}
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

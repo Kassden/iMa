@@ -1,0 +1,43 @@
+{
+  "root": "/Users/milkingthesun/Projects/iMa",
+  "files": 127,
+  "stacks": [
+    "python"
+  ],
+  "package_scripts": {},
+  "entrypoints": [],
+  "api_routes": [],
+  "workers": [
+    "notebooks/logreg_poly.joblib",
+    "notebooks/nn.joblib"
+  ],
+  "schemas": [
+    "notebooks/Model Selection and Creation.ipynb",
+    "notebooks/Simplified Horse Model Testing Multiclass.ipynb",
+    "notebooks/Simplified Horse Model Testing Polynomial.ipynb",
+    "notebooks/Simplified Horse Model Testing.ipynb",
+    "notebooks/TrackX_model_hyperparam_tunning (1).ipynb",
+    "notebooks/TrackX_model_hyperparam_tunning.ipynb"
+  ],
+  "configs": [],
+  "docs": [
+    "README.md",
+    "docs/architecture-graphs/architecture-index.json",
+    "docs/architecture-graphs/meta-systems.dot",
+    "docs/architecture-graphs/meta-systems.mmd",
+    "docs/architecture-graphs/whole-repo.dot",
+    "docs/architecture-graphs/whole-repo.mmd",
+    "docs/architecture/CONTEXT.md",
+    "docs/architecture/REPO_UNDERSTANDING.md",
+    "docs/architecture/TARGET_ARCHITECTURE.md",
+    "docs/architecture/boundary-report.json",
+    "docs/architecture/context-manifest.json",
+    "docs/architecture/inventory.json",
+    "docs/architecture/pattern-fit.json",
+    "docs/architecture/scorecard.json",
+    "docs/architecture/scorecard.md",
+    "notebooks/README.md",
+    "scrapper/README.md"
+  ],
+  "integrations": []
+}
