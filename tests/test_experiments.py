@@ -125,6 +125,8 @@ class ExperimentTests(unittest.TestCase):
             'id="numeric-features"',
             'id="unused-data"',
             'id="feature-study"',
+            'id="feature-study-schema-select"',
+            'id="feature-inactive-note"',
             'id="feature-importance-chart"',
             'id="feature-ranking-body"',
             'id="correlation-run-select"',

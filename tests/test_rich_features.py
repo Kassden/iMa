@@ -4,8 +4,8 @@ import pandas as pd
 
 from ima.data import FEATURES
 from ima.feature_sets import (
-    BASELINE_SCHEMA, BENTER_COVERAGE, FEATURE_FAMILIES, NOTEBOOK_RICH_SCHEMA, RICH_SCHEMA,
-    validate_feature_contract,
+    BASELINE_SCHEMA, BENTER_COVERAGE, FEATURE_FAMILIES, NOTEBOOK_FEATURE_FAMILIES,
+    NOTEBOOK_RICH_SCHEMA, RICH_SCHEMA, validate_feature_contract,
 )
 from ima.rich_features import parse_lengths, prepare_rich_runner_dataset
 
@@ -45,6 +45,11 @@ class RichFeatureContractTests(unittest.TestCase):
         self.assertGreater(len(RICH_SCHEMA.features), 60)
         self.assertGreater(len(NOTEBOOK_RICH_SCHEMA.features), len(RICH_SCHEMA.features))
         self.assertEqual(len(NOTEBOOK_RICH_SCHEMA.features), len(set(NOTEBOOK_RICH_SCHEMA.features)))
+        notebook_assigned = [
+            feature for values in NOTEBOOK_FEATURE_FAMILIES.values() for feature in values
+        ]
+        self.assertEqual(set(NOTEBOOK_RICH_SCHEMA.features), set(notebook_assigned))
+        self.assertEqual(len(notebook_assigned), len(set(notebook_assigned)))
 
     def test_benter_coverage_discloses_unsupported_factors(self):
         coverage = {row["factor"]: row["status"] for row in BENTER_COVERAGE}
