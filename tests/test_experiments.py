@@ -10,7 +10,10 @@ from ima.experiments import (
     default_experiment_specs, merge_run_history, render_dashboard, results_frame,
 )
 from ima.pipeline_transparency import pipeline_manifest
-from scripts.publish_latest_dashboard import compact_simulator_report, publish_latest_dashboard
+from scripts.publish_latest_dashboard import (
+    compact_notebook_history, compact_simulator_report, publish_latest_dashboard,
+)
+from scripts.run_benter_grid import selected_experiment_specs
 from scripts.run_feature_study import matrix_payload, publish_dashboard
 
 
@@ -20,6 +23,13 @@ class ExperimentTests(unittest.TestCase):
         self.assertGreaterEqual(len(specs), 12)
         self.assertEqual(len(specs), len({spec.run_id for spec in specs}))
         self.assertEqual({"logit", "boosted"}, {spec.kind for spec in specs})
+
+    def test_rich_grid_can_select_one_named_experiment(self):
+        specs = selected_experiment_specs(["boost-lr006-leaf15"])
+        self.assertEqual(1, len(specs))
+        self.assertEqual("notebook-boost-lr006-leaf15", specs[0].run_id)
+        self.assertEqual("boosted", specs[0].kind)
+        self.assertEqual(0.06, specs[0].parameters["learning_rate"])
 
     def test_dashboard_source_contract_names_market_combined_path(self):
         source = Path("ima/experiments.py").read_text(encoding="utf-8")
@@ -103,6 +113,8 @@ class ExperimentTests(unittest.TestCase):
             'id="scatter-chart"',
             'id="progress-chart"',
             'id="progress-note"',
+            'id="progress-summary"',
+            'id="show-all-runs"',
             'id="schema-contracts"',
             'id="pool-chart"',
             'id="pool-results-body"',
@@ -124,6 +136,7 @@ class ExperimentTests(unittest.TestCase):
             'id="benter-coverage-body"',
             'id="model-comparison-body"',
             'id="auxiliary-results"',
+            'id="notebook-full-history"',
             'id="auxiliary-chart"',
             'id="auxiliary-results-body"',
             'id="market-blend-weights"',
@@ -135,6 +148,8 @@ class ExperimentTests(unittest.TestCase):
             'href="results.json"',
             "__EXPERIMENT_DATA__",
             "Plotly.react",
+            "Execution time (points within each batch follow sweep order)",
+            "removeAllListeners",
             "run_history",
         ):
             self.assertIn(marker, template)
@@ -198,6 +213,16 @@ class ExperimentTests(unittest.TestCase):
     def test_compact_simulator_handles_no_available_race(self):
         compact = compact_simulator_report({"requested_date": "2026-07-27", "races": []})
         self.assertIsNone(compact["race"])
+
+    def test_compact_notebook_history_keeps_dataset_and_latest_run(self):
+        report = {
+            "created_at": "2026-07-26T09:22:39+00:00",
+            "dataset": {"runners": 271858, "races": 22144},
+            "runs": [{"run_id": "notebook-demo", "feature_schema": "notebook-rich-v2"}],
+        }
+        compact = compact_notebook_history(report)
+        self.assertEqual(271858, compact["dataset"]["runners"])
+        self.assertEqual("notebook-demo", compact["run"]["run_id"])
 
     def test_correlation_matrix_payload_is_json_safe_and_labeled(self):
         matrix = pd.DataFrame([[1.0, np.nan], [np.nan, 1.0]], columns=["a", "b"], index=["a", "b"])
