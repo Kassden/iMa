@@ -76,6 +76,7 @@
     .control { display: grid; gap: 4px; }
     .control select { min-width: 190px; padding: 0 34px 0 10px; }
     .segments { display: inline-grid; grid-template-columns: repeat(3, 1fr); }
+    #schema-filter { grid-template-columns: repeat(4, 1fr); }
     .segments button { border-radius: 0; min-width: 82px; padding: 0 12px; }
     #source-filter button { min-width: 108px; }
     .segments button:first-child { border-radius: 6px 0 0 6px; }
@@ -149,7 +150,7 @@
     .contract-summary { display: flex; gap: 28px; flex-wrap: wrap; margin-bottom: 18px; }
     .contract-summary strong { display: block; font-size: 20px; }
     .contract-summary span { color: var(--muted); font-size: 11px; }
-    .schema-contracts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
+    .schema-contracts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
     .schema-contract { border: 1px solid var(--line); border-radius: 6px; padding: 14px; text-align: left; background: #fff; }
     .schema-contract.active { border-color: var(--logit); box-shadow: inset 3px 0 0 var(--logit); background: var(--selected); }
     .schema-contract strong { display: block; font-size: 17px; }
@@ -174,6 +175,25 @@
     .source-comparison span { display: block; color: var(--muted); font-size: 11px; }
     .source-comparison strong { font-variant-numeric: tabular-nums; }
     .study-section { margin: 8px 0 34px; border-top: 1px solid var(--line); padding-top: 24px; }
+    .technical-section { margin: 8px 0 34px; border-top: 1px solid var(--line); padding-top: 24px; }
+    .technical-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 28px; margin: 22px 0 26px; }
+    .technical-block { min-width: 0; }
+    .technical-block h3 { margin: 0 0 5px; font-size: 14px; }
+    .technical-block > p { color: var(--muted); margin: 0 0 12px; font-size: 12px; }
+    .auxiliary-plot { width: 100%; height: 330px; }
+    .blend-list { display: grid; gap: 16px; margin-top: 18px; }
+    .blend-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 54px; align-items: center; gap: 10px; }
+    .blend-row span, .blend-row strong { font-size: 12px; }
+    .blend-track { height: 10px; background: var(--soft); border: 1px solid var(--line); }
+    .blend-fill { display: block; height: 100%; background: var(--logit); }
+    .blend-row:nth-child(2) .blend-fill { background: var(--market); }
+    .blend-row:nth-child(3) .blend-fill { background: var(--boosted); }
+    .boundary-note { border-left: 3px solid var(--market); padding: 10px 12px; background: #f7f9ff; color: #39445b; margin-top: 18px; }
+    .simulator-warning { border-left: 4px solid var(--boosted); padding: 14px 16px; background: #fff9f5; margin: 18px 0 22px; }
+    .simulator-warning strong { display: block; margin-bottom: 4px; }
+    .simulator-warning span { color: #5c554f; }
+    .simulation-meta { display: flex; flex-wrap: wrap; gap: 10px 22px; color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+    .simulation-meta strong { color: var(--ink); }
     .study-summary { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 18px; margin: 16px 0 24px; }
     .study-stat { border-top: 3px solid var(--line); padding-top: 9px; }
     .study-stat:nth-child(2) { border-color: var(--logit); }
@@ -221,6 +241,7 @@
       .stage-columns { grid-template-columns: 1fr; }
       .contract-grid { grid-template-columns: 1fr 1fr; }
       .study-grid { grid-template-columns: 1fr; }
+      .technical-grid { grid-template-columns: 1fr; }
       .matrix-layout { grid-template-columns: 1fr; }
       .method-grid { grid-template-columns: 1fr 1fr; }
     }
@@ -232,6 +253,7 @@
       .toolbar { align-items: stretch; }
       .toolbar, .toolbar-group { display: grid; grid-template-columns: 1fr; }
       .segments { width: 100%; }
+      #schema-filter { grid-template-columns: 1fr 1fr; }
       .segments button { min-width: 0; }
       .control select { width: 100%; min-width: 0; }
       .chart-wrap { height: 300px; }
@@ -249,6 +271,7 @@
       .source-comparison { grid-template-columns: 1fr 1fr 1fr; }
       .study-summary { grid-template-columns: 1fr 1fr; }
       .method-grid { grid-template-columns: 1fr; }
+      .blend-row { grid-template-columns: 100px minmax(0, 1fr) 48px; }
     }
   </style>
 </head>
@@ -298,7 +321,7 @@
 
       <section class="feature-contract" aria-labelledby="feature-contract-title">
         <h3 id="feature-contract-title">What actually enters the fundamental model</h3>
-        <p class="pipeline-note">There are two fitted estimator contracts. Baseline runs use 23 raw inputs; Benter-rich runs use 81. Select a contract or a run to inspect its exact variables. Current WIN odds remain outside both fundamental estimators and combine later.</p>
+        <p class="pipeline-note">There are three versioned estimator contracts: baseline uses 23 inputs, Benter-rich uses 81, and notebook-rich uses 166. Historical lagged odds may enter as prior form; current-race WIN and PLACE prices stay outside the fundamental estimator and combine later.</p>
         <div class="schema-contracts" id="schema-contracts"></div>
         <div class="contract-summary" id="feature-summary"></div>
         <div class="contract-grid">
@@ -320,6 +343,45 @@
         </div>
       </section>
       <p class="pipeline-note" id="market-limitation"></p>
+    </section>
+
+    <section class="technical-section" id="auxiliary-results" aria-labelledby="auxiliary-results-title">
+      <h2 id="auxiliary-results-title">Notebook-rich and auxiliary model results</h2>
+      <p class="pipeline-note">Bounded 19,998-runner smoke benchmark for the 166-input notebook-rich-v2 contract. It is shown separately because it is not directly comparable with the complete 1997-2025 run progression.</p>
+      <div class="study-summary" id="notebook-rich-summary"></div>
+      <div class="technical-grid">
+        <section class="technical-block">
+          <h3>Auxiliary target rank correlation</h3>
+          <p>Held-out Spearman correlation between each prediction and its actual target. Higher is better; this chart does not mix incompatible MAE units.</p>
+          <div class="auxiliary-plot" id="auxiliary-chart" role="img" aria-label="Auxiliary prediction Spearman correlation"></div>
+        </section>
+        <section class="technical-block">
+          <h3>Validation-fitted market blend</h3>
+          <p>Exponents in the combined winner score. They are fitted on validation races and frozen before the held-out test.</p>
+          <div class="blend-list" id="market-blend-weights"></div>
+          <div class="boundary-note">Current WIN and PLACE prices are market forecasts, not fundamental inputs. Historical lagged odds remain eligible point-in-time form variables.</div>
+        </section>
+      </div>
+      <section class="technical-block">
+        <h3>Auxiliary targets and selected tuning</h3>
+        <p>Each target is selected by validation MAE and evaluated once on the held-out test rows.</p>
+        <div class="table-scroll"><table class="compact-table">
+          <thead><tr><th>Target</th><th>Source</th><th>Validation MAE</th><th>Test MAE</th><th>Test Spearman</th><th>Additional test metric</th><th>Selected hyperparameters</th></tr></thead>
+          <tbody id="auxiliary-results-body"></tbody>
+        </table></div>
+      </section>
+    </section>
+
+    <section class="technical-section" id="simulator-results" aria-labelledby="simulator-results-title">
+      <h2 id="simulator-results-title">Latest paper simulation</h2>
+      <p class="pipeline-note">Paper simulation only. Expected values describe the supplied probability and price assumptions; they are not realized profit or evidence of a validated independent edge.</p>
+      <div class="simulation-meta" id="simulator-meta"></div>
+      <div class="study-summary" id="simulator-summary"></div>
+      <div class="simulator-warning" id="simulator-warning"></div>
+      <div class="table-scroll"><table class="compact-table">
+        <thead><tr><th>Race</th><th>Pool</th><th>Horse / combination</th><th>Stake</th><th>Probability</th><th>Fair odds</th><th>Market odds</th><th>Expected value / unit</th></tr></thead>
+        <tbody id="simulator-recommendations-body"></tbody>
+      </table></div>
     </section>
 
     <section class="study-section" id="feature-study" aria-labelledby="feature-study-title">
@@ -433,6 +495,7 @@
             <button type="button" class="active" data-schema="all">All</button>
             <button type="button" data-schema="baseline-v1">Baseline</button>
             <button type="button" data-schema="benter-rich-v1">Benter rich</button>
+            <button type="button" data-schema="notebook-rich-v2">Notebook rich</button>
           </div>
         </div>
         <div class="control">
@@ -503,7 +566,7 @@
         <table>
           <thead><tr>
             <th>Execution</th><th>Run</th><th>Family</th><th>Feature set</th><th>Variables</th><th>Top-1</th><th>Top-3</th><th>Winner rank</th>
-            <th>Log loss</th><th>Brier</th><th>ECE</th><th>Pseudo-R2</th><th>Blend fund.</th>
+            <th>Log loss</th><th>Brier</th><th>ECE</th><th>Pseudo-R2</th><th>Blend fund.</th><th>Blend WIN</th><th>Blend PLACE</th>
           </tr></thead>
           <tbody id="results-body"></tbody>
         </table>
@@ -531,7 +594,7 @@
       metric: "top_pick_win_rate",
       sort: "top_pick_win_rate",
       selected: null,
-      contractSchema: "benter-rich-v1",
+      contractSchema: "notebook-rich-v2",
       pipelineMode: "training",
       pipelineStage: 0,
       correlationRun: null,
@@ -660,6 +723,97 @@
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, rect.width, rect.height);
       return { context, width: rect.width, height: rect.height };
+    }
+
+    function renderNotebookRichResults() {
+      const winner = DATA.notebook_rich_benchmark;
+      const auxiliary = DATA.auxiliary_predictions;
+      if (!winner || !auxiliary) {
+        document.getElementById("auxiliary-results").hidden = true;
+        return;
+      }
+      const targets = auxiliary.targets || {};
+      document.getElementById("notebook-rich-summary").innerHTML = `
+        <div class="study-stat"><strong>${winner.dataset.features}</strong><span>Estimator inputs</span></div>
+        <div class="study-stat"><strong>${pct(winner.test_fundamental.top_pick_win_rate)}</strong><span>Fundamental Top-1</span></div>
+        <div class="study-stat"><strong>${pct(winner.test_combined.top_pick_win_rate)}</strong><span>Combined Top-1</span></div>
+        <div class="study-stat"><strong>${fmt(targets.finish_time.test.mae, 2)} sec</strong><span>Finish-time MAE</span></div>`;
+
+      const targetLabels = {
+        position: "Finishing position", finish_time: "Finish time",
+        win_odds: "Final WIN odds", place_odds: "Final PLACE odds"
+      };
+      const targetEntries = Object.entries(targets);
+      Plotly.react("auxiliary-chart", [{
+        type: "bar",
+        x: targetEntries.map(([name]) => targetLabels[name] || name),
+        y: targetEntries.map(([, target]) => target.test.spearman),
+        marker: { color: [COLORS.logit, COLORS.boosted, COLORS.market, "#7c3aed"] },
+        text: targetEntries.map(([, target]) => fmt(target.test.spearman, 3)),
+        textposition: "outside",
+        hovertemplate: "%{x}<br>Test Spearman %{y:.4f}<extra></extra>"
+      }], {
+        margin: { l: 58, r: 18, t: 18, b: 72 },
+        paper_bgcolor: "#fff", plot_bgcolor: "#fff",
+        xaxis: { tickangle: -18, gridcolor: "#edf0ee" },
+        yaxis: { title: "Held-out Spearman rho", range: [0, 1.08], gridcolor: "#edf0ee", zeroline: false },
+        font: { family: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", color: "#18201d" }
+      }, { responsive: true, displaylogo: false });
+
+      document.getElementById("auxiliary-results-body").innerHTML = targetEntries.map(([name, target]) => {
+        const extra = name === "position"
+          ? `Top-1 ${pct(target.test.top_pick_win_rate)} / rank MAE ${fmt(target.test.rank_mae, 2)}`
+          : `RMSE ${fmt(target.test.rmse, 3)}`;
+        return `<tr><td>${escapeHtml(targetLabels[name] || name)}</td><td><code>${escapeHtml(target.source)}</code></td>
+          <td>${fmt(target.validation.mae, 3)}</td><td>${fmt(target.test.mae, 3)}</td>
+          <td>${fmt(target.test.spearman, 4)}</td><td>${extra}</td>
+          <td><code>${escapeHtml(JSON.stringify(target.selected_parameters))}</code></td></tr>`;
+      }).join("");
+
+      const blend = [
+        ["Fundamental", winner.blend.fundamental_weight],
+        ["WIN market", winner.blend.win_market_weight],
+        ["PLACE market", winner.blend.place_market_weight]
+      ];
+      const maxWeight = Math.max(...blend.map(([, value]) => value), 1e-9);
+      document.getElementById("market-blend-weights").innerHTML = blend.map(([label, value]) => `
+        <div class="blend-row"><span>${label}</span><div class="blend-track"><span class="blend-fill" style="width:${value / maxWeight * 100}%"></span></div><strong>${fmt(value, 3)}</strong></div>`).join("");
+    }
+
+    function renderSimulator() {
+      const simulator = DATA.simulator;
+      const race = simulator?.race;
+      if (!simulator || !race) {
+        document.getElementById("simulator-results").hidden = true;
+        return;
+      }
+      const meeting = simulator.meeting || {};
+      const summary = race.summary || {};
+      const basis = race.prediction_basis || {};
+      document.getElementById("simulator-meta").innerHTML = `
+        <span>Requested date <strong>${escapeHtml(simulator.requested_date)}</strong></span>
+        <span>HKJC displayed <strong>${escapeHtml(simulator.displayed_date)}</strong></span>
+        <span>Date status <strong>${escapeHtml(String(simulator.date_status).replaceAll("_", " "))}</strong></span>
+        <span>Race <strong>${race.race_no}</strong></span>
+        <span>Prediction basis <strong>${escapeHtml(String(basis.basis).replaceAll("_", " "))}</strong></span>`;
+      document.getElementById("simulator-summary").innerHTML = `
+        <div class="study-stat"><strong>$${fmt(meeting.total_cost, 2)}</strong><span>Total paper cost</span></div>
+        <div class="study-stat"><strong>${summary.priced_candidates || 0}</strong><span>Priced candidates</span></div>
+        <div class="study-stat"><strong>${summary.recommended_bets || 0}</strong><span>Recommended bets</span></div>
+        <div class="study-stat"><strong>${fmt(meeting.expected_wins || 0, 3)}</strong><span>Expected winning bets</span></div>
+        <div class="study-stat"><strong>$${fmt(meeting.expected_gross_return || 0, 2)}</strong><span>Expected gross return</span></div>
+        <div class="study-stat"><strong>$${fmt(meeting.expected_net_return || 0, 2)}</strong><span>Expected net return</span></div>
+        <div class="study-stat"><strong>${pct(meeting.expected_roi || 0)}</strong><span>Assumption-based expected ROI</span></div>`;
+      document.getElementById("simulator-warning").innerHTML = `
+        <strong>Public-market fallback: no independent fundamental signal in this simulation</strong>
+        <span>${escapeHtml(basis.warning || "The prediction basis uses public market probabilities.")}</span>`;
+      const recommendations = race.recommendations || [];
+      document.getElementById("simulator-recommendations-body").innerHTML = recommendations.length
+        ? recommendations.map(item => `<tr><td>${race.race_no}</td><td>${escapeHtml(item.pool)}</td>
+          <td>${escapeHtml(item.combination.join(" + "))}</td><td>$${fmt(item.stake, 2)}</td>
+          <td>${pct(item.probability)}</td><td>${fmt(item.fair_odds, 2)}</td>
+          <td>${fmt(item.current_decimal_odds, 2)}</td><td>${pct(item.expected_value_per_unit)}</td></tr>`).join("")
+        : `<tr><td colspan="8">No paper wagers passed the configured limits.</td></tr>`;
     }
 
     function renderFeatureStudy() {
@@ -1048,6 +1202,8 @@
           <div><dt>Mean winner rank</dt><dd>${fmt(metrics.mean_winner_rank, 2)}</dd></div>
           <div><dt>Temperature</dt><dd>${fmt(run.temperature, 3)}</dd></div>
           <div><dt>Blend fundamental</dt><dd>${fmt(run.fundamental_weight, 3)}</dd></div>
+          <div><dt>Blend WIN market</dt><dd>${fmt(run.market_weight, 3)}</dd></div>
+          <div><dt>Blend PLACE market</dt><dd>${fmt(run.place_market_weight || 0, 3)}</dd></div>
           <div><dt>Incremental Pseudo-R2</dt><dd>${fmt(run.incremental_pseudo_r2)}</dd></div>
           <div><dt>2nd exponent</dt><dd>${fmt(run.second_place_exponent, 3)}</dd></div>
           <div><dt>3rd exponent</dt><dd>${fmt(run.third_place_exponent, 3)}</dd></div>
@@ -1083,6 +1239,8 @@
           <td>${fmt(metrics.ece)}</td>
           <td>${fmt(metrics.pseudo_r2)}</td>
           <td>${fmt(run.fundamental_weight, 3)}</td>
+          <td>${fmt(run.market_weight, 3)}</td>
+          <td>${fmt(run.place_market_weight || 0, 3)}</td>
         </tr>`;
       }).join("");
       document.querySelectorAll("#results-body tr").forEach(row => {
@@ -1145,6 +1303,8 @@
     window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { drawFeatureImportance(); drawCorrelationMatrix(); drawBarChart(); drawScatterChart(); drawProgressChart(); }, 100); });
     renderFeatureContract();
     renderPipeline();
+    renderNotebookRichResults();
+    renderSimulator();
     renderFeatureStudy();
     render();
   </script>
