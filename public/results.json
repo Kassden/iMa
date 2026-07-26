@@ -161,6 +161,182 @@
           "horse_type",
           "horse_gear"
         ]
+      },
+      "notebook-rich-v2": {
+        "name": "notebook-rich-v2",
+        "count": 166,
+        "numeric_count": 155,
+        "categorical_count": 11,
+        "numeric": [
+          "horse_age",
+          "horse_rating",
+          "declared_weight",
+          "actual_weight",
+          "draw",
+          "distance",
+          "race_class",
+          "prize",
+          "field_size",
+          "official_source",
+          "prior_starts",
+          "prior_win_rate",
+          "prior_top3_rate",
+          "prior_avg_result",
+          "prior_avg_odds",
+          "days_since_last_race",
+          "last_result",
+          "avg_result_2",
+          "avg_result_3",
+          "avg_result_5",
+          "last_speed_ratio",
+          "avg_speed_ratio_3",
+          "avg_speed_ratio_5",
+          "last_lengths_behind",
+          "avg_lengths_behind_3",
+          "last_late_position_gain",
+          "avg_late_position_gain_3",
+          "last_distance",
+          "distance_change",
+          "last_carried_weight",
+          "carried_weight_change",
+          "last_body_weight",
+          "body_weight_change",
+          "body_weight_change_pct",
+          "last_rating",
+          "rating_change",
+          "class_change",
+          "distance_band_starts",
+          "distance_band_win_rate",
+          "distance_band_top3_rate",
+          "venue_starts",
+          "venue_win_rate",
+          "course_starts",
+          "course_win_rate",
+          "going_starts",
+          "going_win_rate",
+          "surface_starts",
+          "surface_win_rate",
+          "jockey_starts",
+          "jockey_win_rate",
+          "jockey_top3_rate",
+          "trainer_starts",
+          "trainer_win_rate",
+          "trainer_top3_rate",
+          "jockey_trainer_starts",
+          "jockey_trainer_win_rate",
+          "horse_jockey_starts",
+          "horse_jockey_win_rate",
+          "draw_bias_starts",
+          "draw_bias_win_rate",
+          "draw_bias_top3_rate",
+          "trackwork_available",
+          "days_since_trackwork",
+          "trackwork_7d",
+          "trackwork_14d",
+          "trackwork_30d",
+          "barrier_available",
+          "days_since_trial",
+          "trials_90d",
+          "last_trial_placing",
+          "last_trial_speed",
+          "sectionals_available",
+          "last_sectional_time",
+          "last_sectional_position",
+          "prior_second_count",
+          "prior_third_count",
+          "prior_second_rate",
+          "prior_third_rate",
+          "debut_flag",
+          "last_win_odds",
+          "last_place_odds",
+          "avg_win_odds_2",
+          "avg_win_odds_3",
+          "avg_win_odds_4",
+          "avg_win_odds_6",
+          "avg_place_odds_2",
+          "avg_place_odds_3",
+          "avg_place_odds_4",
+          "avg_place_odds_6",
+          "avg_result_6",
+          "avg_speed_ratio_2",
+          "avg_speed_ratio_4",
+          "avg_speed_ratio_6",
+          "total_distance_4",
+          "weight_change_per_day",
+          "avg_result_84d",
+          "avg_result_112d",
+          "avg_result_168d",
+          "avg_result_183d",
+          "median_result_183d",
+          "best_result_183d",
+          "worst_result_183d",
+          "avg_speed_ratio_183d",
+          "avg_same_distance_finish_time_183d",
+          "current_season_starts",
+          "current_season_avg_result",
+          "previous_season_avg_result",
+          "jockey_last_result",
+          "jockey_last_speed_ratio",
+          "jockey_avg_result_90d",
+          "trainer_last_result",
+          "trainer_avg_result_90d",
+          "last_position_sec1",
+          "last_position_sec2",
+          "last_position_sec3",
+          "last_position_sec4",
+          "age_rank",
+          "rating_rank",
+          "carried_weight_rank",
+          "body_weight_rank",
+          "carried_weight_change_rank",
+          "prior_speed_rank",
+          "distance_experience_rank",
+          "prior_form_rank",
+          "last_position_sec1_rank",
+          "last_position_sec2_rank",
+          "last_position_sec3_rank",
+          "last_position_sec4_rank",
+          "profile_available",
+          "season_stakes",
+          "total_stakes",
+          "start_of_season_rating",
+          "rating_change_from_season_start",
+          "starts_past_10_meetings",
+          "veterinary_available",
+          "days_since_veterinary",
+          "veterinary_events_30d",
+          "veterinary_events_90d",
+          "injury_events_365d",
+          "fracture_events_365d",
+          "surgery_events_365d",
+          "movement_available",
+          "days_since_movement",
+          "movements_365d",
+          "days_since_hk_arrival",
+          "poly_age_sq",
+          "poly_rating_sq",
+          "poly_distance_sq",
+          "poly_draw_sq",
+          "poly_rating_prior_win",
+          "poly_rating_recent_speed",
+          "poly_age_distance",
+          "poly_draw_distance",
+          "poly_weight_change_distance",
+          "poly_jockey_trainer_win"
+        ],
+        "categorical": [
+          "venue",
+          "course",
+          "going",
+          "surface",
+          "horse_country",
+          "horse_type",
+          "horse_gear",
+          "horse_colour",
+          "import_type",
+          "sire",
+          "dam_sire"
+        ]
       }
     },
     "feature_contract": {
@@ -196,8 +372,11 @@
       "target": "target_win",
       "excluded_market_fields": [
         "win_odds",
+        "place_odds",
         "market_raw",
-        "market_probability"
+        "market_probability",
+        "place_market_raw",
+        "place_market_probability"
       ]
     },
     "historical_placeholders": [
@@ -314,7 +493,7 @@
           "market_probability"
         ],
         "fit_scope": "No parameters fitted",
-        "leakage_boundary": "Result and final odds are labels/benchmarks. They are not included in the 23 fundamental model features."
+        "leakage_boundary": "Result and current-race final odds are labels/benchmarks. Only lagged odds from earlier races may enter a fundamental feature schema."
       },
       {
         "id": "train-history",
@@ -371,11 +550,11 @@
       },
       {
         "id": "train-preprocess",
-        "name": "Fit model preprocessing",
-        "purpose": "Convert the 23 raw feature columns into an estimator matrix.",
+        "name": "Fit schema-specific model preprocessing",
+        "purpose": "Convert the selected versioned feature contract into an estimator matrix.",
         "inputs": [
-          "17 numeric features",
-          "6 categorical features"
+          "Numeric columns declared by the selected schema",
+          "Categorical columns declared by the selected schema"
         ],
         "operations": [
           "Numeric: median imputation fitted on train rows",
@@ -408,7 +587,7 @@
           "fundamental_raw_probability per runner"
         ],
         "fit_scope": "Estimator fitted on train races only",
-        "leakage_boundary": "Current WIN odds and market_probability are deliberately excluded from FEATURES and remain independently measurable."
+        "leakage_boundary": "Current WIN and PLACE prices are excluded from every fundamental schema. Lagged prior-race prices are point-in-time history features."
       },
       {
         "id": "train-validation",
@@ -422,13 +601,14 @@
         "operations": [
           "Temperature: minimize validation race log loss over exp(log_temperature), bounded to exp(-2.5)..exp(2.5)",
           "Calibrate as p^(1 / temperature), then normalize within race",
-          "Market blend: minimize validation race log loss for fundamental^wf * market^wm, wf and wm each bounded 0..4",
+          "Market blend: minimize validation race log loss for fundamental^wf * WIN^ww * PLACE^wp, with each available weight bounded 0..4",
           "Fit Benter second- and third-place exponents independently in bounds 0.2..2.0"
         ],
         "outputs": [
           "temperature",
           "fundamental_weight",
           "market_weight",
+          "place_market_weight",
           "second exponent",
           "third exponent"
         ],
@@ -511,8 +691,8 @@
       },
       {
         "id": "live-map",
-        "name": "Map scraper columns into the 23-feature contract",
-        "purpose": "Translate the live model CSV into the exact columns accepted by the trained pipeline.",
+        "name": "Map scraper columns into the selected feature contract",
+        "purpose": "Translate the live model CSV into the exact versioned columns accepted by the trained pipeline.",
         "inputs": [
           "model.csv",
           "prediction_ready"
@@ -527,12 +707,12 @@
           "Create any absent feature as null for fitted imputation"
         ],
         "outputs": [
-          "Live DataFrame containing FEATURES",
+          "Live DataFrame containing the artifact's feature schema",
           "ratable boolean",
-          "win_odds"
+          "WIN and PLACE prices"
         ],
         "fit_scope": "Uses preprocessing already fitted in the model artifact",
-        "leakage_boundary": "A feature may be collected but still not enter FEATURES. The feature contract below is authoritative."
+        "leakage_boundary": "A feature may be collected but still not enter the selected schema. The artifact's feature contract below is authoritative."
       },
       {
         "id": "live-fundamental",
@@ -554,23 +734,26 @@
           "calibrated fundamental probability"
         ],
         "fit_scope": "No live fitting",
-        "leakage_boundary": "The runner's current WIN odds do not enter this fundamental path."
+        "leakage_boundary": "The runner's current WIN and PLACE odds do not enter this fundamental path."
       },
       {
         "id": "live-market",
-        "name": "Convert live WIN odds into market probability",
-        "purpose": "Represent the public market as a separate probability forecast.",
+        "name": "Convert live WIN and PLACE odds into market probabilities",
+        "purpose": "Represent the current public markets as separate probability forecasts.",
         "inputs": [
-          "decimal win_odds",
+          "decimal WIN odds",
+          "decimal PLACE odds",
           "race_id",
           "odds_updated_at"
         ],
         "operations": [
-          "market_raw = 1 / win_odds for odds greater than 1",
-          "Normalize market_raw within race so probabilities sum to 1"
+          "WIN market_raw = 1 / win_odds for odds greater than 1",
+          "PLACE market_raw = 1 / place_odds for available odds greater than 1",
+          "Normalize each market independently within race"
         ],
         "outputs": [
-          "market_probability"
+          "market_probability",
+          "place_market_probability"
         ],
         "fit_scope": "No live fitting",
         "leakage_boundary": "Only a snapshot observed before the decision may be used. Result-page final odds are invalid for live decisions."
@@ -581,12 +764,13 @@
         "purpose": "Apply validation-fitted weights to produce the decision probability.",
         "inputs": [
           "calibrated fundamental",
-          "market_probability",
-          "fundamental_weight",
-          "market_weight"
+          "WIN market probability",
+          "PLACE market probability",
+          "three validation-fitted weights"
         ],
         "operations": [
-          "score = fundamental^fundamental_weight * market^market_weight",
+          "score = fundamental^wf * WIN^ww * PLACE^wp when PLACE is available",
+          "Fall back to the fitted fundamental + WIN transform when PLACE is unavailable",
           "Clip each input probability to at least 1e-12",
           "Normalize score within race"
         ],
@@ -594,7 +778,7 @@
           "combined runner probability"
         ],
         "fit_scope": "Weights frozen from validation races",
-        "leakage_boundary": "Fundamental and market remain separately reportable; live data never refits their weights."
+        "leakage_boundary": "Fundamental, WIN market, and PLACE market remain separately reportable; live data never refits their weights."
       },
       {
         "id": "live-fallback",
@@ -640,7 +824,7 @@
           "model fair odds"
         ],
         "fit_scope": "Order exponents frozen from validation races",
-        "leakage_boundary": "Pool-specific live market odds are not assigned arbitrary blend weights; they remain downstream price comparisons until timestamped history supports fitting."
+        "leakage_boundary": "Current exotic-pool odds remain downstream price comparisons until timestamped pool histories support fitting pool-specific blends."
       },
       {
         "id": "live-wager",
@@ -26035,5 +26219,277 @@
       "execution_id": "2026-07-25T18:04:36.821855+00:00",
       "run_key": "2026-07-25T18:04:36.821855+00:00|benter-rich-v1|benter-boost-lr006-leaf31-l2three"
     }
-  ]
+  ],
+  "auxiliary_predictions": {
+    "feature_schema": "notebook-rich-v2",
+    "feature_count": 166,
+    "targets": {
+      "position": {
+        "source": "result",
+        "selected_parameters": {
+          "learning_rate": 0.06,
+          "max_leaf_nodes": 15,
+          "min_samples_leaf": 10,
+          "max_iter": 40,
+          "l2_regularization": 1.0
+        },
+        "candidate_scores": [
+          {
+            "parameters": {
+              "learning_rate": 0.06,
+              "max_leaf_nodes": 15,
+              "min_samples_leaf": 10,
+              "max_iter": 40,
+              "l2_regularization": 1.0
+            },
+            "rows": 3022,
+            "mae": 2.8157997216252273,
+            "rmse": 3.3352307753768344,
+            "spearman": 0.4517989690407778,
+            "top_pick_win_rate": 0.2375,
+            "rank_mae": 3.0165453342157513
+          }
+        ],
+        "validation": {
+          "rows": 3022,
+          "mae": 2.8157997216252273,
+          "rmse": 3.3352307753768344,
+          "spearman": 0.4517989690407778,
+          "top_pick_win_rate": 0.2375,
+          "rank_mae": 3.0165453342157513
+        },
+        "test": {
+          "rows": 2956,
+          "mae": 2.8068759538440453,
+          "rmse": 3.325390896712905,
+          "spearman": 0.43928962125854143,
+          "top_pick_win_rate": 0.24166666666666667,
+          "rank_mae": 3.0703653585926927
+        }
+      },
+      "finish_time": {
+        "source": "finish_seconds",
+        "selected_parameters": {
+          "learning_rate": 0.06,
+          "max_leaf_nodes": 15,
+          "min_samples_leaf": 10,
+          "max_iter": 40,
+          "l2_regularization": 1.0
+        },
+        "candidate_scores": [
+          {
+            "parameters": {
+              "learning_rate": 0.06,
+              "max_leaf_nodes": 15,
+              "min_samples_leaf": 10,
+              "max_iter": 40,
+              "l2_regularization": 1.0
+            },
+            "rows": 3022,
+            "mae": 1.5601871380863477,
+            "rmse": 2.161575649153311,
+            "spearman": 0.9828619437666337
+          }
+        ],
+        "validation": {
+          "rows": 3022,
+          "mae": 1.5601871380863477,
+          "rmse": 2.161575649153311,
+          "spearman": 0.9828619437666337
+        },
+        "test": {
+          "rows": 2956,
+          "mae": 1.396286284996391,
+          "rmse": 1.7688457540755622,
+          "spearman": 0.9809345906848448
+        }
+      },
+      "win_odds": {
+        "source": "win_odds",
+        "selected_parameters": {
+          "learning_rate": 0.06,
+          "max_leaf_nodes": 15,
+          "min_samples_leaf": 10,
+          "max_iter": 40,
+          "l2_regularization": 1.0
+        },
+        "candidate_scores": [
+          {
+            "parameters": {
+              "learning_rate": 0.06,
+              "max_leaf_nodes": 15,
+              "min_samples_leaf": 10,
+              "max_iter": 40,
+              "l2_regularization": 1.0
+            },
+            "rows": 3022,
+            "mae": 13.961447444385806,
+            "rmse": 22.524928007663316,
+            "spearman": 0.7844457633327241
+          }
+        ],
+        "validation": {
+          "rows": 3022,
+          "mae": 13.961447444385806,
+          "rmse": 22.524928007663316,
+          "spearman": 0.7844457633327241
+        },
+        "test": {
+          "rows": 2956,
+          "mae": 13.749743625290828,
+          "rmse": 22.504603040682042,
+          "spearman": 0.7870279343648487
+        }
+      },
+      "place_odds": {
+        "source": "place_odds",
+        "selected_parameters": {
+          "learning_rate": 0.06,
+          "max_leaf_nodes": 15,
+          "min_samples_leaf": 10,
+          "max_iter": 40,
+          "l2_regularization": 1.0
+        },
+        "candidate_scores": [
+          {
+            "parameters": {
+              "learning_rate": 0.06,
+              "max_leaf_nodes": 15,
+              "min_samples_leaf": 10,
+              "max_iter": 40,
+              "l2_regularization": 1.0
+            },
+            "rows": 3011,
+            "mae": 3.441262456818797,
+            "rmse": 6.447537417124074,
+            "spearman": 0.7962265166122685
+          }
+        ],
+        "validation": {
+          "rows": 3011,
+          "mae": 3.441262456818797,
+          "rmse": 6.447537417124074,
+          "spearman": 0.7962265166122685
+        },
+        "test": {
+          "rows": 2946,
+          "mae": 3.5561763276299425,
+          "rmse": 7.016335710123811,
+          "spearman": 0.7927893828358694
+        }
+      }
+    },
+    "market_boundary": {
+      "historical_odds_features": "Lagged and rolling prior WIN/PLACE odds are available before the current race.",
+      "current_prices": "Current WIN, PLACE, and exotic prices are excluded from these estimators and remain separate market observations."
+    },
+    "dataset": {
+      "runners": 19998,
+      "races": 1597,
+      "features": 166
+    }
+  },
+  "notebook_rich_benchmark": {
+    "dataset": {
+      "runners": 19998,
+      "races": 1597,
+      "features": 166
+    },
+    "parameters": {
+      "learning_rate": 0.06,
+      "max_iter": 40,
+      "max_leaf_nodes": 15,
+      "l2_regularization": 1.0
+    },
+    "temperature": 0.8377047258715937,
+    "blend": {
+      "fundamental_weight": 0.08807284727661306,
+      "win_market_weight": 0.8042986244173347,
+      "place_market_weight": 0.1739304054770566
+    },
+    "validation_fundamental": {
+      "race_log_loss": 2.2616322959424684,
+      "race_brier": 0.8654667669050601,
+      "ece": 0.006955956782999884,
+      "top_pick_win_rate": 0.23333333333333334,
+      "winner_top3_rate": 0.4791666666666667,
+      "mean_winner_rank": 4.416666666666667,
+      "pseudo_r2": 0.1047216205627155
+    },
+    "test_fundamental": {
+      "race_log_loss": 2.1989175832274785,
+      "race_brier": 0.8528654701646924,
+      "ece": 0.004390084877339522,
+      "top_pick_win_rate": 0.22083333333333333,
+      "winner_top3_rate": 0.525,
+      "mean_winner_rank": 4.245833333333334,
+      "pseudo_r2": 0.11995654961933733
+    },
+    "test_combined": {
+      "race_log_loss": 1.9797624861907708,
+      "race_brier": 0.8020287940071543,
+      "ece": 0.007827949597782421,
+      "top_pick_win_rate": 0.30416666666666664,
+      "winner_top3_rate": 0.5875,
+      "mean_winner_rank": 3.6,
+      "pseudo_r2": 0.20766607053808517
+    }
+  },
+  "simulator": {
+    "requested_date": "2026-07-27",
+    "displayed_date": "2026-07-26",
+    "date_status": "next_available_allowed",
+    "meeting": {
+      "requested_date": "2026-07-27",
+      "races_simulated": 1,
+      "starting_bankroll": 1000.0,
+      "total_cost": 10.0,
+      "remaining_bankroll": 990.0,
+      "expected_wins": 0.14969119876155745,
+      "expected_gross_return": 14.969119876155744,
+      "expected_net_return": 4.9691198761557445,
+      "expected_roi": 0.4969119876155744
+    },
+    "race": {
+      "race_no": 1,
+      "prediction_basis": {
+        "runners": 17,
+        "fundamental_ratable_runners": 0,
+        "basis": "public_win_market_fallback",
+        "warning": "No runner had the complete live historical feature row required by the model; runner strengths therefore use the documented public WIN fallback."
+      },
+      "summary": {
+        "priced_candidates": 108,
+        "recommended_bets": 1,
+        "stake_unit": 10.0,
+        "total_cost": 10.0,
+        "expected_wins": 0.14969119876155745,
+        "expected_gross_return": 14.969119876155744,
+        "expected_net_return": 4.9691198761557445,
+        "expected_roi": 0.4969119876155744,
+        "maximum_single_bet_payout": 100.0,
+        "maximum_single_bet_profit_after_total_cost": 90.0,
+        "abstention": null
+      },
+      "recommendations": [
+        {
+          "decision_id": "9f738b24df2e8311043a38ac",
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "2"
+          ],
+          "stake": 10.0,
+          "bankroll": 1000.0,
+          "probability": 0.14969119876155745,
+          "fair_odds": 6.6804194787223015,
+          "current_decimal_odds": 10.0,
+          "expected_value_per_unit": 0.49691198761557454,
+          "kelly_fraction": 0.01,
+          "model_version": "benter-boost-lr003-leaf15",
+          "created_at": "2026-07-25T20:02:52.869414+00:00"
+        }
+      ]
+    }
+  }
 }
