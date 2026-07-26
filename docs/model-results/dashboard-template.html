@@ -85,6 +85,10 @@
     .segments button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
     .visuals { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr); gap: 28px; }
     .panel { min-width: 0; border-bottom: 1px solid var(--line); padding-bottom: 24px; }
+    .progress-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+    .progress-header button { padding: 0 12px; }
+    .progress-summary { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+    .progress-summary strong { color: var(--ink); font-variant-numeric: tabular-nums; }
     .chart-wrap { position: relative; width: 100%; height: 390px; }
     canvas { width: 100%; height: 100%; display: block; }
     .plot { width: 100%; height: 100%; min-height: 320px; }
@@ -180,6 +184,16 @@
     .technical-block { min-width: 0; }
     .technical-block h3 { margin: 0 0 5px; font-size: 14px; }
     .technical-block > p { color: var(--muted); margin: 0 0 12px; font-size: 12px; }
+    .full-run { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 18px 0; margin: 16px 0 28px; }
+    .full-run-header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+    .full-run-header h3 { margin: 0; font-size: 15px; }
+    .full-run-header span { color: var(--muted); font-size: 12px; }
+    .full-run-metrics { display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); gap: 14px; margin-top: 16px; }
+    .full-run-metrics div { border-top: 2px solid var(--line); padding-top: 7px; }
+    .full-run-metrics strong { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+    .full-run-metrics span { color: var(--muted); font-size: 11px; }
+    .full-run-warning { margin: 16px 0 0; border-left: 3px solid var(--boosted); background: #fff9f5; padding: 10px 12px; color: #5c554f; }
+    .technical-subtitle { margin: 0 0 11px; font-size: 14px; }
     .auxiliary-plot { width: 100%; height: 330px; }
     .blend-list { display: grid; gap: 16px; margin-top: 18px; }
     .blend-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 54px; align-items: center; gap: 10px; }
@@ -242,6 +256,7 @@
       .contract-grid { grid-template-columns: 1fr 1fr; }
       .study-grid { grid-template-columns: 1fr; }
       .technical-grid { grid-template-columns: 1fr; }
+      .full-run-metrics { grid-template-columns: repeat(3, minmax(110px, 1fr)); }
       .matrix-layout { grid-template-columns: 1fr; }
       .method-grid { grid-template-columns: 1fr 1fr; }
     }
@@ -272,6 +287,7 @@
       .study-summary { grid-template-columns: 1fr 1fr; }
       .method-grid { grid-template-columns: 1fr; }
       .blend-row { grid-template-columns: 100px minmax(0, 1fr) 48px; }
+      .full-run-metrics { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
@@ -346,8 +362,10 @@
     </section>
 
     <section class="technical-section" id="auxiliary-results" aria-labelledby="auxiliary-results-title">
-      <h2 id="auxiliary-results-title">Notebook-rich and auxiliary model results</h2>
-      <p class="pipeline-note">Bounded 19,998-runner smoke benchmark for the 166-input notebook-rich-v2 contract. It is shown separately because it is not directly comparable with the complete 1997-2025 run progression.</p>
+      <h2 id="auxiliary-results-title">Notebook-rich model results</h2>
+      <div class="full-run" id="notebook-full-history"></div>
+      <h3 class="technical-subtitle">Bounded auxiliary smoke benchmark</h3>
+      <p class="pipeline-note">The following 19,998-runner benchmark covers the 166-input winner and auxiliary targets. It remains separate from the complete 1997-2025 chronological history section.</p>
       <div class="study-summary" id="notebook-rich-summary"></div>
       <div class="technical-grid">
         <section class="technical-block">
@@ -543,8 +561,11 @@
     </section>
 
     <section class="panel table-section">
-      <h2>Run progression</h2>
-      <p class="pipeline-note" id="progress-note"></p>
+      <div class="progress-header">
+        <div><h2>Chronological run progression</h2><p class="pipeline-note" id="progress-note"></p></div>
+        <button type="button" id="show-all-runs">Show all runs</button>
+      </div>
+      <div class="progress-summary" id="progress-summary"></div>
       <div class="chart-wrap"><div class="plot" id="progress-chart" role="img" aria-label="Top-1 accuracy by complete experiment history"></div></div>
     </section>
 
@@ -731,6 +752,31 @@
       if (!winner || !auxiliary) {
         document.getElementById("auxiliary-results").hidden = true;
         return;
+      }
+      const fullHistory = DATA.notebook_full_history;
+      const fullRun = fullHistory?.run;
+      if (fullRun) {
+        const fundamental = fullRun.test_fundamental;
+        const combined = fullRun.test_blended;
+        const independentWeight = Number(fullRun.fundamental_weight || 0);
+        document.getElementById("notebook-full-history").innerHTML = `
+          <div class="full-run-header">
+            <h3>Latest full-history run: ${escapeHtml(fullRun.run_id)}</h3>
+            <span>${Number(fullHistory.dataset.runners).toLocaleString()} runners / ${Number(fullHistory.dataset.races).toLocaleString()} races / ${escapeHtml(fullHistory.dataset.date_min)} to ${escapeHtml(fullHistory.dataset.date_max)}</span>
+          </div>
+          <div class="full-run-metrics">
+            <div><strong>${pct(fundamental.top_pick_win_rate)}</strong><span>Fundamental Top-1</span></div>
+            <div><strong>${pct(fundamental.winner_top3_rate)}</strong><span>Fundamental Top-3</span></div>
+            <div><strong>${fmt(fundamental.race_log_loss, 4)}</strong><span>Fundamental log loss</span></div>
+            <div><strong>${pct(combined.top_pick_win_rate)}</strong><span>Combined Top-1</span></div>
+            <div><strong>${fmt(fullRun.fundamental_weight, 3)}</strong><span>Fundamental weight</span></div>
+            <div><strong>${fmt(fullRun.market_weight, 3)}</strong><span>WIN-market weight</span></div>
+          </div>
+          <p class="full-run-warning">${independentWeight === 0
+            ? "Validation assigned zero weight to the notebook-rich fundamental forecast. The combined result is therefore market-only and does not demonstrate incremental model value."
+            : "The validation-fitted blend retained an independent notebook-rich fundamental contribution."}</p>`;
+      } else {
+        document.getElementById("notebook-full-history").hidden = true;
       }
       const targets = auxiliary.targets || {};
       document.getElementById("notebook-rich-summary").innerHTML = `
@@ -1093,32 +1139,59 @@
     }
 
     function drawProgressChart() {
-      const runs = runHistory().filter(run =>
+      const allRuns = runHistory().slice().sort((a, b) =>
+        String(a.execution_id || "").localeCompare(String(b.execution_id || ""))
+        || (a.sequence ?? 999) - (b.sequence ?? 999)
+        || String(a.run_id).localeCompare(String(b.run_id))
+      );
+      const runs = allRuns.filter(run =>
         (state.family === "all" || run.kind === state.family)
         && (state.schema === "all" || run.feature_schema === state.schema)
-      )
-        .slice().sort((a, b) => String(a.execution_id || "").localeCompare(String(b.execution_id || ""))
-          || (a.sequence ?? 999) - (b.sequence ?? 999));
-      if (!runs.length) return;
+      );
+      const executions = [...new Set(allRuns.map(run => run.execution_id || "legacy-import"))];
+      const visibleExecutions = [...new Set(runs.map(run => run.execution_id || "legacy-import"))];
+      const shortTimestamp = value => String(value).replace("T", " ").replace(/:\d\d(?:\.\d+)?\+00:00$/, " UTC");
+      document.getElementById("progress-summary").innerHTML = `
+        <span><strong>${allRuns.length}</strong> total persisted runs</span>
+        <span><strong>${executions.length}</strong> execution batches</span>
+        <span><strong>${runs.length}</strong> visible runs</span>
+        <span><strong>${visibleExecutions.length}</strong> visible batches</span>
+        <span>${shortTimestamp(executions[0])} to ${shortTimestamp(executions[executions.length - 1])}</span>`;
+      if (!runs.length) {
+        document.getElementById("progress-note").textContent = "No historical runs match the active model-family and feature-schema filters.";
+        Plotly.purge("progress-chart");
+        return;
+      }
       document.getElementById("progress-note").textContent = state.source === "fundamental"
-        ? `${runs.length} persisted executions are shown in timestamp and sweep order. Hover any point for the exact run, schema, parameters, and score.`
+        ? "Every point is one persisted model run, ordered by execution timestamp and sweep sequence. Hover for its exact schema, parameters, and score."
         : state.source === "combined"
-          ? "Combined history uses each run's validation-fitted market blend; hover to inspect its fundamental weight."
-          : "The market benchmark is repeated for comparability because each run uses the same held-out races.";
-      const traces = ["logit", "boosted"].map(kind => {
-        const group = runs.map((run, index) => ({ run, index })).filter(item => item.run.kind === kind);
+          ? "Every persisted run is shown with its validation-fitted fundamental, WIN-market, and PLACE-market weights."
+          : "Every persisted run is retained on the timeline; the shared held-out market benchmark repeats for direct comparison.";
+
+      const indexed = runs.map((run, index) => ({ run, x: index + 1 }));
+      const traceKeys = [...new Set(runs.map(run => `${run.feature_schema || "baseline-v1"}|${run.kind}`))];
+      const schemaLabels = {
+        "baseline-v1": "Baseline", "benter-rich-v1": "Benter rich", "notebook-rich-v2": "Notebook rich"
+      };
+      const schemaDashes = { "baseline-v1": "solid", "benter-rich-v1": "dash", "notebook-rich-v2": "dot" };
+      const traces = traceKeys.map(key => {
+        const [schema, kind] = key.split("|");
+        const group = indexed.filter(item => (item.run.feature_schema || "baseline-v1") === schema && item.run.kind === kind);
         return {
-          type: "scatter", mode: "lines+markers", name: kind === "logit" ? "Logistic" : "Boosted",
-          x: group.map(item => item.index + 1),
+          type: "scatter", mode: "lines+markers",
+          name: `${schemaLabels[schema] || schema} / ${kind === "logit" ? "Logistic" : "Boosted"}`,
+          x: group.map(item => item.x),
           y: group.map(item => sourceMetrics(item.run).top_pick_win_rate),
           text: group.map(item => item.run.run_id),
           customdata: group.map(item => [
             item.run.execution_id || "legacy import", item.run.feature_schema || "baseline-v1",
-            JSON.stringify(item.run.parameters), item.run.fundamental_weight
+            JSON.stringify(item.run.parameters), item.run.fundamental_weight,
+            item.run.market_weight, item.run.place_market_weight || 0, runIdentity(item.run)
           ]),
-          line: { color: COLORS[kind], width: 2 },
+          line: { color: COLORS[kind], width: 2, dash: schemaDashes[schema] || "solid" },
+          connectgaps: false,
           marker: { size: group.map(item => runIdentity(item.run) === state.selected ? 10 : 7) },
-          hovertemplate: "<b>%{text}</b><br>Execution %{customdata[0]}<br>Schema %{customdata[1]}<br>Top-1 %{y:.2%}<br>Fundamental weight %{customdata[3]:.3f}<br>%{customdata[2]}<extra></extra>"
+          hovertemplate: "<b>%{text}</b><br>Execution %{customdata[0]}<br>Schema %{customdata[1]}<br>Top-1 %{y:.2%}<br>Fundamental %{customdata[3]:.3f}<br>WIN market %{customdata[4]:.3f}<br>PLACE market %{customdata[5]:.3f}<br>%{customdata[2]}<extra></extra>"
         };
       }).filter(trace => trace.x.length);
       traces.push({
@@ -1126,14 +1199,36 @@
         x: [1, runs.length], y: [DATA.market_test.top_pick_win_rate, DATA.market_test.top_pick_win_rate],
         line: { color: COLORS.market, width: 2, dash: "dot" }, hoverinfo: "skip"
       });
+
+      const visibleExecutionGroups = visibleExecutions.map(execution => {
+        const points = indexed.filter(item => (item.run.execution_id || "legacy-import") === execution);
+        return { execution, first: points[0].x, last: points[points.length - 1].x };
+      });
+      const tickvals = visibleExecutionGroups.map(group => (group.first + group.last) / 2);
+      const ticktext = visibleExecutionGroups.map(group => shortTimestamp(group.execution));
+      const shapes = visibleExecutionGroups.slice(1).map(group => ({
+        type: "line", x0: group.first - .5, x1: group.first - .5, y0: 0, y1: 1,
+        yref: "paper", line: { color: "#cbd3cf", width: 1, dash: "dot" }
+      }));
       Plotly.react("progress-chart", traces, {
         margin: { l: 58, r: 18, t: 16, b: 50 },
         paper_bgcolor: "#fff", plot_bgcolor: "#fff",
-        xaxis: { title: "Persisted execution sequence", gridcolor: "#edf0ee", zeroline: false },
+        xaxis: {
+          title: "Execution time (points within each batch follow sweep order)",
+          tickmode: "array", tickvals, ticktext, gridcolor: "#edf0ee", zeroline: false
+        },
         yaxis: { title: "Top-1 winner accuracy", tickformat: ".1%", gridcolor: "#edf0ee", zeroline: false },
         legend: { orientation: "h", y: 1.12 }, hovermode: "closest",
+        shapes,
         font: { family: "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", color: "#18201d" }
       }, { responsive: true, displaylogo: false });
+
+      const chart = document.getElementById("progress-chart");
+      chart.removeAllListeners?.("plotly_click");
+      chart.on?.("plotly_click", event => {
+        const runKey = event.points?.[0]?.customdata?.[6];
+        if (runKey) selectRun(runKey);
+      });
     }
 
     function drawPoolChart(run) {
@@ -1295,6 +1390,13 @@
       if (!button) return;
       state.schema = button.dataset.schema;
       document.querySelectorAll("#schema-filter button").forEach(item => item.classList.toggle("active", item === button));
+      render();
+    });
+    document.getElementById("show-all-runs").addEventListener("click", () => {
+      state.family = "all";
+      state.schema = "all";
+      document.querySelectorAll("#family-filter button").forEach(item => item.classList.toggle("active", item.dataset.family === "all"));
+      document.querySelectorAll("#schema-filter button").forEach(item => item.classList.toggle("active", item.dataset.schema === "all"));
       render();
     });
     document.getElementById("metric-select").addEventListener("change", event => { state.metric = event.target.value; drawBarChart(); });
