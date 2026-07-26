@@ -403,9 +403,15 @@
     </section>
 
     <section class="study-section" id="feature-study" aria-labelledby="feature-study-title">
-      <h2 id="feature-study-title">Benter-inspired rich feature study</h2>
-      <p class="pipeline-note">A leakage-safe challenger built from official HKJC race context, prior horse form, jockey and trainer histories, preferences, post-position bias, and available auxiliary events. Third-party records fill documented archive gaps only.</p>
+      <div class="pipeline-header">
+        <div>
+          <h2 id="feature-study-title">Variable ranking and correlation by dataset</h2>
+          <p class="pipeline-note" id="feature-study-note">Select a feature contract to update every contribution, significance, redundancy, model-comparison, and Spearman view.</p>
+        </div>
+        <div class="control"><label for="feature-study-schema-select">Dataset contract</label><select id="feature-study-schema-select"></select></div>
+      </div>
       <div class="study-summary" id="feature-study-summary"></div>
+      <div class="unused-note" id="feature-inactive-note" hidden></div>
 
       <div class="study-grid">
         <section class="study-block">
@@ -462,7 +468,7 @@
       <div class="study-grid" style="margin-top:28px">
         <section class="study-block">
           <h3>Feature-family contribution</h3>
-          <p>Permutation of each complete Benter factor family.</p>
+          <p>Permutation of each complete feature family for the selected dataset contract.</p>
           <div class="table-scroll"><table class="compact-table">
             <thead><tr><th>Family</th><th>Features</th><th>Delta log loss</th><th>Std. dev.</th></tr></thead>
             <tbody id="family-ranking-body"></tbody>
@@ -619,7 +625,8 @@
       pipelineMode: "training",
       pipelineStage: 0,
       correlationRun: null,
-      correlationFeature: null
+      correlationFeature: null,
+      studySchema: "notebook-rich-v2"
     };
 
     const fmt = (value, digits = 4) => Number(value).toFixed(digits);
@@ -862,29 +869,64 @@
         : `<tr><td colspan="8">No paper wagers passed the configured limits.</td></tr>`;
     }
 
+    function selectedSchemaStudy() {
+      const study = DATA.feature_study;
+      if (!study) return null;
+      if (study.schema_studies?.[state.studySchema]) return study.schema_studies[state.studySchema];
+      if (state.studySchema === "benter-rich-v1") return {
+        selected_model: study.selected_rich_model,
+        dataset: study.dataset,
+        feature_ranking: study.feature_ranking,
+        family_ranking: study.family_ranking,
+        redundant_pairs: study.redundant_pairs,
+        coverage: study.coverage,
+        inactive_features: [], methodology: study.methodology
+      };
+      return null;
+    }
+
     function renderFeatureStudy() {
       const study = DATA.feature_study;
       if (!study) {
         document.getElementById("feature-study").hidden = true;
         return;
       }
-      const significant = study.feature_ranking.filter(item => item.significant_fdr_05).length;
-      const baseline = study.candidates.find(item => item.name === "baseline-v1-boosted");
-      const rich = study.candidates.find(item => item.name === "benter-rich-v1-boosted");
-      const improvement = baseline && rich
-        ? baseline.test_fundamental.race_log_loss - rich.test_fundamental.race_log_loss
-        : 0;
+      const availableSchemas = Object.keys(study.schema_studies || {}).filter(schema => study.correlation_matrices?.[schema]);
+      if (!availableSchemas.includes(state.studySchema)) state.studySchema = availableSchemas[0] || "benter-rich-v1";
+      const schemaReport = selectedSchemaStudy();
+      if (!schemaReport) return;
+      const ranking = schemaReport.feature_ranking || [];
+      const significant = ranking.filter(item => item.significant_fdr_05).length;
+      const schemaRuns = runHistory().filter(run => (run.feature_schema || "baseline-v1") === state.studySchema);
+      const bestIncremental = schemaRuns.length ? Math.max(...schemaRuns.map(run => Number(run.incremental_pseudo_r2 || 0))) : 0;
+      const schemaLabels = { "baseline-v1": "Baseline", "benter-rich-v1": "Benter rich", "notebook-rich-v2": "Notebook rich" };
+      const schemaSelect = document.getElementById("feature-study-schema-select");
+      schemaSelect.innerHTML = availableSchemas.map(schema => `
+        <option value="${escapeHtml(schema)}" ${schema === state.studySchema ? "selected" : ""}>${escapeHtml(schemaLabels[schema] || schema)}</option>`).join("");
+      schemaSelect.onchange = event => {
+        state.studySchema = event.target.value;
+        state.correlationRun = null;
+        state.correlationFeature = null;
+        renderFeatureStudy();
+      };
+      const dataset = schemaReport.dataset || study.dataset || {};
+      document.getElementById("feature-study-note").textContent =
+        `${schemaLabels[state.studySchema] || state.studySchema}: ${Number(dataset.runners || 0).toLocaleString()} runners, ${Number(dataset.races || 0).toLocaleString()} races. Every table and chart below uses this contract.`;
       document.getElementById("feature-study-summary").innerHTML = `
-        <div class="study-stat"><strong>${study.schemas["benter-rich-v1"].features.length}</strong><span>Leakage-safe rich features</span></div>
+        <div class="study-stat"><strong>${study.schemas[state.studySchema].features.length}</strong><span>Declared features</span></div>
         <div class="study-stat"><strong>${significant}</strong><span>Significant at FDR 0.05</span></div>
-        <div class="study-stat"><strong>${escapeHtml(study.selected_rich_model)}</strong><span>Validation-selected challenger</span></div>
-        <div class="study-stat"><strong>${fmt(improvement, 4)}</strong><span>Held-out log-loss improvement</span></div>`;
+        <div class="study-stat"><strong>${escapeHtml(schemaReport.selected_model || "not available")}</strong><span>Model used for permutation</span></div>
+        <div class="study-stat"><strong>${(schemaReport.inactive_features || []).length}</strong><span>Zero-coverage features</span></div>`;
+      const inactive = schemaReport.inactive_features || [];
+      const inactiveNote = document.getElementById("feature-inactive-note");
+      inactiveNote.hidden = inactive.length === 0;
+      inactiveNote.innerHTML = inactive.length ? `<strong>Excluded by zero historical coverage</strong><span>${inactive.map(escapeHtml).join(" / ")}</span>` : "";
 
-      document.getElementById("model-comparison-body").innerHTML = study.candidates.map(candidate => {
-        const metrics = candidate.test_fundamental;
+      document.getElementById("model-comparison-body").innerHTML = schemaRuns.map(run => {
+        const metrics = run.test_fundamental;
         return `<tr>
-          <td>${escapeHtml(candidate.name)}${candidate.name === study.selected_rich_model ? " *" : ""}</td>
-          <td>${candidate.feature_count}</td><td>${pct(metrics.top_pick_win_rate)}</td>
+          <td>${escapeHtml(run.run_id)}${run.run_id === schemaReport.selected_model ? " *" : ""}</td>
+          <td>${run.feature_count || run.variables?.length || 0}</td><td>${pct(metrics.top_pick_win_rate)}</td>
           <td>${pct(metrics.winner_top3_rate)}</td><td>${fmt(metrics.race_log_loss)}</td>
           <td>${fmt(metrics.pseudo_r2)}</td></tr>`;
       }).join("");
@@ -896,21 +938,21 @@
         <td>${Number(source.runner_rows).toLocaleString()}</td><td>${pct(source.share)}</td></tr>`).join("");
 
       const probability = value => Number(value) === 0 ? "0" : Number(value).toExponential(2);
-      document.getElementById("feature-ranking-body").innerHTML = study.feature_ranking.map(item => `
-        <tr><td>${item.rank}</td><td><code>${escapeHtml(item.feature)}</code></td><td>${escapeHtml(item.family)}</td>
+      document.getElementById("feature-ranking-body").innerHTML = ranking.map(item => `
+        <tr><td>${item.rank}</td><td><code>${escapeHtml(item.feature)}</code></td><td>${escapeHtml(item.family || "unassigned")}</td>
         <td class="${item.delta_race_log_loss_mean >= 0 ? "positive" : "negative"}">${fmt(item.delta_race_log_loss_mean, 5)}</td>
         <td>${fmt(item.association, 4)}</td><td>${probability(item.p_value_fdr)}</td>
         <td>${fmt(item.mutual_information, 5)}</td><td>${pct(item.coverage)}</td></tr>`).join("");
-      document.getElementById("family-ranking-body").innerHTML = study.family_ranking.map(item => `
+      document.getElementById("family-ranking-body").innerHTML = (schemaReport.family_ranking || []).map(item => `
         <tr><td>${escapeHtml(item.family)}</td><td>${item.features.length}</td>
         <td>${fmt(item.delta_race_log_loss_mean, 5)}</td><td>${fmt(item.delta_race_log_loss_std, 5)}</td></tr>`).join("");
-      document.getElementById("redundancy-body").innerHTML = study.redundant_pairs.map(item => `
+      document.getElementById("redundancy-body").innerHTML = (schemaReport.redundant_pairs || []).map(item => `
         <tr><td><code>${escapeHtml(item.feature_a)}</code></td><td><code>${escapeHtml(item.feature_b)}</code></td>
         <td>${fmt(item.spearman, 4)}</td></tr>`).join("");
       document.getElementById("benter-coverage-body").innerHTML = study.benter_coverage.map(item => `
         <tr><td>${escapeHtml(item.factor)}</td><td><span class="status ${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
         <td>${escapeHtml(item.note || "Implemented with point-in-time race data")}</td></tr>`).join("");
-      document.getElementById("feature-methodology").innerHTML = Object.entries(study.methodology).map(([name, description]) => `
+      document.getElementById("feature-methodology").innerHTML = Object.entries(schemaReport.methodology || study.methodology).map(([name, description]) => `
         <div class="method-item"><strong>${escapeHtml(name.replaceAll("_", " "))}</strong><span>${escapeHtml(description)}</span></div>`).join("");
       renderCorrelationExplorer();
       drawFeatureImportance();
@@ -918,33 +960,49 @@
 
     function correlationContext() {
       const study = DATA.feature_study;
-      const candidate = study.candidates.find(item => item.name === state.correlationRun) || study.candidates[0];
-      return { study, candidate, matrix: study.correlation_matrices[candidate.schema] };
+      const candidates = runHistory().filter(run => study.correlation_matrices[run.feature_schema || "baseline-v1"]);
+      const run = candidates.find(item => runIdentity(item) === state.correlationRun)
+        || candidates.find(item => (item.feature_schema || "baseline-v1") === state.studySchema)
+        || candidates[0];
+      return { study, run, matrix: study.correlation_matrices[run.feature_schema || "baseline-v1"] };
     }
 
     function renderCorrelationExplorer() {
       const study = DATA.feature_study;
       if (!study?.correlation_matrices) return;
-      if (!state.correlationRun) state.correlationRun = study.selected_rich_model;
+      const candidates = runHistory().filter(run => study.correlation_matrices[run.feature_schema || "baseline-v1"]);
+      const current = candidates.find(run => runIdentity(run) === state.correlationRun);
+      if (!current || (current.feature_schema || "baseline-v1") !== state.studySchema) {
+        const schemaCandidates = candidates.filter(run => (run.feature_schema || "baseline-v1") === state.studySchema);
+        const selectedModel = selectedSchemaStudy()?.selected_model;
+        const preferred = schemaCandidates.find(run => run.run_id === selectedModel) || schemaCandidates[schemaCandidates.length - 1];
+        state.correlationRun = preferred ? runIdentity(preferred) : null;
+      }
       const runSelect = document.getElementById("correlation-run-select");
-      runSelect.innerHTML = study.candidates.map(candidate => `
-        <option value="${escapeHtml(candidate.name)}" ${candidate.name === state.correlationRun ? "selected" : ""}>${escapeHtml(candidate.name)}</option>`).join("");
-      const { candidate, matrix } = correlationContext();
+      runSelect.innerHTML = candidates.map(run => {
+        const key = runIdentity(run);
+        const timestamp = String(run.execution_id || "legacy").replace("T", " ").slice(0, 19);
+        return `<option value="${escapeHtml(key)}" ${key === state.correlationRun ? "selected" : ""}>${escapeHtml(timestamp)} | ${escapeHtml(run.feature_schema || "baseline-v1")} | ${escapeHtml(run.run_id)}</option>`;
+      }).join("");
+      const { run, matrix } = correlationContext();
       if (!state.correlationFeature || !matrix.features.includes(state.correlationFeature)) {
         state.correlationFeature = matrix.features[0];
       }
       const featureSelect = document.getElementById("correlation-feature-select");
       featureSelect.innerHTML = matrix.features.map(feature => `
         <option value="${escapeHtml(feature)}" ${feature === state.correlationFeature ? "selected" : ""}>${escapeHtml(feature)}</option>`).join("");
-      const excluded = study.schemas[candidate.schema].features.length - matrix.features.length;
+      const schema = run.feature_schema || "baseline-v1";
+      const excluded = study.schemas[schema].features.length - matrix.features.length;
       document.getElementById("correlation-schema-note").textContent =
-        `${candidate.name} uses ${candidate.schema}: ${matrix.features.length} numeric variables in this training-only matrix. ${excluded} categorical variables remain in the Cramer's V table above. Runs sharing ${candidate.schema} share this matrix.`;
+        `${run.run_id} uses ${schema}: ${matrix.features.length} numeric variables in this training-only matrix. ${excluded} categorical variables remain in the Cramer's V ranking above. Runs sharing ${schema} share this matrix.`;
       renderCorrelationVariable();
       drawCorrelationMatrix();
       runSelect.onchange = event => {
         state.correlationRun = event.target.value;
         state.correlationFeature = null;
-        renderCorrelationExplorer();
+        const selectedRun = candidates.find(run => runIdentity(run) === state.correlationRun);
+        if (selectedRun) state.studySchema = selectedRun.feature_schema || "baseline-v1";
+        renderFeatureStudy();
       };
       featureSelect.onchange = event => {
         state.correlationFeature = event.target.value;
@@ -1021,11 +1079,12 @@
     }
 
     function drawFeatureImportance() {
-      const study = DATA.feature_study;
-      if (!study) return;
+      const schemaReport = selectedSchemaStudy();
+      if (!schemaReport) return;
       const canvas = document.getElementById("feature-importance-chart");
       const { context: ctx, width, height } = prepareCanvas(canvas);
-      const rows = study.feature_ranking.slice(0, 12);
+      const rows = (schemaReport.feature_ranking || []).slice(0, 12);
+      if (!rows.length) return;
       const max = Math.max(...rows.map(item => Math.max(0, item.delta_race_log_loss_mean)), .001);
       const left = Math.min(190, width * .42), right = 28, top = 8, bottom = 28;
       const plotWidth = Math.max(20, width - left - right);
@@ -1309,6 +1368,12 @@
         <pre>${escapeHtml(JSON.stringify(run.parameters, null, 2))}</pre>`;
       renderTable();
       renderFeatureContract(state.contractSchema);
+      if (DATA.feature_study?.schema_studies?.[state.contractSchema]) {
+        state.studySchema = state.contractSchema;
+        state.correlationRun = runIdentity(run);
+        state.correlationFeature = null;
+        renderFeatureStudy();
+      }
       drawPoolChart(run);
       drawScatterChart();
       drawProgressChart();
@@ -1348,7 +1413,11 @@
 
     function render() {
       const runs = sortedRuns();
-      if (!runs.some(run => runIdentity(run) === state.selected)) state.selected = runs[0] ? runIdentity(runs[0]) : null;
+      if (!runs.some(run => runIdentity(run) === state.selected)) {
+        const latest = runs.slice().sort((a, b) => String(b.execution_id || "").localeCompare(String(a.execution_id || ""))
+          || (b.sequence ?? 0) - (a.sequence ?? 0))[0];
+        state.selected = latest ? runIdentity(latest) : null;
+      }
       drawBarChart();
       renderTable();
       drawScatterChart();
