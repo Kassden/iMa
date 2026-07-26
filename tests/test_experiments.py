@@ -10,6 +10,7 @@ from ima.experiments import (
     default_experiment_specs, merge_run_history, render_dashboard, results_frame,
 )
 from ima.pipeline_transparency import pipeline_manifest
+from scripts.publish_latest_dashboard import compact_simulator_report, publish_latest_dashboard
 from scripts.run_feature_study import matrix_payload, publish_dashboard
 
 
@@ -36,6 +37,7 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual("baseline-v1", contract["name"])
         self.assertEqual(23, contracts["baseline-v1"]["count"])
         self.assertEqual(81, contracts["benter-rich-v1"]["count"])
+        self.assertEqual(166, contracts["notebook-rich-v2"]["count"])
         self.assertEqual(17, len(contract["numeric"]))
         self.assertEqual(6, len(contract["categorical"]))
         self.assertEqual(8, len(manifest["training"]))
@@ -121,6 +123,13 @@ class ExperimentTests(unittest.TestCase):
             'id="redundancy-body"',
             'id="benter-coverage-body"',
             'id="model-comparison-body"',
+            'id="auxiliary-results"',
+            'id="auxiliary-chart"',
+            'id="auxiliary-results-body"',
+            'id="market-blend-weights"',
+            'id="simulator-results"',
+            'id="simulator-warning"',
+            'id="simulator-recommendations-body"',
             'id="results-body"',
             'href="results.csv"',
             'href="results.json"',
@@ -148,6 +157,47 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(23, published["runs"][0]["feature_count"])
         self.assertEqual(23, len(published["runs"][0]["variables"]))
         self.assertIn('"selected_rich_model":"benter-rich-v1-boosted"', rendered)
+
+    def test_latest_dashboard_publisher_adds_compact_current_artifacts(self):
+        summary = {"dataset": {"races": 1}, "runs": []}
+        auxiliary = {"dataset": {"features": 166}, "targets": {"position": {}}}
+        winner = {"dataset": {"features": 166}, "blend": {"fundamental_weight": 0.1}}
+        simulator = {
+            "requested_date": "2026-07-27", "displayed_date": "2026-07-26",
+            "date_status": "next_available_allowed", "meeting": {"total_cost": 10.0},
+            "races": [{
+                "race_no": 1,
+                "prediction_basis": {"basis": "public_win_market_fallback"},
+                "summary": {"recommended_bets": 1},
+                "recommendations": [{"pool": "PLACE", "combination": ["2"]}],
+                "priced_candidates": [{"large": "payload"}],
+            }],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {name: root / name for name in (
+                "results.json", "template.html", "index.html", "results.csv",
+                "auxiliary.json", "winner.json", "simulator.json",
+            )}
+            paths["results.json"].write_text(json.dumps(summary), encoding="utf-8")
+            paths["template.html"].write_text("<script>const DATA=__EXPERIMENT_DATA__;</script>", encoding="utf-8")
+            paths["auxiliary.json"].write_text(json.dumps(auxiliary), encoding="utf-8")
+            paths["winner.json"].write_text(json.dumps(winner), encoding="utf-8")
+            paths["simulator.json"].write_text(json.dumps(simulator), encoding="utf-8")
+            published = publish_latest_dashboard(
+                paths["results.json"], paths["template.html"], paths["index.html"],
+                paths["results.csv"], paths["auxiliary.json"], paths["winner.json"],
+                paths["simulator.json"],
+            )
+        self.assertEqual(166, published["pipeline_manifest"]["feature_contracts"]["notebook-rich-v2"]["count"])
+        self.assertEqual(auxiliary, published["auxiliary_predictions"])
+        self.assertEqual(winner, published["notebook_rich_benchmark"])
+        self.assertEqual("public_win_market_fallback", published["simulator"]["race"]["prediction_basis"]["basis"])
+        self.assertNotIn("priced_candidates", published["simulator"]["race"])
+
+    def test_compact_simulator_handles_no_available_race(self):
+        compact = compact_simulator_report({"requested_date": "2026-07-27", "races": []})
+        self.assertIsNone(compact["race"])
 
     def test_correlation_matrix_payload_is_json_safe_and_labeled(self):
         matrix = pd.DataFrame([[1.0, np.nan], [np.nan, 1.0]], columns=["a", "b"], index=["a", "b"])
