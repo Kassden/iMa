@@ -16,6 +16,15 @@ from ima.feature_sets import FEATURE_SCHEMAS, NOTEBOOK_RICH_SCHEMA
 from ima.rich_features import load_full_rich_history
 
 
+def selected_experiment_specs(run_ids: list[str] | None) -> list[ExperimentSpec]:
+    defaults = {spec.run_id: spec for spec in default_experiment_specs()}
+    selected = list(defaults.values()) if not run_ids else [defaults[run_id] for run_id in run_ids]
+    return [
+        ExperimentSpec(f"notebook-{spec.run_id}", spec.kind, spec.parameters)
+        for spec in selected
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the full rich-feature parameter grid")
     parser.add_argument("--legacy-runs", type=Path, default=Path("track/hkracing 2/runs.csv"))
@@ -30,6 +39,14 @@ def main() -> int:
     parser.add_argument(
         "--schema", choices=sorted(FEATURE_SCHEMAS), default=NOTEBOOK_RICH_SCHEMA.name,
     )
+    parser.add_argument(
+        "--run-id", action="append", choices=[spec.run_id for spec in default_experiment_specs()],
+        help="Run only the selected default-grid specification; repeat for multiple runs.",
+    )
+    parser.add_argument(
+        "--skip-auxiliary", action="store_true",
+        help="Keep the existing published auxiliary bundle instead of retraining it.",
+    )
     args = parser.parse_args()
     feature_schema = FEATURE_SCHEMAS[args.schema]
 
@@ -39,16 +56,14 @@ def main() -> int:
         args.processed / "sectionals.csv.gz",
         args.processed / "horse-snapshots.csv.gz",
     )
-    specs = [
-        ExperimentSpec(f"notebook-{spec.run_id}", spec.kind, spec.parameters)
-        for spec in default_experiment_specs()
-    ]
+    specs = selected_experiment_specs(args.run_id)
     rich_summary = run_experiments(
         rich, args.output, args.template, specs=specs, feature_schema=feature_schema,
     )
-    auxiliary = train_auxiliary_bundle(chronological_race_split(rich), feature_schema)
-    joblib.dump(auxiliary, args.output / "models" / "auxiliary.joblib")
-    rich_summary["auxiliary_predictions"] = auxiliary.report()
+    if not args.skip_auxiliary:
+        auxiliary = train_auxiliary_bundle(chronological_race_split(rich), feature_schema)
+        joblib.dump(auxiliary, args.output / "models" / "auxiliary.joblib")
+        rich_summary["auxiliary_predictions"] = auxiliary.report()
     (args.output / "results.json").write_text(
         json.dumps(rich_summary, indent=2), encoding="utf-8"
     )
@@ -71,7 +86,8 @@ def main() -> int:
         default_execution_id=summary.get("created_at"),
     )
     summary["updated_at"] = rich_summary["created_at"]
-    summary["auxiliary_predictions"] = rich_summary["auxiliary_predictions"]
+    if "auxiliary_predictions" in rich_summary:
+        summary["auxiliary_predictions"] = rich_summary["auxiliary_predictions"]
     summary["rich_grid"] = {
         "schema": feature_schema.name,
         "run_count": len(rich_runs),
