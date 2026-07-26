@@ -144,6 +144,58 @@ FEATURE_FAMILIES = {
 }
 
 
+NOTEBOOK_FEATURE_FAMILIES = {
+    **FEATURE_FAMILIES,
+    "extended_finishing_form": (
+        "prior_second_count", "prior_third_count", "prior_second_rate", "prior_third_rate",
+        "debut_flag", "avg_result_6", "avg_result_84d", "avg_result_112d",
+        "avg_result_168d", "avg_result_183d", "median_result_183d",
+        "best_result_183d", "worst_result_183d", "current_season_starts",
+        "current_season_avg_result", "previous_season_avg_result",
+    ),
+    "historical_market_form": (
+        "last_win_odds", "last_place_odds", "avg_win_odds_2", "avg_win_odds_3",
+        "avg_win_odds_4", "avg_win_odds_6", "avg_place_odds_2",
+        "avg_place_odds_3", "avg_place_odds_4", "avg_place_odds_6",
+    ),
+    "extended_speed_and_time": (
+        "avg_speed_ratio_2", "avg_speed_ratio_4", "avg_speed_ratio_6",
+        "total_distance_4", "weight_change_per_day", "avg_speed_ratio_183d",
+        "avg_same_distance_finish_time_183d",
+    ),
+    "recent_connections": (
+        "jockey_last_result", "jockey_last_speed_ratio", "jockey_avg_result_90d",
+        "trainer_last_result", "trainer_avg_result_90d",
+    ),
+    "sectional_positions": (
+        "last_position_sec1", "last_position_sec2", "last_position_sec3",
+        "last_position_sec4",
+    ),
+    "within_race_ranks": (
+        "age_rank", "rating_rank", "carried_weight_rank", "body_weight_rank",
+        "carried_weight_change_rank", "prior_speed_rank", "distance_experience_rank",
+        "prior_form_rank", "last_position_sec1_rank", "last_position_sec2_rank",
+        "last_position_sec3_rank", "last_position_sec4_rank",
+    ),
+    "horse_profile": (
+        "profile_available", "season_stakes", "total_stakes", "start_of_season_rating",
+        "rating_change_from_season_start", "starts_past_10_meetings",
+        "horse_colour", "import_type", "sire", "dam_sire",
+    ),
+    "veterinary_and_movement": (
+        "veterinary_available", "days_since_veterinary", "veterinary_events_30d",
+        "veterinary_events_90d", "injury_events_365d", "fracture_events_365d",
+        "surgery_events_365d", "movement_available", "days_since_movement",
+        "movements_365d", "days_since_hk_arrival",
+    ),
+    "polynomial_interactions": (
+        "poly_age_sq", "poly_rating_sq", "poly_distance_sq", "poly_draw_sq",
+        "poly_rating_prior_win", "poly_rating_recent_speed", "poly_age_distance",
+        "poly_draw_distance", "poly_weight_change_distance", "poly_jockey_trainer_win",
+    ),
+}
+
+
 FEATURE_ORIGINS = {
     "benter": tuple(RICH_SCHEMA.features),
     "simplified_notebook": (
@@ -197,3 +249,12 @@ def validate_feature_contract() -> None:
     notebook_features = NOTEBOOK_RICH_SCHEMA.features
     if len(notebook_features) != len(set(notebook_features)):
         raise ValueError("Notebook-rich feature names must be unique")
+    assigned_notebook = [
+        feature for values in NOTEBOOK_FEATURE_FAMILIES.values() for feature in values
+    ]
+    if set(assigned_notebook) != set(notebook_features):
+        missing = sorted(set(notebook_features) - set(assigned_notebook))
+        extra = sorted(set(assigned_notebook) - set(notebook_features))
+        raise ValueError(f"Notebook-rich family mismatch: missing={missing}, extra={extra}")
+    if len(assigned_notebook) != len(set(assigned_notebook)):
+        raise ValueError("Notebook-rich features must belong to exactly one family")
