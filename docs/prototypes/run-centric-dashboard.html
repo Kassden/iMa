@@ -399,6 +399,161 @@
     .view-placeholder.active { display: block; }
     .runs-view.hidden { display: none; }
 
+    .page-view { display: none; }
+    .page-view.active { display: block; }
+
+    .page-heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 20px;
+    }
+
+    .page-grid {
+      display: grid;
+      grid-template-columns: 290px minmax(0, 1fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .rail,
+    .page-panel,
+    .warning-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .rail { overflow: hidden; }
+    .rail-heading { padding: 14px 15px; border-bottom: 1px solid var(--border); }
+    .rail-list { display: grid; }
+
+    .rail-button {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 9px;
+      align-items: start;
+      padding: 11px 13px;
+      border: 0;
+      border-bottom: 1px solid #e7ebe9;
+      background: var(--surface);
+      color: var(--muted);
+      text-align: left;
+      font-size: 11px;
+    }
+
+    .rail-button:last-child { border-bottom: 0; }
+    .rail-button.active { color: var(--text); background: #eef5ff; box-shadow: inset 3px 0 0 var(--combined); }
+    .rail-index { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .rail-button strong { font-weight: 680; }
+
+    .page-panel { overflow: hidden; }
+    .page-panel-body { padding: 18px; }
+
+    .flow-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1px;
+      margin-bottom: 20px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .flow-step { min-height: 72px; padding: 12px; background: var(--surface); }
+    .flow-step span { display: block; color: var(--muted); font-size: 10px; }
+    .flow-step strong { display: block; margin-top: 5px; font-size: 12px; }
+
+    .boundary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .boundary-box { padding: 13px; border: 1px solid var(--border); border-radius: var(--radius); }
+    .boundary-box.leakage { border-left: 3px solid var(--warning); }
+    .boundary-box strong { display: block; font-size: 11px; }
+    .boundary-box span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+
+    .transformation-grid {
+      display: grid;
+      grid-template-columns: .8fr 1.4fr .8fr;
+      gap: 12px;
+    }
+
+    .transformation-column { padding: 13px; background: #fafbfa; border: 1px solid var(--border); border-radius: var(--radius); }
+    .transformation-column ul, .transformation-column ol { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 11px; }
+    .transformation-column li + li { margin-top: 7px; }
+
+    .variable-toolbar { display: flex; gap: 18px; align-items: flex-end; margin-bottom: 18px; }
+    .variable-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(310px, .6fr); gap: 20px; }
+    .variable-main { min-width: 0; }
+    .variable-side { min-width: 0; }
+    .variable-chart { height: 430px; }
+    .correlation-chart { height: 520px; }
+
+    .analysis-tabs {
+      display: flex;
+      gap: 22px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 18px;
+    }
+
+    .analysis-tab {
+      height: 40px;
+      padding: 0;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .analysis-tab.active { color: var(--text); border-bottom-color: var(--combined); }
+
+    .ranking-list { display: grid; }
+    .ranking-row { display: grid; grid-template-columns: 34px minmax(160px, 1fr) 120px 100px 100px; gap: 10px; align-items: center; min-height: 42px; padding: 0 12px; border-bottom: 1px solid #e7ebe9; font-size: 11px; }
+    .ranking-row.header { color: var(--muted); background: #fafbfa; font-weight: 680; }
+    .ranking-row code { overflow: hidden; text-overflow: ellipsis; }
+
+    .coverage-list { display: grid; gap: 10px; }
+    .coverage-item { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+    .coverage-item header { display: flex; justify-content: space-between; gap: 12px; }
+    .coverage-item p { margin: 7px 0 0; color: var(--muted); font-size: 11px; }
+
+    .live-summary { display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
+    .live-summary div { padding: 13px; background: var(--surface); border-right: 1px solid var(--border); }
+    .live-summary div:last-child { border-right: 0; }
+    .live-summary strong { display: block; font-size: 18px; }
+    .live-summary span { color: var(--muted); font-size: 10px; }
+
+    .warning-panel { display: grid; grid-template-columns: 190px 1fr; gap: 18px; padding: 15px; margin-bottom: 18px; border-left: 4px solid var(--warning); }
+    .warning-panel strong { font-size: 12px; }
+    .warning-panel p { margin: 0; color: #6d4430; font-size: 11px; }
+
+    .live-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr); gap: 20px; }
+    .runner-table td, .runner-table th { text-align: right; }
+    .runner-table td:first-child, .runner-table th:first-child, .runner-table td:nth-child(2), .runner-table th:nth-child(2) { text-align: left; }
+    .wager-card { padding: 17px; }
+    .wager-combination { display: flex; align-items: center; justify-content: space-between; padding: 15px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 14px 0; }
+    .horse-number { display: grid; place-items: center; width: 34px; height: 34px; color: #fff; background: var(--text); border-radius: 50%; font-size: 14px; font-weight: 760; }
+    .wager-metrics { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+    .wager-metrics div { padding: 11px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .wager-metrics strong { display: block; font-size: 14px; }
+    .wager-metrics span { color: var(--muted); font-size: 10px; }
+
+    .detail-content { min-height: 304px; }
+    .detail-chart { height: 264px; }
+    .detail-copy { padding: 16px; }
+    .detail-list { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+    .detail-list div { padding: 10px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .detail-list span { display: block; color: var(--muted); font-size: 10px; }
+    .detail-list strong, .detail-list code { display: block; margin-top: 3px; font-size: 11px; }
+
     @media (max-width: 980px) {
       .app-header { padding: 0 18px; gap: 18px; }
       .brand { min-width: auto; }
@@ -413,6 +568,11 @@
       .workspace { grid-template-columns: 1fr; }
       .feature-panel { grid-template-columns: 1fr; }
       .feature-chart-region { border-right: 0; border-bottom: 1px solid var(--border); }
+      .page-grid, .variable-layout, .live-grid { grid-template-columns: 1fr; }
+      .flow-strip { grid-template-columns: repeat(2, 1fr); }
+      .transformation-grid { grid-template-columns: 1fr; }
+      .live-summary { grid-template-columns: repeat(2, 1fr); }
+      .warning-panel { grid-template-columns: 1fr; }
     }
 
     @media (max-width: 620px) {
@@ -436,6 +596,11 @@
       .source-score { border-right: 0; border-bottom: 1px solid var(--border); }
       .source-score:last-child { border-bottom: 0; }
       .feature-summary-grid { grid-template-columns: 1fr 1fr; }
+      .boundary-grid { grid-template-columns: 1fr; }
+      .variable-toolbar { flex-wrap: wrap; }
+      .ranking-row { grid-template-columns: 28px minmax(130px, 1fr) 75px; }
+      .ranking-row > :nth-child(3), .ranking-row > :nth-child(5) { display: none; }
+      .live-summary { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
@@ -468,10 +633,10 @@
         <div class="control-group">
           <span class="control-label">Compare</span>
           <div class="segmented" id="scope-control">
-            <button class="segment active">All runs</button>
-            <button class="segment">By schema</button>
-            <button class="segment">By family</button>
-            <button class="segment">By execution</button>
+            <button class="segment active" data-scope="all">All runs</button>
+            <button class="segment" data-scope="schema">By schema</button>
+            <button class="segment" data-scope="family">By family</button>
+            <button class="segment" data-scope="execution">By execution</button>
           </div>
         </div>
         <div class="control-group">
@@ -503,8 +668,8 @@
 
       <section class="metric-strip" aria-label="Run summary">
         <div class="metric"><strong id="visible-count">34</strong><span>Visible persisted runs</span></div>
-        <div class="metric"><strong id="best-top1">24.74%</strong><span>Best fundamental Top-1</span></div>
-        <div class="metric"><strong id="best-logloss">2.2001</strong><span>Lowest fundamental log loss</span></div>
+        <div class="metric"><strong id="best-top1">24.74%</strong><span id="best-top1-label">Best fundamental Top-1</span></div>
+        <div class="metric"><strong id="best-logloss">2.2001</strong><span id="best-logloss-label">Lowest fundamental log loss</span></div>
         <div class="metric"><strong>30.89%</strong><span>Shared market benchmark</span></div>
       </section>
 
@@ -528,26 +693,13 @@
             <span class="run-tag">Selected</span>
           </div>
           <div class="detail-tabs">
-            <button class="detail-tab active">Overview</button>
-            <button class="detail-tab">Evaluation</button>
-            <button class="detail-tab">Pools</button>
-            <button class="detail-tab">Variables</button>
-            <button class="detail-tab">Parameters</button>
+            <button class="detail-tab active" data-detail="overview">Overview</button>
+            <button class="detail-tab" data-detail="evaluation">Evaluation</button>
+            <button class="detail-tab" data-detail="pools">Pools</button>
+            <button class="detail-tab" data-detail="variables">Variables</button>
+            <button class="detail-tab" data-detail="parameters">Parameters</button>
           </div>
-          <div class="source-score-grid">
-            <div class="source-score fundamental"><span>Fundamental Top-1</span><strong id="detail-fundamental">24.74%</strong></div>
-            <div class="source-score market"><span>Market Top-1</span><strong>30.89%</strong></div>
-            <div class="source-score combined"><span>Combined Top-1</span><strong id="detail-combined">30.89%</strong></div>
-          </div>
-          <div class="detail-metrics">
-            <div class="detail-metric"><span>Top-3</span><strong id="detail-top3">52.41%</strong></div>
-            <div class="detail-metric"><span>Race log loss</span><strong id="detail-logloss">2.2001</strong></div>
-            <div class="detail-metric"><span>Pseudo-R²</span><strong id="detail-r2">0.1125</strong></div>
-            <div class="detail-metric"><span>Mean winner rank</span><strong id="detail-rank">4.16</strong></div>
-            <div class="detail-metric"><span>Fundamental blend</span><strong id="detail-fweight">0.000</strong></div>
-            <div class="detail-metric"><span>WIN market blend</span><strong id="detail-mweight">1.071</strong></div>
-          </div>
-          <p class="blend-note" id="blend-note">Validation assigned zero weight to this fundamental forecast. The combined result is effectively the market benchmark.</p>
+          <div class="detail-content" id="detail-content"></div>
         </aside>
       </section>
 
@@ -588,9 +740,85 @@
       </section>
     </div>
 
-    <section class="view-placeholder" id="pipeline-view"><h1>Data and prediction pipeline</h1><p class="subtitle">The current step-by-step transformation view moves here without competing with run analysis.</p></section>
-    <section class="view-placeholder" id="variables-view"><h1>Variable analysis</h1><p class="subtitle">Dataset selector, contribution ranking, coverage, families and Plotly Spearman heatmap.</p></section>
-    <section class="view-placeholder" id="live-view"><h1>Live simulation</h1><p class="subtitle">Current-race predictions, market fallback disclosure and paper-wager recommendations.</p></section>
+    <section class="page-view" id="pipeline-view">
+      <div class="page-heading">
+        <div><h1>Data and prediction pipeline</h1><p class="subtitle">Exact inputs, transformations, fitted state and leakage boundaries</p></div>
+        <div class="segmented" id="pipeline-mode-control">
+          <button class="segment active" data-mode="training">Historical training</button>
+          <button class="segment" data-mode="live">Live prediction</button>
+        </div>
+      </div>
+      <div class="flow-strip" id="pipeline-flow"></div>
+      <div class="page-grid">
+        <aside class="rail"><div class="rail-heading"><h2>Pipeline stages</h2><p class="subtitle" id="pipeline-stage-count"></p></div><div class="rail-list" id="pipeline-stage-list"></div></aside>
+        <section class="page-panel">
+          <div class="panel-header"><div><h2 id="pipeline-stage-title"></h2><p class="subtitle" id="pipeline-stage-purpose"></p></div><span class="run-tag" id="pipeline-stage-label"></span></div>
+          <div class="page-panel-body">
+            <div class="boundary-grid">
+              <div class="boundary-box"><strong>Fitted state</strong><span id="pipeline-fit-scope"></span></div>
+              <div class="boundary-box leakage"><strong>Leakage boundary</strong><span id="pipeline-leakage"></span></div>
+            </div>
+            <div class="transformation-grid">
+              <section class="transformation-column"><h3>Inputs</h3><ul id="pipeline-inputs"></ul></section>
+              <section class="transformation-column"><h3>Exact transformation</h3><ol id="pipeline-operations"></ol></section>
+              <section class="transformation-column"><h3>Outputs</h3><ul id="pipeline-outputs"></ul></section>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="page-view" id="variables-view">
+      <div class="page-heading">
+        <div><h1>Variable analysis</h1><p class="subtitle" id="variable-context">Notebook-rich schema · 166 variables · 271,858 runners</p></div>
+        <button class="download-button">Export feature study</button>
+      </div>
+      <div class="variable-toolbar">
+        <div class="control-group"><span class="control-label">Dataset contract</span><div class="segmented" id="dataset-control">
+          <button class="segment" data-dataset="baseline-v1">Baseline · 23</button>
+          <button class="segment" data-dataset="benter-rich-v1">Benter rich · 81</button>
+          <button class="segment active" data-dataset="notebook-rich-v2">Notebook rich · 166</button>
+        </div></div>
+      </div>
+      <div class="analysis-tabs" id="variable-tabs">
+        <button class="analysis-tab active" data-variable-view="contribution">Contribution</button>
+        <button class="analysis-tab" data-variable-view="ranking">Full ranking</button>
+        <button class="analysis-tab" data-variable-view="correlation">Correlation</button>
+        <button class="analysis-tab" data-variable-view="coverage">Coverage & provenance</button>
+      </div>
+      <div id="variable-content"></div>
+    </section>
+
+    <section class="page-view" id="live-view">
+      <div class="page-heading">
+        <div><h1>Live simulation</h1><p class="subtitle">Sha Tin · Race 1 · snapshot 26 Jul 2026</p></div>
+        <div class="control-group"><label class="control-label" for="race-select">Race</label><select id="race-select"><option>Race 1 · 17 runners</option></select></div>
+      </div>
+      <div class="live-summary">
+        <div><strong>17</strong><span>Active runners</span></div>
+        <div><strong>108</strong><span>Priced candidates</span></div>
+        <div><strong>$10</strong><span>Recommended cost</span></div>
+        <div><strong>$14.97</strong><span>Expected gross return</span></div>
+        <div><strong>+49.69%</strong><span>Expected ROI</span></div>
+      </div>
+      <div class="warning-panel"><strong>Public-market fallback</strong><p>No runner had the complete live historical feature row required by the model. Runner strengths therefore use the documented public WIN fallback; no independent fundamental edge is claimed.</p></div>
+      <div class="live-grid">
+        <section class="page-panel">
+          <div class="panel-header"><div><h2>Runner probabilities</h2><p class="subtitle">Market probability, model fair odds and current WIN price</p></div><div class="legend"><span class="legend-item"><i class="legend-mark market"></i>Public WIN fallback</span></div></div>
+          <div class="table-scroll"><table class="runner-table"><thead><tr><th>No.</th><th>Horse</th><th>Public probability</th><th>Fair odds</th><th>WIN odds</th><th>Edge</th></tr></thead><tbody id="live-runner-table"></tbody></table></div>
+        </section>
+        <aside class="page-panel wager-card">
+          <h2>Recommended paper wager</h2><p class="subtitle">One candidate passed configured limits</p>
+          <div class="wager-combination"><div><span class="run-tag">PLACE</span><h3 style="margin-top:9px">Horse 2</h3></div><span class="horse-number">2</span></div>
+          <div class="wager-metrics">
+            <div><strong>$10.00</strong><span>Stake</span></div><div><strong>14.97%</strong><span>Probability</span></div>
+            <div><strong>6.68</strong><span>Fair odds</span></div><div><strong>10.00</strong><span>Current odds</span></div>
+            <div><strong>+49.69%</strong><span>Expected value</span></div><div><strong>1.00%</strong><span>Kelly fraction</span></div>
+          </div>
+          <p class="feature-footnote">Paper execution only. Authenticated submission remains disabled behind credentials, MFA confirmation and transaction limits.</p>
+        </aside>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -614,13 +842,70 @@
       ["poly_draw_distance", .006368], ["last_result", .006364], ["jockey_top3_rate", .006161], ["avg_result_3", .005850]
     ];
 
+    const POOLS = {
+      fundamental: {
+        WIN: [.2492, .2474, 822], PLACE: [.5567, .5406, 1796], QIN: [.0929, .0912, 303], QPL: [.2130, .2002, 665],
+        TRI: [.0464, .0430, 143], TIERCE: [.0098, .0117, 39], FIRST4: [.0323, .0283, 94], QUARTET: [.00213, .00211, 7]
+      },
+      combined: {
+        WIN: [.3137, .3089, 1026], PLACE: [.6449, .6189, 2056], QIN: [.1331, .1315, 437], QPL: [.2853, .2727, 906],
+        TRI: [.0711, .0762, 253], TIERCE: [.0170, .0217, 72], FIRST4: [.0516, .0449, 149], QUARTET: [.00419, .00421, 14]
+      }
+    };
+
+    const DATASETS = {
+      "baseline-v1": { label: "Baseline", count: 23, numeric: 17, families: 1, inactive: 0, rows: 271868,
+        features: [["prior_avg_odds", .0198], ["horse_rating", .0147], ["last_win_odds", .0112], ["prior_win_rate", .0095], ["draw", .0072], ["last_result", .0061], ["horse_age", .0048], ["actual_weight", .0039]] },
+      "benter-rich-v1": { label: "Benter rich", count: 81, numeric: 74, families: 7, inactive: 0, rows: 271858,
+        features: [["jockey_top3_rate", .0301], ["prior_speed_rank", .0219], ["draw_bias_win_rate", .0174], ["avg_result_3", .0133], ["trainer_win_rate", .0105], ["last_speed_ratio", .0091], ["distance_band_win_rate", .0078], ["avg_lengths_behind_3", .0064]] },
+      "notebook-rich-v2": { label: "Notebook rich", count: 166, numeric: 155, families: 16, inactive: 8, rows: 271858, features: FEATURES }
+    };
+
+    const trainingStages = [
+      stage("Load historical runner and race records", "Create one source row per horse entered in a completed race.", "No parameters fitted", "Legacy rows stop at 2004-12-31; canonical rows begin in 2005 to prevent duplicates.", ["Legacy runs.csv + races.csv", "Canonical runners.csv.gz"], ["Parse dates and results", "Namespace race and horse IDs", "Concatenate non-overlapping timelines", "Sort chronologically"], ["Ordered runner table", "One row per race runner"]),
+      stage("Validate outcomes and market rows", "Keep races with a usable winner target and complete WIN odds.", "No parameters fitted", "Current-race results and final prices remain labels and benchmarks.", ["result", "win_odds", "race_id"], ["Parse finishing position", "Drop incomplete result races", "Build target probability", "Normalize inverse odds within race"], ["target_win", "target_probability", "market_probability"]),
+      stage("Build point-in-time horse history", "Turn earlier races into lagged form without reading the current result.", "No parameters fitted", "Every expanding statistic shifts by one race before calculation.", ["horse_id", "date", "result", "odds", "finish_time"], ["Group chronologically by horse", "Shift current row out", "Compute prior rates and averages", "Capture last-race values"], ["Prior form features", "Recent form features", "Field size"]),
+      stage("Split complete races by time", "Create train, validation and untouched test windows.", "Deterministic 70 / 15 / 15 split", "Runners from one race never cross split boundaries.", ["Chronologically ordered race IDs"], ["First 70% to train", "Next 15% to validation", "Final 15% to test"], ["Train races", "Validation races", "Test races"]),
+      stage("Fit schema-specific preprocessing", "Convert the selected feature contract into an estimator matrix.", "Fitted on train rows only", "Validation and test only call transform.", ["Numeric schema fields", "Categorical schema fields"], ["Median imputation", "Missing indicators", "Standard scaling", "Categorical imputation", "One-hot encoding"], ["Estimator matrix"]),
+      stage("Fit fundamental winner model", "Estimate runner strength without current prices.", "Estimator fitted on train races", "Current WIN and PLACE prices are excluded from the fundamental schema.", ["Estimator matrix", "target_win"], ["Fit logistic or boosted estimator", "Predict positive score", "Normalize within race"], ["Fundamental probability"]),
+      stage("Fit calibration, market blend and order exponents", "Tune corrections on validation races only.", "All weights fitted on validation", "Final test metrics cannot select calibration or blend parameters.", ["Validation model probability", "WIN and PLACE market", "Results"], ["Fit temperature", "Fit model/market weights", "Fit second-place exponent", "Fit third-place exponent"], ["Temperature", "Blend weights", "Order exponents"]),
+      stage("Evaluate untouched test races", "Measure ranking, probability quality and disagreement.", "No fitting permitted", "Final odds are a historical benchmark, not evidence of a tradable pre-race edge.", ["Frozen artifacts", "Test features", "Test labels", "Test market"], ["Compute fundamental and combined forecasts", "Score Top-1 and Top-3", "Score log loss, Brier and ECE", "Evaluate pools and disagreement"], ["Run metrics", "Pool metrics", "Dashboard artifacts"])
+    ];
+
+    const liveStages = [
+      stage("Collect one timestamped race snapshot", "Capture field, prices and horse-page information before prediction.", "No parameters fitted", "received_at and odds_updated_at preserve what was known at decision time.", ["Rendered HKJC race application", "Horse profile pages", "Trackwork and veterinary pages"], ["Read runners, draw, weights, rating and gear", "Read WIN and PLACE prices", "Store raw and normalized snapshots"], ["runners.json", "horse-details.json", "model.csv"]),
+      stage("Join only earlier horse history", "Build form values from records before the live race.", "No parameters fitted", "Same-day and future records are excluded.", ["horse_id", "race_date", "historical races"], ["Filter earlier records", "Select previous eligible race", "Compute starts, wins and recent form"], ["Model feature row", "Missing-feature report"]),
+      stage("Map into the selected feature contract", "Translate scraper columns into the trained schema.", "Uses frozen preprocessing", "The artifact feature contract is authoritative.", ["model.csv", "prediction_ready"], ["Map legacy names", "Add unavailable columns as null", "Apply explicit UNKNOWN categories"], ["Live feature frame", "Ratable flag", "Current prices"]),
+      stage("Predict and calibrate fundamental probability", "Generate model-only runner probabilities.", "No live fitting", "Current WIN and PLACE odds do not enter this path.", ["Live features", "Fitted estimator", "Temperature"], ["Apply train-fitted preprocessing", "Predict runner score", "Normalize within race", "Apply temperature"], ["Calibrated fundamental probability"]),
+      stage("Convert live odds into market probabilities", "Represent WIN and PLACE markets as separate forecasts.", "No live fitting", "Only pre-decision timestamped prices are valid.", ["WIN odds", "PLACE odds", "odds_updated_at"], ["Invert decimal odds", "Normalize WIN market", "Normalize PLACE market"], ["WIN market probability", "PLACE market probability"]),
+      stage("Combine model and market forecasts", "Apply validation-fitted weights to the decision forecast.", "Weights frozen from validation", "Live observations never refit blend weights.", ["Fundamental probability", "WIN market", "PLACE market"], ["Apply multiplicative blend", "Clip probabilities", "Normalize within race"], ["Combined probability"]),
+      stage("Handle first-time and unratable runners", "Keep every active runner in the distribution.", "No fitting", "Missing history cannot silently become a confident model forecast.", ["Combined probability", "Market probability", "Ratable flag"], ["Assign public fallback to unratable runners", "Reserve probability mass", "Rescale rated runners"], ["Final runner strengths"]),
+      stage("Expand strengths into pool combinations", "Calculate ordered and unordered finishing combinations.", "Order exponents frozen from validation", "Current exotic prices remain downstream comparisons.", ["Runner strengths", "Order exponents"], ["Apply sequential selection", "Calculate WIN through QUARTET", "Rank combinations", "Convert probability to fair odds"], ["Ranked pool combinations", "Fair odds"]),
+      stage("Compare price and size a paper wager", "Convert probability disagreement into a constrained decision.", "No fitting", "Authenticated submission remains fail-closed.", ["Model probability", "Current odds", "Bankroll"], ["Calculate expected value", "Apply uncertainty haircut", "Calculate fractional Kelly", "Enforce limits or abstain"], ["Recommendation", "Paper receipt", "Ledger row"])
+    ];
+
+    function stage(name, purpose, fit, leakage, inputs, operations, outputs) { return { name, purpose, fit, leakage, inputs, operations, outputs }; }
+
     const schemaMeta = {
       "baseline-v1": { label: "Baseline", color: "#50816c" },
       "benter-rich-v1": { label: "Benter rich", color: "#b36d3b" },
       "notebook-rich-v2": { label: "Notebook rich", color: "#476bb3" }
     };
 
-    const state = { source: "fundamental", schema: "all", family: "all", selected: RUNS[0].id };
+    const params = new URLSearchParams(location.search);
+    const state = {
+      view: params.get("view") || "runs",
+      source: params.get("source") || "fundamental",
+      scope: params.get("scope") || "all",
+      schema: params.get("schema") || "all",
+      family: params.get("family") || "all",
+      selected: params.get("run") || RUNS[0].id,
+      detail: params.get("detail") || "overview",
+      pipelineMode: params.get("mode") || "training",
+      pipelineStage: Number(params.get("stage") || 0),
+      dataset: params.get("dataset") || "notebook-rich-v2",
+      variableView: params.get("variable") || "contribution"
+    };
     const pct = value => `${(value * 100).toFixed(2)}%`;
     const num = (value, digits = 4) => Number(value).toFixed(digits);
 
@@ -629,31 +914,55 @@
     }
 
     function sourceMetrics(run) {
-      if (state.source === "combined") return { top1: run.combined, top3: MARKET.top3, logloss: 2.01193, r2: .18838, rank: 3.53 };
+      if (state.source === "combined") return { top1: run.combined, top3: run.id.includes("logit") ? .617399 : MARKET.top3, logloss: run.id.includes("logit") ? 2.012405 : 2.01193284, r2: run.id.includes("logit") ? .188194 : .188385, rank: run.id.includes("logit") ? 3.53 : 3.5259 };
       return run;
     }
 
     function renderChart() {
       const runs = visibleRuns();
-      const traces = Object.keys(schemaMeta).map(schema => {
-        const rows = runs.filter(run => run.schema === schema);
-        return {
-          type: "scatter",
-          mode: "markers",
-          name: schemaMeta[schema].label,
-          x: rows.map(run => sourceMetrics(run).logloss),
-          y: rows.map(run => sourceMetrics(run).top1),
-          text: rows.map(run => run.id),
-          customdata: rows.map(run => [run.family, run.count, run.id]),
-          marker: {
-            color: schemaMeta[schema].color,
-            size: rows.map(run => run.id === state.selected ? 14 : 10),
-            symbol: rows.map(run => run.family === "logit" ? "circle" : "diamond"),
-            line: { color: rows.map(run => run.id === state.selected ? "#18201d" : "#ffffff"), width: 2 }
-          },
-          hovertemplate: "<b>%{text}</b><br>%{customdata[0]} · %{customdata[1]} variables<br>Top-1 %{y:.2%}<br>Race log loss %{x:.4f}<extra></extra>"
-        };
-      }).filter(trace => trace.x.length);
+      let traces;
+      if (state.scope === "all") {
+        traces = Object.keys(schemaMeta).map(schema => {
+          const rows = runs.filter(run => run.schema === schema);
+          return {
+            type: "scatter", mode: "markers", name: schemaMeta[schema].label,
+            x: rows.map(run => sourceMetrics(run).logloss), y: rows.map(run => sourceMetrics(run).top1),
+            text: rows.map(run => run.id), customdata: rows.map(run => [run.family, run.count, run.id]),
+            marker: {
+              color: schemaMeta[schema].color, size: rows.map(run => run.id === state.selected ? 14 : 10),
+              symbol: rows.map(run => run.family === "logit" ? "circle" : "diamond"),
+              line: { color: rows.map(run => run.id === state.selected ? "#18201d" : "#ffffff"), width: 2 }
+            },
+            hovertemplate: "<b>%{text}</b><br>%{customdata[0]} · %{customdata[1]} variables<br>Top-1 %{y:.2%}<br>Race log loss %{x:.4f}<extra></extra>"
+          };
+        }).filter(trace => trace.x.length);
+      } else {
+        let groups;
+        if (state.scope === "schema") {
+          groups = Object.keys(schemaMeta).map(schema => ({ name: schemaMeta[schema].label, color: schemaMeta[schema].color, rows: runs.filter(run => run.schema === schema) })).filter(group => group.rows.length);
+        } else if (state.scope === "family") {
+          groups = [
+            { name: "Boosted", color: "#18794e", rows: runs.filter(run => run.family === "boosted") },
+            { name: "Logistic", color: "#1d4ed8", rows: runs.filter(run => run.family === "logit") }
+          ].filter(group => group.rows.length);
+        } else {
+          groups = [
+            { name: "Baseline sweep · 25 Jul 17:42", color: "#50816c", rows: runs.filter(run => run.schema === "baseline-v1") },
+            { name: "Benter sweep · 25 Jul 18:04", color: "#b36d3b", rows: runs.filter(run => run.schema === "benter-rich-v1") },
+            { name: "Notebook boosted · 26 Jul 09:22", color: "#476bb3", rows: runs.filter(run => run.id.includes("notebook-boost")) },
+            { name: "Notebook logit · 26 Jul 10:01", color: "#7a5aa6", rows: runs.filter(run => run.id.includes("notebook-logit")) }
+          ].filter(group => group.rows.length);
+        }
+        traces = [{
+          type: "scatter", mode: "markers+text", name: "Aggregate median",
+          x: groups.map(group => median(group.rows.map(run => sourceMetrics(run).logloss))),
+          y: groups.map(group => median(group.rows.map(run => sourceMetrics(run).top1))),
+          text: groups.map(group => group.name), textposition: "top center",
+          customdata: groups.map(group => group.rows.length),
+          marker: { color: groups.map(group => group.color), size: groups.map(group => 14 + Math.min(10, group.rows.length)), symbol: "diamond", line: { color: "#ffffff", width: 2 } },
+          hovertemplate: "<b>%{text}</b><br>%{customdata} visible runs<br>Median Top-1 %{y:.2%}<br>Median log loss %{x:.4f}<extra></extra>"
+        }];
+      }
       traces.push({
         type: "scatter", mode: "markers", name: "Market benchmark",
         x: [MARKET.logloss], y: [MARKET.top1], text: ["Market benchmark"],
@@ -664,8 +973,8 @@
         margin: { l: 58, r: 22, t: 18, b: 50 },
         paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
         showlegend: false, hovermode: "closest",
-        xaxis: { title: "Race log loss · lower is better", gridcolor: "#e7ebe9", zeroline: false, tickformat: ".3f" },
-        yaxis: { title: "Top-1 accuracy · higher is better", gridcolor: "#e7ebe9", zeroline: false, tickformat: ".1%" },
+        xaxis: { title: "Race log loss · lower is better", gridcolor: "#e7ebe9", zeroline: false, tickformat: state.source === "combined" ? ".5f" : ".3f" },
+        yaxis: { title: "Top-1 accuracy · higher is better", gridcolor: "#e7ebe9", zeroline: false, tickformat: state.source === "combined" ? ".2%" : ".1%" },
         font: { family: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", size: 11, color: "#4f5b55" }
       }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
       const chart = document.getElementById("run-chart");
@@ -674,6 +983,12 @@
         const runId = event.points?.[0]?.customdata?.[2];
         if (runId) { state.selected = runId; renderAll(); }
       });
+    }
+
+    function median(values) {
+      const sorted = values.slice().sort((a, b) => a - b);
+      const middle = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
     }
 
     function renderTable() {
@@ -694,6 +1009,8 @@
         document.getElementById("best-top1").textContent = pct(Math.max(...runs.map(run => sourceMetrics(run).top1)));
         document.getElementById("best-logloss").textContent = num(Math.min(...runs.map(run => sourceMetrics(run).logloss)));
       }
+      document.getElementById("best-top1-label").textContent = `Best ${state.source} Top-1`;
+      document.getElementById("best-logloss-label").textContent = `Lowest ${state.source} log loss`;
     }
 
     function renderDetail() {
@@ -706,18 +1023,52 @@
       const metric = sourceMetrics(run);
       document.getElementById("selected-run-name").textContent = run.id;
       document.getElementById("selected-run-meta").textContent = `${meta.label} · ${run.family === "logit" ? "Logistic" : "Boosted"} · ${run.count} variables`;
-      document.getElementById("detail-fundamental").textContent = pct(run.top1);
-      document.getElementById("detail-combined").textContent = pct(run.combined);
-      document.getElementById("detail-top3").textContent = pct(metric.top3);
-      document.getElementById("detail-logloss").textContent = num(metric.logloss);
-      document.getElementById("detail-r2").textContent = num(metric.r2);
-      document.getElementById("detail-rank").textContent = num(metric.rank, 2);
-      document.getElementById("detail-fweight").textContent = num(run.fweight, 3);
-      document.getElementById("detail-mweight").textContent = num(run.mweight, 3);
-      document.getElementById("blend-note").textContent = run.fweight < .001
-        ? "Validation assigned zero weight to this fundamental forecast. The combined result is effectively the market benchmark."
-        : `Validation retained a ${num(run.fweight, 3)} fundamental weight alongside the WIN market.`;
+      document.querySelectorAll(".detail-tab").forEach(button => button.classList.toggle("active", button.dataset.detail === state.detail));
+      const target = document.getElementById("detail-content");
+      if (state.detail === "overview") {
+        target.innerHTML = `<div class="source-score-grid">
+          <div class="source-score fundamental"><span>Fundamental Top-1</span><strong>${pct(run.top1)}</strong></div>
+          <div class="source-score market"><span>Market Top-1</span><strong>${pct(MARKET.top1)}</strong></div>
+          <div class="source-score combined"><span>Combined Top-1</span><strong>${pct(run.combined)}</strong></div>
+        </div><div class="detail-metrics">
+          <div class="detail-metric"><span>Top-3</span><strong>${pct(metric.top3)}</strong></div><div class="detail-metric"><span>Race log loss</span><strong>${num(metric.logloss)}</strong></div>
+          <div class="detail-metric"><span>Pseudo-R²</span><strong>${num(metric.r2)}</strong></div><div class="detail-metric"><span>Mean winner rank</span><strong>${num(metric.rank, 2)}</strong></div>
+          <div class="detail-metric"><span>Fundamental blend</span><strong>${num(run.fweight, 3)}</strong></div><div class="detail-metric"><span>WIN market blend</span><strong>${num(run.mweight, 3)}</strong></div>
+        </div><p class="blend-note">${run.fweight < .001 ? "Validation assigned zero weight to this fundamental forecast. The combined result is effectively the market benchmark." : `Validation retained a ${num(run.fweight, 3)} fundamental weight alongside the WIN market.`}</p>`;
+      } else if (state.detail === "evaluation") {
+        target.innerHTML = `<div id="detail-evaluation-chart" class="detail-chart"></div>`;
+        Plotly.react("detail-evaluation-chart", [
+          { type: "bar", name: "Top-1", x: ["Fundamental", "Market", "Combined"], y: [run.top1, MARKET.top1, run.combined], marker: { color: ["#18794e", "#66706b", "#1d4ed8"] } },
+          { type: "bar", name: "Top-3", x: ["Fundamental", "Market", "Combined"], y: [run.top3, MARKET.top3, MARKET.top3], marker: { color: ["#73a58b", "#a1a9a5", "#7795e2"] } }
+        ], miniLayout("Held-out ranking accuracy", "Accuracy", ".0%", { barmode: "group" }), miniConfig());
+      } else if (state.detail === "pools") {
+        target.innerHTML = `<div id="detail-pool-chart" class="detail-chart"></div>`;
+        const poolNames = Object.keys(POOLS[state.source]);
+        Plotly.react("detail-pool-chart", [{
+          type: "scatter", mode: "markers+text", text: poolNames, textposition: "top center",
+          x: poolNames.map(pool => POOLS[state.source][pool][0]), y: poolNames.map(pool => POOLS[state.source][pool][1]),
+          marker: { color: state.source === "combined" ? "#1d4ed8" : "#18794e", size: 10 },
+          hovertemplate: "<b>%{text}</b><br>Predicted %{x:.2%}<br>Observed %{y:.2%}<extra></extra>"
+        }, { type: "scatter", mode: "lines", x: [0, .7], y: [0, .7], line: { color: "#aeb8b2", dash: "dot" }, hoverinfo: "skip", showlegend: false }],
+        miniLayout("Pool probability calibration", "Observed hit rate", ".0%", { xaxis: { title: "Mean top probability", tickformat: ".0%", gridcolor: "#e7ebe9" } }), miniConfig());
+      } else if (state.detail === "variables") {
+        const features = DATASETS[run.schema].features.slice(0, 5);
+        target.innerHTML = `<div class="detail-copy"><h3>${meta.label} estimator contract</h3><p class="subtitle">${run.count} exact inputs · schema-level contribution study</p>
+          <div class="detail-list" style="margin-top:14px">${features.map(item => `<div><span>Feature</span><code>${item[0]}</code></div><div><span>Delta log loss</span><strong>${num(item[1], 5)}</strong></div>`).join("")}</div></div>`;
+      } else {
+        const params = run.family === "logit" ? [["C", "0.5"], ["class_weight", "balanced"], ["temperature", "0.838"], ["duration", "26.64 s"]] : [["learning_rate", run.id.includes("lr003") ? "0.03" : "0.06"], ["max_leaf_nodes", run.id.includes("leaf31") ? "31" : "15"], ["temperature", "0.838"], ["duration", "24.84 s"]];
+        target.innerHTML = `<div class="detail-copy"><h3>Frozen run parameters</h3><div class="detail-list" style="margin-top:14px">${params.map(item => `<div><span>${item[0]}</span><code>${item[1]}</code></div>`).join("")}
+          <div><span>Fundamental blend</span><code>${num(run.fweight, 6)}</code></div><div><span>WIN market blend</span><code>${num(run.mweight, 6)}</code></div></div></div>`;
+      }
     }
+
+    function miniLayout(title, yTitle, tickformat, extra = {}) {
+      return { margin: { l: 50, r: 14, t: 42, b: 42 }, title: { text: title, x: .04, font: { size: 12 } }, paper_bgcolor: "#fff", plot_bgcolor: "#fff", showlegend: true,
+        xaxis: { gridcolor: "#e7ebe9" }, yaxis: { title: yTitle, tickformat, gridcolor: "#e7ebe9", rangemode: "tozero" },
+        legend: { orientation: "h", y: 1.12 }, font: { family: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", size: 9, color: "#4f5b55" }, ...extra };
+    }
+
+    function miniConfig() { return { responsive: true, displaylogo: false, displayModeBar: false }; }
 
     function renderFeatureChart() {
       const compact = window.innerWidth < 620;
@@ -736,26 +1087,111 @@
       }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
     }
 
-    function renderAll() { renderDetail(); renderChart(); renderTable(); }
+    function renderPipeline() {
+      const stages = state.pipelineMode === "live" ? liveStages : trainingStages;
+      state.pipelineStage = Math.min(state.pipelineStage, stages.length - 1);
+      const selected = stages[state.pipelineStage];
+      document.querySelectorAll("#pipeline-mode-control .segment").forEach(button => button.classList.toggle("active", button.dataset.mode === state.pipelineMode));
+      document.getElementById("pipeline-stage-count").textContent = `${stages.length} exact stages`;
+      document.getElementById("pipeline-flow").innerHTML = (state.pipelineMode === "live"
+        ? [["1", "Collect"], ["2–4", "Enrich and predict"], ["5–7", "Blend and fallback"], ["8–9", "Pools and decision"]]
+        : [["1–2", "Load and validate"], ["3–4", "History and split"], ["5–6", "Preprocess and fit"], ["7–8", "Calibrate and test"]]
+      ).map(item => `<div class="flow-step"><span>Stages ${item[0]}</span><strong>${item[1]}</strong></div>`).join("");
+      document.getElementById("pipeline-stage-list").innerHTML = stages.map((item, index) => `<button class="rail-button ${index === state.pipelineStage ? "active" : ""}" data-stage="${index}"><span class="rail-index">${String(index + 1).padStart(2, "0")}</span><strong>${item.name}</strong></button>`).join("");
+      document.getElementById("pipeline-stage-title").textContent = selected.name;
+      document.getElementById("pipeline-stage-purpose").textContent = selected.purpose;
+      document.getElementById("pipeline-stage-label").textContent = `Stage ${state.pipelineStage + 1}`;
+      document.getElementById("pipeline-fit-scope").textContent = selected.fit;
+      document.getElementById("pipeline-leakage").textContent = selected.leakage;
+      const list = (id, values) => { document.getElementById(id).innerHTML = values.map(value => `<li>${value}</li>`).join(""); };
+      list("pipeline-inputs", selected.inputs); list("pipeline-operations", selected.operations); list("pipeline-outputs", selected.outputs);
+      document.querySelectorAll("[data-stage]").forEach(button => button.addEventListener("click", () => { state.pipelineStage = Number(button.dataset.stage); renderPipeline(); }));
+    }
+
+    function renderVariables() {
+      const dataset = DATASETS[state.dataset];
+      document.querySelectorAll("#dataset-control .segment").forEach(button => button.classList.toggle("active", button.dataset.dataset === state.dataset));
+      document.querySelectorAll("#variable-tabs .analysis-tab").forEach(button => button.classList.toggle("active", button.dataset.variableView === state.variableView));
+      document.getElementById("variable-context").textContent = `${dataset.label} schema · ${dataset.count} variables · ${dataset.rows.toLocaleString()} runners`;
+      const content = document.getElementById("variable-content");
+      if (state.variableView === "contribution") {
+        content.innerHTML = `<div class="variable-layout"><section class="page-panel variable-main"><div class="panel-header"><div><h2>Held-out variable contribution</h2><p class="subtitle">Permutation delta race log loss · larger positive value means more contribution</p></div></div><div id="variable-page-chart" class="variable-chart"></div></section>
+          <aside class="page-panel variable-side"><div class="panel-header"><div><h2>Study summary</h2><p class="subtitle">Schema-level analysis</p></div></div><div class="page-panel-body"><div class="feature-summary-grid"><div><strong>${dataset.count}</strong><span>Declared</span></div><div><strong>${dataset.numeric}</strong><span>Numeric matrix</span></div><div><strong>${dataset.families}</strong><span>Families</span></div><div><strong>${dataset.inactive}</strong><span>Zero coverage</span></div></div><p class="feature-footnote">Contribution is linked to a representative fitted study model and is not presented as a new calculation for every run.</p></div></aside></div>`;
+        Plotly.react("variable-page-chart", [{ type: "bar", orientation: "h", x: dataset.features.slice().reverse().map(item => item[1]), y: dataset.features.slice().reverse().map(item => item[0]), marker: { color: "#18794e" }, hovertemplate: "<b>%{y}</b><br>Delta log loss %{x:.5f}<extra></extra>" }],
+          { margin: { l: 180, r: 24, t: 20, b: 48 }, paper_bgcolor: "#fff", plot_bgcolor: "#fff", showlegend: false, xaxis: { title: "Permutation delta race log loss", gridcolor: "#e7ebe9" }, font: { family: "Inter, sans-serif", size: 10, color: "#4f5b55" } }, miniConfig());
+      } else if (state.variableView === "ranking") {
+        content.innerHTML = `<section class="page-panel"><div class="panel-header"><div><h2>All variables ranked</h2><p class="subtitle">Association, FDR significance, permutation contribution and coverage</p></div><span class="table-count">Showing ${dataset.features.length} prototype rows of ${dataset.count}</span></div><div class="ranking-list"><div class="ranking-row header"><span>Rank</span><span>Variable</span><span>Family</span><span>Contribution</span><span>Coverage</span></div>${dataset.features.map((item, index) => `<div class="ranking-row"><strong>${index + 1}</strong><code>${item[0]}</code><span>${featureFamily(item[0])}</span><strong>${num(item[1], 5)}</strong><span>${index < 2 ? "99.8%" : "94.7%"}</span></div>`).join("")}</div></section>`;
+      } else if (state.variableView === "correlation") {
+        const names = dataset.features.slice(0, Math.min(8, dataset.features.length)).map(item => item[0]);
+        const matrix = names.map((_, row) => names.map((__, col) => row === col ? 1 : Number((Math.sin((row + 1) * (col + 2)) * .42).toFixed(3))));
+        content.innerHTML = `<div class="variable-layout"><section class="page-panel variable-main"><div class="panel-header"><div><h2>Training-only Spearman matrix</h2><p class="subtitle">${dataset.label} numeric variables · schema-level matrix</p></div></div><div id="correlation-page-chart" class="correlation-chart"></div></section><aside class="page-panel variable-side"><div class="panel-header"><div><h2>Inspected variable</h2><p class="subtitle">${names[0]}</p></div></div><div class="ranking-list">${names.slice(1).map((name, index) => `<div class="ranking-row" style="grid-template-columns:1fr 80px"><code>${name}</code><strong>${num(matrix[0][index + 1], 3)}</strong></div>`).join("")}</div></aside></div>`;
+        Plotly.react("correlation-page-chart", [{ type: "heatmap", z: matrix, x: names, y: names, zmin: -1, zmax: 1, colorscale: [[0, "#b54708"], [.5, "#ffffff"], [1, "#1d4ed8"]], colorbar: { title: "rho", thickness: 12 }, hovertemplate: "%{y} × %{x}<br>rho %{z:.3f}<extra></extra>" }],
+          { margin: { l: 170, r: 30, t: 80, b: 90 }, paper_bgcolor: "#fff", plot_bgcolor: "#fff", xaxis: { tickangle: -40 }, font: { family: "Inter, sans-serif", size: 9, color: "#4f5b55" } }, miniConfig());
+      } else {
+        const missing = state.dataset === "notebook-rich-v2" ? ["season_stakes", "total_stakes", "start_of_season_rating", "rating_change_from_season_start", "starts_past_10_meetings", "days_since_veterinary", "days_since_movement", "days_since_hk_arrival"] : [];
+        content.innerHTML = `<div class="variable-layout"><section class="page-panel"><div class="panel-header"><div><h2>Training coverage</h2><p class="subtitle">Availability and explicit exclusions</p></div></div><div class="page-panel-body"><div class="coverage-list">${missing.length ? missing.map(name => `<article class="coverage-item"><header><code>${name}</code><strong>0.0%</strong></header><p>Excluded from permutation analysis until historical source coverage is available.</p></article>`).join("") : `<article class="coverage-item"><header><strong>All declared study variables have training coverage</strong><strong>Complete</strong></header><p>No zero-coverage variables are excluded for this schema.</p></article>`}</div></div></section>
+          <aside class="page-panel"><div class="panel-header"><div><h2>Source provenance</h2><p class="subtitle">Authoritative source policy</p></div></div><div class="page-panel-body"><div class="coverage-list"><article class="coverage-item"><header><strong>HKJC official results</strong><strong>Primary</strong></header><p>Results, race conditions, odds and official horse identities where available.</p></article><article class="coverage-item"><header><strong>Archived official pages</strong><strong>Backfill</strong></header><p>Timestamped horse profiles, age, origin and historical page snapshots.</p></article><article class="coverage-item"><header><strong>Third-party archives</strong><strong>Gap fill</strong></header><p>Used only when official material is unavailable and provenance remains explicit.</p></article></div></div></aside></div>`;
+      }
+    }
+
+    function featureFamily(name) {
+      if (name.includes("jockey") || name.includes("trainer")) return "Connections";
+      if (name.includes("odds")) return "Historical market";
+      if (name.includes("draw")) return "Post position";
+      if (name.includes("rank")) return "Within-race rank";
+      return "Recent form";
+    }
+
+    function renderLive() {
+      const horses = [
+        ["2", "Viva Graciousness", .1497, 6.68, 10.0], ["5", "Golden Luck", .1128, 8.87, 8.1], ["11", "Sky Trust", .0984, 10.16, 9.8],
+        ["7", "Lucky Symphony", .0879, 11.38, 12.0], ["3", "Fast Network", .0821, 12.18, 11.5], ["14", "Dragon Four Seas", .0744, 13.44, 14.0],
+        ["9", "Superb Move", .0691, 14.47, 15.0], ["1", "Winning Data", .0618, 16.18, 17.0]
+      ];
+      document.getElementById("live-runner-table").innerHTML = horses.map(row => `<tr><td><strong>${row[0]}</strong></td><td>${row[1]}</td><td>${pct(row[2])}</td><td>${num(row[3], 2)}</td><td>${num(row[4], 1)}</td><td class="${row[4] > row[3] ? "metric-good" : ""}">${pct(row[2] * row[4] - 1)}</td></tr>`).join("");
+    }
+
+    function renderView() {
+      document.getElementById("runs-view").classList.toggle("hidden", state.view !== "runs");
+      document.querySelectorAll(".page-view").forEach(view => view.classList.remove("active"));
+      if (state.view !== "runs") document.getElementById(`${state.view}-view`).classList.add("active");
+      document.querySelectorAll(".nav-button").forEach(button => button.classList.toggle("active", button.dataset.view === state.view));
+      if (state.view === "pipeline") renderPipeline();
+      if (state.view === "variables") renderVariables();
+      if (state.view === "live") renderLive();
+    }
+
+    function renderAll() {
+      if (state.view === "runs") { renderDetail(); renderChart(); renderTable(); }
+      renderView();
+    }
 
     document.querySelectorAll("#source-control .segment").forEach(button => button.addEventListener("click", () => {
-      document.querySelectorAll("#source-control .segment").forEach(item => item.classList.remove("active"));
-      button.classList.add("active"); state.source = button.dataset.source; renderAll();
+      state.source = button.dataset.source;
+      document.querySelectorAll("#source-control .segment").forEach(item => item.classList.toggle("active", item.dataset.source === state.source));
+      renderAll();
     }));
     document.querySelectorAll("#scope-control .segment").forEach(button => button.addEventListener("click", () => {
-      document.querySelectorAll("#scope-control .segment").forEach(item => item.classList.remove("active")); button.classList.add("active");
+      state.scope = button.dataset.scope;
+      document.querySelectorAll("#scope-control .segment").forEach(item => item.classList.toggle("active", item.dataset.scope === state.scope));
+      renderChart();
     }));
     document.getElementById("schema-filter").addEventListener("change", event => { state.schema = event.target.value; renderAll(); });
     document.getElementById("family-filter").addEventListener("change", event => { state.family = event.target.value; renderAll(); });
     document.querySelectorAll(".nav-button").forEach(button => button.addEventListener("click", () => {
-      document.querySelectorAll(".nav-button").forEach(item => item.classList.remove("active")); button.classList.add("active");
-      document.getElementById("runs-view").classList.toggle("hidden", button.dataset.view !== "runs");
-      document.querySelectorAll(".view-placeholder").forEach(item => item.classList.remove("active"));
-      if (button.dataset.view !== "runs") document.getElementById(`${button.dataset.view}-view`).classList.add("active");
+      state.view = button.dataset.view; renderAll();
     }));
     document.querySelectorAll(".detail-tab").forEach(button => button.addEventListener("click", () => {
-      document.querySelectorAll(".detail-tab").forEach(item => item.classList.remove("active")); button.classList.add("active");
+      state.detail = button.dataset.detail; renderDetail();
     }));
+    document.querySelectorAll("#pipeline-mode-control .segment").forEach(button => button.addEventListener("click", () => { state.pipelineMode = button.dataset.mode; state.pipelineStage = 0; renderPipeline(); }));
+    document.querySelectorAll("#dataset-control .segment").forEach(button => button.addEventListener("click", () => { state.dataset = button.dataset.dataset; renderVariables(); }));
+    document.querySelectorAll("#variable-tabs .analysis-tab").forEach(button => button.addEventListener("click", () => { state.variableView = button.dataset.variableView; renderVariables(); }));
+
+    document.querySelectorAll("#source-control .segment").forEach(item => item.classList.toggle("active", item.dataset.source === state.source));
+    document.querySelectorAll("#scope-control .segment").forEach(item => item.classList.toggle("active", item.dataset.scope === state.scope));
+    document.getElementById("schema-filter").value = state.schema;
+    document.getElementById("family-filter").value = state.family;
 
     renderFeatureChart();
     renderAll();

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iMa Run-Centric Dashboard Gallery</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #18201d; background: #eef1ef; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+    header { padding: 28px 32px 24px; background: #fff; border-bottom: 1px solid #d8dfdb; }
+    h1, h2, p { margin-top: 0; }
+    h1 { margin-bottom: 6px; font-size: 28px; }
+    h2 { margin: 0; font-size: 14px; }
+    p { margin-bottom: 0; color: #67716c; font-size: 12px; }
+    main { padding: 26px 28px 50px; }
+    .section-title { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 0 14px; }
+    .section-title span { color: #67716c; font-size: 11px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+    .mobile-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    figure { margin: 0; overflow: hidden; background: #fff; border: 1px solid #cfd7d2; border-radius: 6px; }
+    .screen { height: 430px; overflow: hidden; background: #f6f7f6; border-bottom: 1px solid #d8dfdb; }
+    .screen img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: top left; }
+    .mobile-grid .screen { height: 550px; }
+    .mobile-grid .screen img { object-fit: contain; background: #f6f7f6; }
+    figcaption { min-height: 62px; padding: 11px 13px; }
+    figcaption strong { display: block; font-size: 12px; }
+    figcaption span { display: block; margin-top: 4px; color: #67716c; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <header><h1>iMa run-centric dashboard</h1><p>Complete prototype gallery · run comparison, selected-run analysis, pipelines, variables, live simulation and mobile layouts</p></header>
+  <main>
+    <div class="section-title"><h2>Run comparison options</h2><span>Five global comparison states</span></div>
+    <section class="grid">
+      <figure><div class="screen"><img src="run-centric-pages/01-runs-all-fundamental.png"></div><figcaption><strong>All runs · Fundamental</strong><span>Default comparison and synchronized run table</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/02-runs-by-schema.png"></div><figcaption><strong>Aggregate by schema</strong><span>Baseline, Benter rich and Notebook rich medians</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/03-runs-by-family.png"></div><figcaption><strong>Aggregate by model family</strong><span>Boosted versus logistic models</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/04-runs-by-execution.png"></div><figcaption><strong>Aggregate by execution</strong><span>Parameter sweeps and notebook runs by batch</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/05-runs-combined.png"></div><figcaption><strong>Combined probability source</strong><span>Validation-fitted model and market blend</span></figcaption></figure>
+    </section>
+
+    <div class="section-title"><h2>Selected-run tabs</h2><span>Five synchronized technical views</span></div>
+    <section class="grid">
+      <figure><div class="screen"><img src="run-centric-pages/06-run-overview.png"></div><figcaption><strong>Run overview</strong><span>Fundamental, market and combined result summary</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/07-run-evaluation.png"></div><figcaption><strong>Run evaluation</strong><span>Held-out Top-1 and Top-3 comparison</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/08-run-pools.png"></div><figcaption><strong>Pool calibration</strong><span>Predicted versus observed WIN through QUARTET</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/09-run-variables.png"></div><figcaption><strong>Run variables</strong><span>Exact estimator contract linked to schema study</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/10-run-parameters.png"></div><figcaption><strong>Run parameters</strong><span>Hyperparameters, calibration and blend weights</span></figcaption></figure>
+    </section>
+
+    <div class="section-title"><h2>Pipeline modes</h2><span>Historical and live boundaries</span></div>
+    <section class="grid">
+      <figure><div class="screen"><img src="run-centric-pages/11-pipeline-training.png"></div><figcaption><strong>Historical training pipeline</strong><span>Eight stages from source records to untouched testing</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/12-pipeline-live.png"></div><figcaption><strong>Live prediction pipeline</strong><span>Nine stages from HKJC snapshot to paper wager</span></figcaption></figure>
+    </section>
+
+    <div class="section-title"><h2>Variable analysis options</h2><span>Dataset, ranking, correlation and coverage states</span></div>
+    <section class="grid">
+      <figure><div class="screen"><img src="run-centric-pages/13-variables-baseline-contribution.png"></div><figcaption><strong>Baseline contribution</strong><span>23-variable schema contribution view</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/14-variables-benter-ranking.png"></div><figcaption><strong>Benter-rich full ranking</strong><span>Ranked variables with family, contribution and coverage</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/15-variables-notebook-correlation.png"></div><figcaption><strong>Notebook-rich correlation</strong><span>Schema-level Plotly Spearman heatmap</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/16-variables-notebook-coverage.png"></div><figcaption><strong>Coverage and provenance</strong><span>Zero-coverage variables and source policy</span></figcaption></figure>
+    </section>
+
+    <div class="section-title"><h2>Live decision page</h2><span>Prediction and paper-wager surface</span></div>
+    <section class="grid">
+      <figure><div class="screen"><img src="run-centric-pages/17-live-simulation.png"></div><figcaption><strong>Live simulation</strong><span>Fallback disclosure, runner probabilities and $10 wager</span></figcaption></figure>
+    </section>
+
+    <div class="section-title"><h2>Key mobile pages</h2><span>390 × 844 responsive renders</span></div>
+    <section class="grid mobile-grid">
+      <figure><div class="screen"><img src="run-centric-pages/18-mobile-runs.png"></div><figcaption><strong>Mobile runs</strong><span>Comparison, selection and contribution</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/19-mobile-pipeline.png"></div><figcaption><strong>Mobile pipeline</strong><span>Live stages and transformation detail</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/20-mobile-variables.png"></div><figcaption><strong>Mobile variables</strong><span>Notebook contribution analysis</span></figcaption></figure>
+      <figure><div class="screen"><img src="run-centric-pages/21-mobile-live.png"></div><figcaption><strong>Mobile live simulation</strong><span>Runner prices and wager recommendation</span></figcaption></figure>
+    </section>
+  </main>
+</body>
+</html>
