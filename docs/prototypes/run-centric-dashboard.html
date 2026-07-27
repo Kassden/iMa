@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iMa Run Analysis Prototype</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root {
+      --bg: #f6f7f6;
+      --surface: #ffffff;
+      --surface-2: #f0f3f1;
+      --text: #18201d;
+      --muted: #67716c;
+      --border: #d8dfdb;
+      --border-strong: #b9c4be;
+      --fundamental: #18794e;
+      --market: #66706b;
+      --combined: #1d4ed8;
+      --warning: #a34b12;
+      --radius: 6px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--bg); }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+      letter-spacing: 0;
+    }
+
+    button, select, input { font: inherit; letter-spacing: 0; }
+
+    button { cursor: pointer; }
+
+    .app-header {
+      height: 62px;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      padding: 0 28px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 188px;
+    }
+
+    .brand strong { font-size: 19px; font-weight: 760; }
+    .brand span { color: var(--muted); font-size: 12px; }
+
+    .primary-nav {
+      display: flex;
+      align-self: stretch;
+      gap: 24px;
+    }
+
+    .nav-button {
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 2px;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .nav-button.active {
+      border-bottom-color: var(--text);
+      color: var(--text);
+    }
+
+    .header-meta {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      display: inline-block;
+      margin-right: 7px;
+      border-radius: 50%;
+      background: var(--fundamental);
+    }
+
+    main {
+      width: min(1500px, 100%);
+      margin: 0 auto;
+      padding: 26px 28px 60px;
+    }
+
+    .title-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 22px;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 5px; font-size: 25px; line-height: 1.15; font-weight: 740; }
+    h2 { margin-bottom: 3px; font-size: 16px; line-height: 1.25; font-weight: 720; }
+    h3 { margin-bottom: 2px; font-size: 13px; line-height: 1.3; font-weight: 700; }
+
+    .subtitle { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .download-button {
+      min-height: 34px;
+      padding: 0 13px;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .control-bar {
+      display: flex;
+      align-items: flex-end;
+      gap: 18px;
+      padding: 15px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+
+    .control-group { display: grid; gap: 6px; }
+    .control-label { color: var(--muted); font-size: 11px; font-weight: 650; }
+
+    .segmented {
+      display: inline-flex;
+      padding: 2px;
+      background: #e8ece9;
+      border-radius: var(--radius);
+    }
+
+    .segment {
+      height: 30px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .segment.active {
+      color: var(--text);
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgba(18, 31, 25, .12);
+    }
+
+    select {
+      height: 34px;
+      min-width: 146px;
+      padding: 0 30px 0 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      color: var(--text);
+      background: var(--surface);
+      font-size: 12px;
+    }
+
+    .control-spacer { flex: 1; }
+
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .metric {
+      padding: 2px 20px 17px 0;
+      border-right: 1px solid var(--border);
+    }
+
+    .metric:not(:first-child) { padding-left: 20px; }
+    .metric:last-child { border-right: 0; }
+    .metric strong { display: block; font-size: 22px; line-height: 1.1; font-weight: 720; }
+    .metric span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(340px, .85fr);
+      gap: 22px;
+      align-items: stretch;
+      margin-bottom: 24px;
+    }
+
+    .analysis-panel,
+    .detail-panel,
+    .table-panel,
+    .feature-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .panel-header {
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-mark { width: 8px; height: 8px; border-radius: 50%; }
+    .legend-mark.baseline { background: #50816c; }
+    .legend-mark.benter { background: #b36d3b; }
+    .legend-mark.notebook { background: #476bb3; }
+    .legend-mark.market { background: var(--market); border-radius: 0; }
+
+    #run-chart { height: 344px; }
+
+    .detail-panel { overflow: hidden; }
+
+    .detail-title { min-width: 0; }
+    .detail-title h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .run-tag {
+      flex: 0 0 auto;
+      color: #165d3c;
+      background: #e9f4ee;
+      border: 1px solid #cce2d5;
+      border-radius: 4px;
+      padding: 4px 7px;
+      font-size: 10px;
+      font-weight: 720;
+      text-transform: uppercase;
+    }
+
+    .detail-tabs {
+      display: flex;
+      gap: 18px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+
+    .detail-tab {
+      height: 42px;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    .detail-tab.active { border-bottom-color: var(--combined); color: var(--text); }
+
+    .source-score-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin: 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .source-score {
+      min-width: 0;
+      padding: 13px 11px;
+      border-right: 1px solid var(--border);
+    }
+
+    .source-score:last-child { border-right: 0; }
+    .source-score span { display: block; color: var(--muted); font-size: 10px; }
+    .source-score strong { display: block; margin-top: 4px; font-size: 18px; }
+    .source-score.fundamental strong { color: var(--fundamental); }
+    .source-score.market strong { color: var(--market); }
+    .source-score.combined strong { color: var(--combined); }
+
+    .detail-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0;
+      margin: 0 16px 14px;
+      border-top: 1px solid var(--border);
+      border-left: 1px solid var(--border);
+    }
+
+    .detail-metric {
+      padding: 10px 11px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .detail-metric span { display: block; color: var(--muted); font-size: 10px; }
+    .detail-metric strong { display: block; margin-top: 3px; font-size: 13px; }
+
+    .blend-note {
+      margin: 0 16px 16px;
+      padding-left: 10px;
+      border-left: 3px solid var(--warning);
+      color: #6d4430;
+      font-size: 11px;
+    }
+
+    .table-panel { margin-bottom: 24px; overflow: hidden; }
+
+    .table-tools { display: flex; align-items: center; gap: 8px; }
+    .table-count { color: var(--muted); font-size: 11px; }
+
+    .table-scroll { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    th {
+      height: 38px;
+      padding: 0 12px;
+      color: var(--muted);
+      background: #fafbfa;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    th:first-child, th:nth-child(2), th:nth-child(3) { text-align: left; }
+
+    td {
+      height: 43px;
+      padding: 0 12px;
+      border-bottom: 1px solid #e7ebe9;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    td:first-child, td:nth-child(2), td:nth-child(3) { text-align: left; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: #f7faf8; }
+    tbody tr.selected { background: #eef5ff; box-shadow: inset 3px 0 0 var(--combined); }
+
+    .model-name { font-weight: 680; }
+    .family-label { color: var(--muted); }
+    .schema-label { display: inline-flex; align-items: center; gap: 7px; }
+    .schema-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .metric-good { color: var(--fundamental); font-weight: 680; }
+
+    .feature-panel { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, .6fr); overflow: hidden; }
+    .feature-chart-region { border-right: 1px solid var(--border); }
+    #feature-chart { height: 338px; }
+
+    .feature-summary { padding: 16px; }
+    .feature-summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 15px; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+    .feature-summary-grid div { padding: 11px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .feature-summary-grid strong { display: block; font-size: 16px; }
+    .feature-summary-grid span { color: var(--muted); font-size: 10px; }
+    .feature-footnote { margin: 14px 0 0; color: var(--muted); font-size: 11px; }
+
+    .view-placeholder {
+      display: none;
+      min-height: 600px;
+      padding: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .view-placeholder.active { display: block; }
+    .runs-view.hidden { display: none; }
+
+    @media (max-width: 980px) {
+      .app-header { padding: 0 18px; gap: 18px; }
+      .brand { min-width: auto; }
+      .brand span, .header-meta span:last-child { display: none; }
+      .primary-nav { gap: 15px; overflow-x: auto; }
+      main { padding: 20px 18px 48px; }
+      .control-bar { flex-wrap: wrap; }
+      .control-spacer { display: none; }
+      .metric-strip { grid-template-columns: repeat(2, 1fr); }
+      .metric:nth-child(2) { border-right: 0; }
+      .metric:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+      .workspace { grid-template-columns: 1fr; }
+      .feature-panel { grid-template-columns: 1fr; }
+      .feature-chart-region { border-right: 0; border-bottom: 1px solid var(--border); }
+    }
+
+    @media (max-width: 620px) {
+      .app-header { height: auto; min-height: 58px; flex-wrap: wrap; padding-top: 10px; }
+      .primary-nav { order: 3; width: 100%; height: 42px; }
+      .header-meta { margin-left: auto; }
+      .title-row { align-items: flex-start; }
+      .download-button { display: none; }
+      .control-bar { align-items: stretch; gap: 12px; }
+      .control-group { width: 100%; }
+      .segmented { overflow-x: auto; }
+      select { width: 100%; }
+      .metric-strip { grid-template-columns: 1fr 1fr; }
+      .metric { padding: 12px 10px 12px 0; }
+      .metric:not(:first-child) { padding-left: 10px; }
+      .metric strong { font-size: 18px; }
+      .workspace { gap: 14px; }
+      #run-chart { height: 310px; }
+      .legend { display: none; }
+      .source-score-grid { grid-template-columns: 1fr; }
+      .source-score { border-right: 0; border-bottom: 1px solid var(--border); }
+      .source-score:last-child { border-bottom: 0; }
+      .feature-summary-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><strong>iMa</strong><span>Racing research</span></div>
+    <nav class="primary-nav" aria-label="Dashboard views">
+      <button class="nav-button active" data-view="runs">Runs</button>
+      <button class="nav-button" data-view="pipeline">Pipeline</button>
+      <button class="nav-button" data-view="variables">Variables</button>
+      <button class="nav-button" data-view="live">Live simulation</button>
+    </nav>
+    <div class="header-meta">
+      <span><i class="status-dot"></i>Data current</span>
+      <span>Updated 26 Jul 2026</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="runs-view" id="runs-view">
+      <div class="title-row">
+        <div>
+          <h1>Model runs</h1>
+          <p class="subtitle">34 persisted runs · 1997–2025 history · held out 2022–2025</p>
+        </div>
+        <button class="download-button">Export comparison</button>
+      </div>
+
+      <section class="control-bar" aria-label="Run comparison controls">
+        <div class="control-group">
+          <span class="control-label">Compare</span>
+          <div class="segmented" id="scope-control">
+            <button class="segment active">All runs</button>
+            <button class="segment">By schema</button>
+            <button class="segment">By family</button>
+            <button class="segment">By execution</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <span class="control-label">Probability source</span>
+          <div class="segmented" id="source-control">
+            <button class="segment active" data-source="fundamental">Fundamental</button>
+            <button class="segment" data-source="combined">Combined</button>
+          </div>
+        </div>
+        <div class="control-spacer"></div>
+        <div class="control-group">
+          <label class="control-label" for="schema-filter">Feature schema</label>
+          <select id="schema-filter">
+            <option value="all">All schemas</option>
+            <option value="baseline-v1">Baseline · 23</option>
+            <option value="benter-rich-v1">Benter rich · 81</option>
+            <option value="notebook-rich-v2">Notebook rich · 166</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label class="control-label" for="family-filter">Model family</label>
+          <select id="family-filter">
+            <option value="all">All families</option>
+            <option value="boosted">Boosted</option>
+            <option value="logit">Logistic</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="metric-strip" aria-label="Run summary">
+        <div class="metric"><strong id="visible-count">34</strong><span>Visible persisted runs</span></div>
+        <div class="metric"><strong id="best-top1">24.74%</strong><span>Best fundamental Top-1</span></div>
+        <div class="metric"><strong id="best-logloss">2.2001</strong><span>Lowest fundamental log loss</span></div>
+        <div class="metric"><strong>30.89%</strong><span>Shared market benchmark</span></div>
+      </section>
+
+      <section class="workspace">
+        <div class="analysis-panel">
+          <div class="panel-header">
+            <div><h2>Accuracy versus probability quality</h2><p class="subtitle">Top-1 accuracy · higher is better / race log loss · lower is better</p></div>
+            <div class="legend" aria-label="Feature schema legend">
+              <span class="legend-item"><i class="legend-mark baseline"></i>Baseline</span>
+              <span class="legend-item"><i class="legend-mark benter"></i>Benter rich</span>
+              <span class="legend-item"><i class="legend-mark notebook"></i>Notebook rich</span>
+              <span class="legend-item"><i class="legend-mark market"></i>Market</span>
+            </div>
+          </div>
+          <div id="run-chart" role="img" aria-label="Run accuracy versus race log loss"></div>
+        </div>
+
+        <aside class="detail-panel" aria-labelledby="selected-run-name">
+          <div class="panel-header">
+            <div class="detail-title"><h2 id="selected-run-name">notebook-boost-lr006-leaf15</h2><p class="subtitle" id="selected-run-meta">Notebook rich · Boosted · 166 variables</p></div>
+            <span class="run-tag">Selected</span>
+          </div>
+          <div class="detail-tabs">
+            <button class="detail-tab active">Overview</button>
+            <button class="detail-tab">Evaluation</button>
+            <button class="detail-tab">Pools</button>
+            <button class="detail-tab">Variables</button>
+            <button class="detail-tab">Parameters</button>
+          </div>
+          <div class="source-score-grid">
+            <div class="source-score fundamental"><span>Fundamental Top-1</span><strong id="detail-fundamental">24.74%</strong></div>
+            <div class="source-score market"><span>Market Top-1</span><strong>30.89%</strong></div>
+            <div class="source-score combined"><span>Combined Top-1</span><strong id="detail-combined">30.89%</strong></div>
+          </div>
+          <div class="detail-metrics">
+            <div class="detail-metric"><span>Top-3</span><strong id="detail-top3">52.41%</strong></div>
+            <div class="detail-metric"><span>Race log loss</span><strong id="detail-logloss">2.2001</strong></div>
+            <div class="detail-metric"><span>Pseudo-R²</span><strong id="detail-r2">0.1125</strong></div>
+            <div class="detail-metric"><span>Mean winner rank</span><strong id="detail-rank">4.16</strong></div>
+            <div class="detail-metric"><span>Fundamental blend</span><strong id="detail-fweight">0.000</strong></div>
+            <div class="detail-metric"><span>WIN market blend</span><strong id="detail-mweight">1.071</strong></div>
+          </div>
+          <p class="blend-note" id="blend-note">Validation assigned zero weight to this fundamental forecast. The combined result is effectively the market benchmark.</p>
+        </aside>
+      </section>
+
+      <section class="table-panel">
+        <div class="panel-header">
+          <div><h2>Run index</h2><p class="subtitle">Click a row to inspect one run across every analysis view</p></div>
+          <div class="table-tools"><span class="table-count" id="table-count">10 shown · 34 total</span></div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Run</th><th>Schema</th><th>Family</th><th>Top-1</th><th>Top-3</th><th>Log loss</th><th>Pseudo-R²</th><th>Fund. blend</th><th>WIN blend</th></tr>
+            </thead>
+            <tbody id="run-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="feature-panel">
+        <div class="feature-chart-region">
+          <div class="panel-header">
+            <div><h2>Variable contribution</h2><p class="subtitle">Notebook-rich schema study · permutation delta race log loss</p></div>
+            <button class="download-button">Open full ranking</button>
+          </div>
+          <div id="feature-chart" role="img" aria-label="Top notebook-rich variable contributions"></div>
+        </div>
+        <aside class="feature-summary">
+          <h2>Notebook-rich study</h2>
+          <p class="subtitle">Schema-level analysis linked to the selected run</p>
+          <div class="feature-summary-grid">
+            <div><strong>166</strong><span>Declared variables</span></div>
+            <div><strong>155</strong><span>Numeric matrix</span></div>
+            <div><strong>16</strong><span>Feature families</span></div>
+            <div><strong>8</strong><span>Zero coverage</span></div>
+          </div>
+          <p class="feature-footnote">Contribution belongs to the dataset study and representative permutation model. It is not relabeled as a fresh calculation for every run.</p>
+        </aside>
+      </section>
+    </div>
+
+    <section class="view-placeholder" id="pipeline-view"><h1>Data and prediction pipeline</h1><p class="subtitle">The current step-by-step transformation view moves here without competing with run analysis.</p></section>
+    <section class="view-placeholder" id="variables-view"><h1>Variable analysis</h1><p class="subtitle">Dataset selector, contribution ranking, coverage, families and Plotly Spearman heatmap.</p></section>
+    <section class="view-placeholder" id="live-view"><h1>Live simulation</h1><p class="subtitle">Current-race predictions, market fallback disclosure and paper-wager recommendations.</p></section>
+  </main>
+
+  <script>
+    const MARKET = { top1: .3088500903, top3: .6177001806, logloss: 2.013454975, r2: .1877708537 };
+    const RUNS = [
+      { id: "notebook-boost-lr006-leaf15", schema: "notebook-rich-v2", family: "boosted", count: 166, top1: .2474413004, top3: .5240818784, logloss: 2.200113338, r2: .1124727395, rank: 4.15894, combined: .3088500903, fweight: 0, mweight: 1.071443 },
+      { id: "benter-boost-lr003-leaf15", schema: "benter-rich-v1", family: "boosted", count: 81, top1: .2387116195, top3: .5195665262, logloss: 2.220456443, r2: .1042663165, rank: 4.22035, combined: .3088500903, fweight: 0, mweight: 1.071426 },
+      { id: "benter-boost-lr003-leaf31", schema: "benter-rich-v1", family: "boosted", count: 81, top1: .2378085491, top3: .5102347983, logloss: 2.222330774, r2: .1035102102, rank: 4.23028, combined: .3088500903, fweight: 0, mweight: 1.071428 },
+      { id: "benter-boost-lr006-leaf15", schema: "benter-rich-v1", family: "boosted", count: 81, top1: .2366044551, top3: .5120409392, logloss: 2.22292204, r2: .1032716931, rank: 4.23660, combined: .3088500903, fweight: 0, mweight: 1.071427 },
+      { id: "benter-boost-lr006-leaf31", schema: "benter-rich-v1", family: "boosted", count: 81, top1: .2308850090, top3: .5024081878, logloss: 2.229454876, r2: .1006363425, rank: 4.26249, combined: .3088500903, fweight: 0, mweight: 1.071432 },
+      { id: "benter-boost-lr006-leaf31-l2three", schema: "benter-rich-v1", family: "boosted", count: 81, top1: .2287778447, top3: .5042143287, logloss: 2.229578842, r2: .1005863346, rank: 4.27754, combined: .3088500903, fweight: 0, mweight: 1.071432 },
+      { id: "benter-boost-lr006-leaf31-l2zero", schema: "benter-rich-v1", family: "boosted", count: 81, top1: .2311860325, top3: .5048163757, logloss: 2.232780667, r2: .0992947162, rank: 4.28206, combined: .3088500903, fweight: 0, mweight: 1.071429 },
+      { id: "boost-lr003-leaf15", schema: "baseline-v1", family: "boosted", count: 23, top1: .2308850090, top3: .5072245635, logloss: 2.233797442, r2: .0988845484, rank: 4.29199, combined: .3088500903, fweight: 0, mweight: 1.071432 },
+      { id: "benter-boost-lr010-leaf15", schema: "benter-rich-v1", family: "boosted", count: 81, top1: .2230583986, top3: .5084286574, logloss: 2.235110369, r2: .0983549126, rank: 4.31066, combined: .3088500903, fweight: 0, mweight: 1.071439 },
+      { id: "notebook-logit-c050-balanced", schema: "notebook-rich-v2", family: "logit", count: 166, top1: .2116195063, top3: .4972907887, logloss: 2.304160840, r2: .0704999044, rank: 4.36454, combined: .3082480433, fweight: .040419, mweight: 1.060676 }
+    ];
+
+    const FEATURES = [
+      ["jockey_avg_result_90d", .035474], ["prior_speed_rank", .019643], ["last_win_odds", .012989],
+      ["avg_result_2", .009361], ["avg_win_odds_2", .008023], ["draw_bias_win_rate", .007553],
+      ["poly_draw_distance", .006368], ["last_result", .006364], ["jockey_top3_rate", .006161], ["avg_result_3", .005850]
+    ];
+
+    const schemaMeta = {
+      "baseline-v1": { label: "Baseline", color: "#50816c" },
+      "benter-rich-v1": { label: "Benter rich", color: "#b36d3b" },
+      "notebook-rich-v2": { label: "Notebook rich", color: "#476bb3" }
+    };
+
+    const state = { source: "fundamental", schema: "all", family: "all", selected: RUNS[0].id };
+    const pct = value => `${(value * 100).toFixed(2)}%`;
+    const num = (value, digits = 4) => Number(value).toFixed(digits);
+
+    function visibleRuns() {
+      return RUNS.filter(run => (state.schema === "all" || run.schema === state.schema) && (state.family === "all" || run.family === state.family));
+    }
+
+    function sourceMetrics(run) {
+      if (state.source === "combined") return { top1: run.combined, top3: MARKET.top3, logloss: 2.01193, r2: .18838, rank: 3.53 };
+      return run;
+    }
+
+    function renderChart() {
+      const runs = visibleRuns();
+      const traces = Object.keys(schemaMeta).map(schema => {
+        const rows = runs.filter(run => run.schema === schema);
+        return {
+          type: "scatter",
+          mode: "markers",
+          name: schemaMeta[schema].label,
+          x: rows.map(run => sourceMetrics(run).logloss),
+          y: rows.map(run => sourceMetrics(run).top1),
+          text: rows.map(run => run.id),
+          customdata: rows.map(run => [run.family, run.count, run.id]),
+          marker: {
+            color: schemaMeta[schema].color,
+            size: rows.map(run => run.id === state.selected ? 14 : 10),
+            symbol: rows.map(run => run.family === "logit" ? "circle" : "diamond"),
+            line: { color: rows.map(run => run.id === state.selected ? "#18201d" : "#ffffff"), width: 2 }
+          },
+          hovertemplate: "<b>%{text}</b><br>%{customdata[0]} · %{customdata[1]} variables<br>Top-1 %{y:.2%}<br>Race log loss %{x:.4f}<extra></extra>"
+        };
+      }).filter(trace => trace.x.length);
+      traces.push({
+        type: "scatter", mode: "markers", name: "Market benchmark",
+        x: [MARKET.logloss], y: [MARKET.top1], text: ["Market benchmark"],
+        marker: { color: "#66706b", size: 13, symbol: "x", line: { width: 2 } },
+        hovertemplate: "<b>Market benchmark</b><br>Top-1 %{y:.2%}<br>Race log loss %{x:.4f}<extra></extra>"
+      });
+      Plotly.react("run-chart", traces, {
+        margin: { l: 58, r: 22, t: 18, b: 50 },
+        paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
+        showlegend: false, hovermode: "closest",
+        xaxis: { title: "Race log loss · lower is better", gridcolor: "#e7ebe9", zeroline: false, tickformat: ".3f" },
+        yaxis: { title: "Top-1 accuracy · higher is better", gridcolor: "#e7ebe9", zeroline: false, tickformat: ".1%" },
+        font: { family: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", size: 11, color: "#4f5b55" }
+      }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
+      const chart = document.getElementById("run-chart");
+      chart.removeAllListeners?.("plotly_click");
+      chart.on?.("plotly_click", event => {
+        const runId = event.points?.[0]?.customdata?.[2];
+        if (runId) { state.selected = runId; renderAll(); }
+      });
+    }
+
+    function renderTable() {
+      const runs = visibleRuns();
+      document.getElementById("run-table").innerHTML = runs.map(run => {
+        const metric = sourceMetrics(run);
+        return `<tr data-run="${run.id}" class="${run.id === state.selected ? "selected" : ""}">
+          <td class="model-name">${run.id}</td>
+          <td><span class="schema-label"><i class="schema-dot" style="background:${schemaMeta[run.schema].color}"></i>${schemaMeta[run.schema].label} · ${run.count}</span></td>
+          <td class="family-label">${run.family === "logit" ? "Logistic" : "Boosted"}</td>
+          <td class="metric-good">${pct(metric.top1)}</td><td>${pct(metric.top3)}</td><td>${num(metric.logloss)}</td><td>${num(metric.r2)}</td>
+          <td>${num(run.fweight, 3)}</td><td>${num(run.mweight, 3)}</td></tr>`;
+      }).join("");
+      document.querySelectorAll("#run-table tr").forEach(row => row.addEventListener("click", () => { state.selected = row.dataset.run; renderAll(); }));
+      document.getElementById("table-count").textContent = `${runs.length} shown · 34 total`;
+      document.getElementById("visible-count").textContent = state.schema === "all" && state.family === "all" ? "34" : runs.length;
+      if (runs.length) {
+        document.getElementById("best-top1").textContent = pct(Math.max(...runs.map(run => sourceMetrics(run).top1)));
+        document.getElementById("best-logloss").textContent = num(Math.min(...runs.map(run => sourceMetrics(run).logloss)));
+      }
+    }
+
+    function renderDetail() {
+      let run = RUNS.find(item => item.id === state.selected);
+      if (!run || !visibleRuns().some(item => item.id === run.id)) {
+        run = visibleRuns()[0] || RUNS[0];
+        state.selected = run.id;
+      }
+      const meta = schemaMeta[run.schema];
+      const metric = sourceMetrics(run);
+      document.getElementById("selected-run-name").textContent = run.id;
+      document.getElementById("selected-run-meta").textContent = `${meta.label} · ${run.family === "logit" ? "Logistic" : "Boosted"} · ${run.count} variables`;
+      document.getElementById("detail-fundamental").textContent = pct(run.top1);
+      document.getElementById("detail-combined").textContent = pct(run.combined);
+      document.getElementById("detail-top3").textContent = pct(metric.top3);
+      document.getElementById("detail-logloss").textContent = num(metric.logloss);
+      document.getElementById("detail-r2").textContent = num(metric.r2);
+      document.getElementById("detail-rank").textContent = num(metric.rank, 2);
+      document.getElementById("detail-fweight").textContent = num(run.fweight, 3);
+      document.getElementById("detail-mweight").textContent = num(run.mweight, 3);
+      document.getElementById("blend-note").textContent = run.fweight < .001
+        ? "Validation assigned zero weight to this fundamental forecast. The combined result is effectively the market benchmark."
+        : `Validation retained a ${num(run.fweight, 3)} fundamental weight alongside the WIN market.`;
+    }
+
+    function renderFeatureChart() {
+      const compact = window.innerWidth < 620;
+      Plotly.react("feature-chart", [{
+        type: "bar", orientation: "h",
+        x: FEATURES.slice().reverse().map(item => item[1]),
+        y: FEATURES.slice().reverse().map(item => item[0]),
+        marker: { color: "#18794e" },
+        hovertemplate: "<b>%{y}</b><br>Delta race log loss %{x:.5f}<extra></extra>"
+      }], {
+        margin: { l: compact ? 112 : 166, r: compact ? 12 : 24, t: 20, b: 46 },
+        paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff", showlegend: false,
+        xaxis: { title: compact ? "Delta race log loss" : "Permutation delta race log loss · larger contribution", gridcolor: "#e7ebe9", zeroline: true, zerolinecolor: "#aeb8b2", tickformat: ".3f" },
+        yaxis: { automargin: true },
+        font: { family: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", size: compact ? 8 : 10, color: "#4f5b55" }
+      }, { responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
+    }
+
+    function renderAll() { renderDetail(); renderChart(); renderTable(); }
+
+    document.querySelectorAll("#source-control .segment").forEach(button => button.addEventListener("click", () => {
+      document.querySelectorAll("#source-control .segment").forEach(item => item.classList.remove("active"));
+      button.classList.add("active"); state.source = button.dataset.source; renderAll();
+    }));
+    document.querySelectorAll("#scope-control .segment").forEach(button => button.addEventListener("click", () => {
+      document.querySelectorAll("#scope-control .segment").forEach(item => item.classList.remove("active")); button.classList.add("active");
+    }));
+    document.getElementById("schema-filter").addEventListener("change", event => { state.schema = event.target.value; renderAll(); });
+    document.getElementById("family-filter").addEventListener("change", event => { state.family = event.target.value; renderAll(); });
+    document.querySelectorAll(".nav-button").forEach(button => button.addEventListener("click", () => {
+      document.querySelectorAll(".nav-button").forEach(item => item.classList.remove("active")); button.classList.add("active");
+      document.getElementById("runs-view").classList.toggle("hidden", button.dataset.view !== "runs");
+      document.querySelectorAll(".view-placeholder").forEach(item => item.classList.remove("active"));
+      if (button.dataset.view !== "runs") document.getElementById(`${button.dataset.view}-view`).classList.add("active");
+    }));
+    document.querySelectorAll(".detail-tab").forEach(button => button.addEventListener("click", () => {
+      document.querySelectorAll(".detail-tab").forEach(item => item.classList.remove("active")); button.classList.add("active");
+    }));
+
+    renderFeatureChart();
+    renderAll();
+  </script>
+</body>
+</html>
