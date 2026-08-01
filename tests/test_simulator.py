@@ -77,6 +77,28 @@ class SimulatorTests(unittest.TestCase):
         self.assertAlmostEqual(gross, report["summary"]["expected_gross_return"])
         self.assertAlmostEqual(gross - cost, report["summary"]["expected_net_return"])
         self.assertEqual("fundamental_plus_market", report["prediction_basis"]["basis"])
+        self.assertEqual("fundamental_plus_market", report["priced_candidates"][0]["probability_basis"])
+        self.assertIsNotNone(report["priced_candidates"][0]["model_probability"])
+        self.assertIn("market_probability", report["priced_candidates"][0])
+        self.assertIn("takeout_adjusted_gain_per_dollar", report["priced_candidates"][0])
+
+    def test_public_fallback_does_not_claim_independent_model_probability(self):
+        frame = self.live_frame()
+        frame["ratable"] = False
+        report = simulate_race(
+            frame, self.artifact(), self.raw_payload(), 1000.0, "test-model",
+            RiskBudget(
+                max_race_fraction=0.5, max_combination_fraction=0.1,
+                uncertainty_z=0.0, minimum_edge=0.0,
+                minimum_stake=10.0, stake_increment=10.0,
+            ),
+        )
+        self.assertEqual("public_win_market_fallback", report["prediction_basis"]["basis"])
+        candidate = report["priced_candidates"][0]
+        self.assertEqual("public_win_market_fallback", candidate["probability_basis"])
+        self.assertIsNone(candidate["model_probability"])
+        self.assertIsNotNone(candidate["fallback_probability"])
+        self.assertEqual(candidate["fallback_probability"], candidate["staking_probability"])
 
 
 if __name__ == "__main__":

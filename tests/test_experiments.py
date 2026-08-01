@@ -145,6 +145,9 @@ class ExperimentTests(unittest.TestCase):
             'id="simulator-results"',
             'id="simulator-warning"',
             'id="simulator-recommendations-body"',
+            'id="simulator-candidates-body"',
+            'id="simulator-pool-select"',
+            "Gain after 18%",
             'id="results-body"',
             'href="results.csv"',
             'href="results.json"',
@@ -187,7 +190,17 @@ class ExperimentTests(unittest.TestCase):
                 "prediction_basis": {"basis": "public_win_market_fallback"},
                 "summary": {"recommended_bets": 1},
                 "recommendations": [{"pool": "PLACE", "combination": ["2"]}],
-                "priced_candidates": [{"large": "payload"}],
+                "priced_candidates": [{
+                    "pool": "PLACE",
+                    "combination": ["2"],
+                    "probability_basis": "public_win_market_fallback",
+                    "fallback_probability": 0.15,
+                    "model_probability": None,
+                    "market_probability": 0.10,
+                    "market_odds": 10.0,
+                    "expected_value_per_dollar": 0.5,
+                }],
+                "auxiliary_predictions": [{"horse_no": "2", "predicted_finish_time": 84.0}],
             }],
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -210,7 +223,13 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(auxiliary, published["auxiliary_predictions"])
         self.assertEqual(winner, published["notebook_rich_benchmark"])
         self.assertEqual("public_win_market_fallback", published["simulator"]["race"]["prediction_basis"]["basis"])
-        self.assertNotIn("priced_candidates", published["simulator"]["race"])
+        self.assertEqual(1, len(published["simulator"]["race"]["priced_candidates"]))
+        self.assertIsNone(published["simulator"]["race"]["priced_candidates"][0]["model_probability"])
+        self.assertEqual(
+            "public_win_market_fallback",
+            published["simulator"]["race"]["priced_candidates"][0]["probability_basis"],
+        )
+        self.assertEqual(84.0, published["simulator"]["race"]["auxiliary_predictions"][0]["predicted_finish_time"])
 
     def test_compact_simulator_handles_no_available_race(self):
         compact = compact_simulator_report({"requested_date": "2026-07-27", "races": []})
