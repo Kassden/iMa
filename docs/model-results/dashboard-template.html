@@ -208,6 +208,11 @@
     .simulator-warning span { color: #5c554f; }
     .simulation-meta { display: flex; flex-wrap: wrap; gap: 10px 22px; color: var(--muted); font-size: 12px; margin-bottom: 18px; }
     .simulation-meta strong { color: var(--ink); }
+    .simulator-controls { display: flex; align-items: end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 18px 0 10px; }
+    .simulator-formula { margin: 12px 0 18px; color: var(--muted); font-size: 12px; }
+    .simulator-formula code { color: var(--ink); }
+    .finish-stack { display: grid; gap: 2px; text-align: left; }
+    .finish-stack span { color: var(--muted); font-size: 11px; }
     .study-summary { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 18px; margin: 16px 0 24px; }
     .study-stat { border-top: 3px solid var(--line); padding-top: 9px; }
     .study-stat:nth-child(2) { border-color: var(--logit); }
@@ -396,9 +401,27 @@
       <div class="simulation-meta" id="simulator-meta"></div>
       <div class="study-summary" id="simulator-summary"></div>
       <div class="simulator-warning" id="simulator-warning"></div>
+      <div class="simulator-formula" id="simulator-formula"></div>
+      <div class="simulator-controls">
+        <div>
+          <h3 class="technical-subtitle">Recommended wagers</h3>
+          <p class="pipeline-note">Only bets passing edge, Kelly, exposure, and $10 unit constraints.</p>
+        </div>
+      </div>
       <div class="table-scroll"><table class="compact-table">
-        <thead><tr><th>Race</th><th>Pool</th><th>Horse / combination</th><th>Stake</th><th>Probability</th><th>Fair odds</th><th>Market odds</th><th>Expected value / unit</th></tr></thead>
+        <thead><tr><th>Race</th><th>Pool</th><th>Horse / combination</th><th>Stake</th><th>Model/fallback prob.</th><th>Market prob.</th><th>Our odds</th><th>Market odds</th><th>Edge</th><th>EV</th><th>Gain after 18%</th><th>Estimated finish</th></tr></thead>
         <tbody id="simulator-recommendations-body"></tbody>
+      </table></div>
+      <div class="simulator-controls">
+        <div>
+          <h3 class="technical-subtitle">All priced pool candidates</h3>
+          <p class="pipeline-note">Every candidate where both a simulator probability and timestamped market price were available.</p>
+        </div>
+        <div class="control"><label for="simulator-pool-select">Pool</label><select id="simulator-pool-select"></select></div>
+      </div>
+      <div class="table-scroll"><table class="compact-table">
+        <thead><tr><th>Race</th><th>Pool</th><th>Horse / combination</th><th>Model/fallback prob.</th><th>Market prob.</th><th>Our odds</th><th>Market odds</th><th>Edge</th><th>EV / $</th><th>EV / $10</th><th>Gain after 18%</th><th>Estimated finish</th></tr></thead>
+        <tbody id="simulator-candidates-body"></tbody>
       </table></div>
     </section>
 
@@ -626,11 +649,15 @@
       pipelineStage: 0,
       correlationRun: null,
       correlationFeature: null,
-      studySchema: "notebook-rich-v2"
+      studySchema: "notebook-rich-v2",
+      simulatorPool: "all"
     };
 
     const fmt = (value, digits = 4) => Number(value).toFixed(digits);
     const pct = value => `${(Number(value) * 100).toFixed(2)}%`;
+    const hasNumber = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+    const maybeFmt = (value, digits = 2) => hasNumber(value) ? Number(value).toFixed(digits) : "-";
+    const maybePct = value => hasNumber(value) ? pct(value) : "-";
     const metricText = (metric, value) => METRICS[metric].percent ? pct(value) : fmt(value);
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
@@ -843,6 +870,7 @@
       const meeting = simulator.meeting || {};
       const summary = race.summary || {};
       const basis = race.prediction_basis || {};
+      const formula = race.candidate_formula || {};
       document.getElementById("simulator-meta").innerHTML = `
         <span>Requested date <strong>${escapeHtml(simulator.requested_date)}</strong></span>
         <span>HKJC displayed <strong>${escapeHtml(simulator.displayed_date)}</strong></span>
@@ -860,13 +888,61 @@
       document.getElementById("simulator-warning").innerHTML = `
         <strong>Public-market fallback: no independent fundamental signal in this simulation</strong>
         <span>${escapeHtml(basis.warning || "The prediction basis uses public market probabilities.")}</span>`;
+      document.getElementById("simulator-formula").innerHTML = `
+        <div><code>model_probability</code>: ${escapeHtml(formula.model_probability || "Independent model probability after calibration and market blending; unavailable for full public fallback.")}</div>
+        <div><code>fallback_probability</code>: ${escapeHtml(formula.fallback_probability || "Public-derived staking probability for unratable runners.")}</div>
+        <div><code>staking_probability</code>: ${escapeHtml(formula.staking_probability || "Probability used for EV and Kelly sizing.")}</div>
+        <div><code>market_probability</code>: ${escapeHtml(formula.market_probability || "1 / market_odds.")}</div>
+        <div><code>EV</code>: ${escapeHtml(formula.expected_value_per_dollar || "model_probability * market_odds - 1.")}</div>
+        <div><code>Gain after 18%</code>: ${escapeHtml(formula.takeout_adjusted_gain_per_dollar || "model_probability * market_odds * (1 - 0.18) - 1.")}</div>`;
+      const finishCell = item => {
+        const runners = item.runner_estimates || [];
+        const rows = runners.length ? runners.map(runner => {
+          const time = maybeFmt(runner.predicted_finish_time, 2);
+          const rank = runner.predicted_position_rank == null ? "-" : `rank ${escapeHtml(runner.predicted_position_rank)}`;
+          return `<span>#${escapeHtml(runner.horse_no)} ${time}s ${rank}</span>`;
+        }).join("") : `<span>${maybeFmt(item.estimated_finish_time, 2)}s</span>`;
+        return `<div class="finish-stack"><strong>${maybeFmt(item.estimated_finish_time, 2)}s avg</strong>${rows}</div>`;
+      };
+      const displayProbability = item => item.model_probability ?? item.fallback_probability ?? item.staking_probability ?? item.probability;
+      const marketProbability = item => item.market_probability ?? (
+        Number(item.market_odds || item.current_decimal_odds) > 0 ? 1 / Number(item.market_odds || item.current_decimal_odds) : null
+      );
+      const ourOdds = item => item.our_odds ?? item.fair_odds;
+      const marketOdds = item => item.market_odds ?? item.current_decimal_odds;
+      const edge = item => item.probability_edge ?? (Number(displayProbability(item)) - Number(marketProbability(item)));
+      const ev = item => item.expected_value_per_dollar ?? item.expected_value_per_unit;
+      const gainAfterTakeout = item => item.takeout_adjusted_gain_per_dollar;
+      const probabilityLabel = item => item.probability_basis === "public_win_market_fallback" ? "fallback" : "model";
       const recommendations = race.recommendations || [];
       document.getElementById("simulator-recommendations-body").innerHTML = recommendations.length
         ? recommendations.map(item => `<tr><td>${race.race_no}</td><td>${escapeHtml(item.pool)}</td>
           <td>${escapeHtml(item.combination.join(" + "))}</td><td>$${fmt(item.stake, 2)}</td>
-          <td>${pct(item.probability)}</td><td>${fmt(item.fair_odds, 2)}</td>
-          <td>${fmt(item.current_decimal_odds, 2)}</td><td>${pct(item.expected_value_per_unit)}</td></tr>`).join("")
-        : `<tr><td colspan="8">No paper wagers passed the configured limits.</td></tr>`;
+          <td><span>${maybePct(displayProbability(item))}</span><br><small>${escapeHtml(probabilityLabel(item))}</small></td><td>${maybePct(marketProbability(item))}</td>
+          <td>${maybeFmt(ourOdds(item), 2)}</td><td>${maybeFmt(marketOdds(item), 2)}</td>
+          <td>${maybePct(edge(item))}</td><td>${maybePct(ev(item))}</td>
+          <td>${maybePct(gainAfterTakeout(item))}</td><td>${finishCell(item)}</td></tr>`).join("")
+        : `<tr><td colspan="12">No paper wagers passed the configured limits.</td></tr>`;
+
+      const candidates = race.priced_candidates || [];
+      const pools = ["all", ...Array.from(new Set(candidates.map(item => item.pool))).sort()];
+      if (!pools.includes(state.simulatorPool)) state.simulatorPool = "all";
+      const select = document.getElementById("simulator-pool-select");
+      select.innerHTML = pools.map(pool => `<option value="${escapeHtml(pool)}" ${pool === state.simulatorPool ? "selected" : ""}>${escapeHtml(pool === "all" ? "All pools" : pool)}</option>`).join("");
+      const visibleCandidates = candidates.filter(item => state.simulatorPool === "all" || item.pool === state.simulatorPool);
+      document.getElementById("simulator-candidates-body").innerHTML = visibleCandidates.length
+        ? visibleCandidates.map(item => `<tr><td>${race.race_no}</td><td>${escapeHtml(item.pool)}</td>
+          <td>${escapeHtml(item.combination.join(" + "))}</td>
+          <td><span>${maybePct(displayProbability(item))}</span><br><small>${escapeHtml(probabilityLabel(item))}</small></td><td>${maybePct(marketProbability(item))}</td>
+          <td>${maybeFmt(ourOdds(item), 2)}</td><td>${maybeFmt(marketOdds(item), 2)}</td>
+          <td>${maybePct(edge(item))}</td><td>${maybePct(ev(item))}</td>
+          <td>$${maybeFmt(item.expected_value_per_10, 2)}</td>
+          <td>${maybePct(gainAfterTakeout(item))}</td><td>${finishCell(item)}</td></tr>`).join("")
+        : `<tr><td colspan="12">No priced candidates are available for this pool.</td></tr>`;
+      select.onchange = event => {
+        state.simulatorPool = event.target.value;
+        renderSimulator();
+      };
     }
 
     function selectedSchemaStudy() {

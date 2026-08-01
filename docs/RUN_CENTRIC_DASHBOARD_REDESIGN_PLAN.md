@@ -11,6 +11,8 @@
 - [ ] The latest-notebook-only panel is removed. Notebook runs participate in the same selection and comparison workflow as all other runs.
 - [ ] Data pipeline and live prediction pipeline remain available as a dedicated top-level view.
 - [ ] Variable contribution, full ranking, family contribution, coverage, and correlation remain available as a dedicated top-level view.
+- [ ] Live simulation exposes bet-level market probability, model probability, market odds, model fair odds, estimated finish time, edge, expected value, and takeout-adjusted gain for every priced pool candidate.
+- [ ] Live simulation clearly distinguishes independent `fundamental_plus_market` predictions from `public_win_market_fallback`; fallback rows must not be visually described as independent model conviction.
 - [ ] Dataset-level feature studies are labeled as dataset/schema analyses and never presented as run-specific calculations unless a run-specific artifact exists.
 - [ ] Every chart uses Plotly.js. Native HTML remains acceptable for tables, controls, disclosures, and pipeline text.
 - [ ] Every chart has a title, axis units, source/scope note, stable color semantics, exact hover values, and a legend that corresponds to rendered marks.
@@ -22,6 +24,7 @@
 ## Out Of Scope
 - Retraining models or changing historical datasets.
 - Changing model formulas, calibration, pool probability calculations, or wagering rules.
+- Implementing new simulator formulas directly in the production dashboard before the run-centric prototype and data contract are accepted.
 - Adding authenticated wagering.
 - Replacing the static Vercel deployment architecture unless implementation proves the current single-file approach unmaintainable.
 
@@ -33,6 +36,14 @@
 - Architecture evidence: refreshed Megatect analysis identified five repo systems, one dependency cycle, `ima/experiments.py` as a high-coupling hub, and moderate overall risk. This supports extracting a narrow dashboard publication contract without distributing the system.
 - Pattern fit: modular monolith and clean boundaries fit; microservices should be avoided.
 - Render evidence: existing Playwright screenshots at 1440x1000 and 390x844 plus source inspection of `public/index.html`, `scripts/publish_latest_dashboard.py`, `ima/experiments.py`, and `public/results.json`.
+
+## Dependency and Tooling Preflight
+- Python: use the repository `pyproject.toml` and standard `python3 -m unittest` test runner.
+- Browser proof: use Playwright through `python3 -m playwright install chromium` and `python3 -m playwright`; if the package is absent, add project-local Playwright tooling before browser QA.
+- Dashboard publication: keep the static Vercel artifact model and regenerate `public/index.html`, `public/results.json`, and `public/results.csv` only from checked-in scripts.
+- MLflow tracking: use SQLite-backed tracking URIs such as `sqlite:///path/to/mlflow.db`; MLflow 3 file-store tracking is avoided except for explicit migration/compatibility work.
+- External data: do not require live HKJC access for dashboard contract tests; use committed simulation artifacts and synthetic fixtures.
+- Credentials: authenticated wagering, login, MFA, and transaction submission remain out of scope.
 
 ## Audit Evidence
 - The rendered dashboard is 17,378 px tall on desktop and 26,028 px on mobile.
@@ -83,6 +94,18 @@
 - Feature-family contribution and redundancy become tabs or compact secondary tables.
 - Coverage and source provenance remain available without dominating the main analytical flow.
 
+### Live Simulation View
+- Purpose: answer, for the next/current race, what the market believes, what our model believes, where they disagree, and what each priced wager is worth under the paper-trading assumptions.
+- Primary controls: race selector, pool selector, probability basis filter (`all`, `fundamental_plus_market`, `public_win_market_fallback`), sort field, and minimum edge.
+- Summary cards: runner count, ratable runner count, priced candidate count, recommended bet count, total $10-unit cost, expected gross return, expected net return, expected ROI, and takeout-adjusted gain.
+- Disclosure banner: show `prediction_basis`, missing-feature reason, odds snapshot timestamp, model version, auxiliary model version, and whether the displayed probabilities are independent model output or public fallback.
+- Recommended wagers table: race, pool, horse/combination, stake, model probability, market probability, model fair odds, market odds, probability edge, expected value, gain after 18% takeout, Kelly fraction, and estimated finish-time detail.
+- All priced candidates table: same probability/odds/EV/takeout columns for every priced WIN, PLACE, QIN, QPL, TRI, TIERCE, FIRST4, and QUARTET candidate available in the snapshot.
+- Horse-level drilldown: for any candidate, show per-runner estimated finish time, estimated finishing position/rank, current win/place odds, and readiness status.
+- Fallback semantics: when `prediction_basis.basis = public_win_market_fallback`, label the staking probability as `fallback probability`, keep `market_probability` visible, and show `model_probability` as unavailable unless an independent fundamental prediction exists.
+- Takeout display: `gain_after_18pct = model_probability * market_odds * (1 - 0.18) - 1`; label this as a requested WIN-takeout haircut, not a complete pool-specific HKJC takeout model.
+- Prototype route: update `docs/prototypes/run-centric-dashboard.html` and screenshots first; production dashboard files change only after the prototype and data contract are approved.
+
 ### Visual Encoding Contract
 - Probability source colors: fundamental `#18794e`, market `#66706b`, combined `#1d4ed8`.
 - Model family is encoded by marker shape, not by reusing probability-source colors.
@@ -96,13 +119,18 @@
 - Add `evaluation_window`, `dataset_id`, and `dataset_hash` so aggregate comparability can be checked.
 - Add `feature_study_id` and `feature_study_scope` to link a run to schema-level or run-level feature analysis without implying false specificity.
 - Publish market benchmark as one benchmark object per evaluation dataset, not repeated through run rendering.
+- Add normalized `simulator.races[].priced_candidates[]` records with: `race_id`, `race_no`, `pool`, `combination`, `probability_basis`, `model_probability`, `fallback_probability`, `market_probability`, `our_odds`, `market_odds`, `probability_edge`, `expected_value_per_dollar`, `expected_value_per_10`, `takeout_rate`, `gain_after_takeout_per_dollar`, `gain_after_takeout_per_10`, `odds_updated_at`, `model_version`, `auxiliary_model_version`, and `runner_estimates`.
+- Add normalized `runner_estimates[]` records with: `horse_no`, `horse_id`, `horse_name`, `prediction_ready`, `missing_features`, `estimated_finish_time`, `estimated_position`, `estimated_position_rank`, current WIN/PLACE odds, and horse-profile provenance.
+- Keep current odds as market observations and blend inputs where the model pipeline explicitly supports them; do not silently relabel public fallback as independent model probability.
 - Preserve existing `run_history`, `feature_study`, `pipeline_manifest`, `simulator`, and pool metrics during migration; add a compatibility adapter before deleting old fields.
 
 ## Target Architecture
 - Architecture style: static modular monolith with a clean publication boundary. Do not add microservices, server rendering, or a frontend framework for this redesign.
+- Experiment registry: MLflow owns experiment run tracking, model artifacts, parameters, metrics, and exported run identity before server deployment.
 - Python ownership: experiment execution, metric calculation, feature studies, aggregate compatibility checks, and publication of a versioned dashboard view model.
 - Browser ownership: URL-backed selection state, filtering, view composition, table interaction, and Plotly rendering. Browser code must not infer missing model semantics or recompute scientific metrics.
 - Proposed Python module: `ima/dashboard_contract.py`, containing typed normalization and validation for runs, benchmarks, feature-study references, evaluation windows, and aggregate groups.
+- Simulator ownership: Python writes all bet-level probability, odds, EV, takeout, and finish-estimate fields into the published contract; browser modules only filter, sort, and render them.
 - Proposed static modules: `public/assets/dashboard-state.js`, `dashboard-data.js`, `dashboard-runs.js`, `dashboard-variables.js`, `dashboard-pipeline.js`, `dashboard-live.js`, `dashboard-charts.js`, and `dashboard.css`.
 - `public/index.html` becomes a stable shell and fetches `public/results.json`; it no longer embeds the complete result payload or generated application logic.
 - `scripts/publish_latest_dashboard.py` becomes an orchestration adapter: load artifacts, build the versioned view model, validate it, write JSON/CSV, and leave the static shell/modules unchanged.
@@ -116,6 +144,31 @@
 - Damage radius: moderate. Presentation is broad, but model training and data ingestion remain untouched.
 - Proof plan: contract tests, deterministic chart-trace tests, Playwright interaction tests, desktop/mobile screenshots, canvas-pixel checks replaced with Plotly SVG checks, console-error checks, and production HTTP/deployment smoke tests.
 - Atomic change units: data adapter; shell/navigation; runs workspace; selected-run detail; variables workspace; pipeline workspace; Plotly migration; responsive cleanup; release evidence.
+
+## Phase 0: MLflow Experiment Registry
+
+### Subphase 0.1: Add local MLflow tracking integration
+- Commit: `feat(experiments): log model runs to mlflow`
+- Tests: `python3.11 -m unittest tests.test_mlflow_tracking tests.test_experiments tests.test_simulator`.
+- Success Criteria: training runs remain unchanged without MLflow configuration; passing `--mlflow-tracking-uri` logs params, metrics, model artifact, run JSON, dataset context, pool metrics, and feature schema into an MLflow experiment.
+- Planned Touch Files:
+  - `pyproject.toml`
+  - `ima/mlflow_tracking.py`
+  - `ima/experiments.py`
+  - `scripts/run_experiments.py`
+  - `scripts/run_benter_grid.py`
+  - `scripts/import_results_to_mlflow.py`
+  - `scripts/export_mlflow_dashboard.py`
+  - `docs/OPERATIONS.md`
+  - `tests/test_mlflow_tracking.py`
+  - `tests/test_experiments.py`
+- Checklist:
+  - [x] Add MLflow dependency and lazy import boundary.
+  - [x] Log each experiment run with params, metrics, tags, artifacts, and context.
+  - [x] Add CLI flags for local/server tracking URI and experiment name.
+  - [x] Add import script for existing dashboard runs.
+  - [x] Add export script to rebuild static dashboard JSON/CSV from MLflow.
+  - [x] Run local SQLite MLflow smoke before server deployment.
 
 ## Phase 1: Audit And Contracts
 
@@ -231,6 +284,30 @@
   - [ ] Add top-20 ranking default and explicit full-table expansion.
   - [ ] Relabel shared correlations as schema-level matrices.
   - [ ] Keep contribution, family, redundancy, coverage, and provenance reachable.
+
+### Subphase 3.3: Design and validate live simulation audit view
+- Commit: `feat(dashboard): add live simulation wager audit view`
+- Tests: contract tests for simulator candidate fields; Playwright pool filtering, fallback-label, and table-sort checks; screenshot review for all-pool and single-pool states.
+- Success Criteria: the prototype and accepted implementation show market probability, model/fallback probability, market odds, model fair odds, estimated finish time, edge, expected value, and 18% takeout-adjusted gain for each priced bet candidate across supported pools.
+- Planned Touch Files:
+  - `docs/prototypes/run-centric-dashboard.html`
+  - `docs/prototypes/run-centric-pages/*.png`
+  - `ima/dashboard_contract.py`
+  - `ima/simulator.py`
+  - `scripts/publish_latest_dashboard.py`
+  - `public/assets/dashboard-live.js`
+  - `public/assets/dashboard-data.js`
+  - `public/assets/dashboard.css`
+  - `tests/test_dashboard_contract.py`
+  - `tests/test_simulator.py`
+- Checklist:
+  - [ ] Prototype the Live simulation page before changing the production dashboard shell.
+  - [ ] Publish every priced candidate, not just recommended wagers.
+  - [ ] Add pool selector and candidate sorting by EV, edge, takeout-adjusted gain, probability, and market odds.
+  - [ ] Display runner-level finish-time estimates inside candidate drilldowns.
+  - [ ] Show exact formulas for `market_probability`, `our_odds`, `edge`, `expected_value`, and `gain_after_18pct`.
+  - [ ] Label fallback rows as fallback/public-derived and keep independent model probability unavailable until the feature row is ratable.
+  - [ ] Preserve the paper-simulation warning and avoid implying realized profit.
 
 ## Phase 4: Verification And Release
 

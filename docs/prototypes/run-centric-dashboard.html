@@ -525,7 +525,7 @@
     .coverage-item header { display: flex; justify-content: space-between; gap: 12px; }
     .coverage-item p { margin: 7px 0 0; color: var(--muted); font-size: 11px; }
 
-    .live-summary { display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
+    .live-summary { display: grid; grid-template-columns: repeat(8, 1fr); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
     .live-summary div { padding: 13px; background: var(--surface); border-right: 1px solid var(--border); }
     .live-summary div:last-child { border-right: 0; }
     .live-summary strong { display: block; font-size: 18px; }
@@ -536,6 +536,13 @@
     .warning-panel p { margin: 0; color: #6d4430; font-size: 11px; }
 
     .live-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr); gap: 20px; }
+    .live-controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .formula-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 0 0 16px; }
+    .formula-strip div { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; background: var(--surface); }
+    .formula-strip code { display: block; margin-bottom: 4px; font-size: 10px; }
+    .formula-strip span { color: var(--muted); font-size: 10px; }
+    .candidate-detail { display: grid; gap: 2px; text-align: left; }
+    .candidate-detail span { color: var(--muted); font-size: 10px; }
     .runner-table td, .runner-table th { text-align: right; }
     .runner-table td:first-child, .runner-table th:first-child, .runner-table td:nth-child(2), .runner-table th:nth-child(2) { text-align: left; }
     .wager-card { padding: 17px; }
@@ -571,7 +578,7 @@
       .page-grid, .variable-layout, .live-grid { grid-template-columns: 1fr; }
       .flow-strip { grid-template-columns: repeat(2, 1fr); }
       .transformation-grid { grid-template-columns: 1fr; }
-      .live-summary { grid-template-columns: repeat(2, 1fr); }
+      .live-summary, .formula-strip { grid-template-columns: repeat(2, 1fr); }
       .warning-panel { grid-template-columns: 1fr; }
     }
 
@@ -792,28 +799,43 @@
     <section class="page-view" id="live-view">
       <div class="page-heading">
         <div><h1>Live simulation</h1><p class="subtitle">Sha Tin · Race 1 · snapshot 26 Jul 2026</p></div>
-        <div class="control-group"><label class="control-label" for="race-select">Race</label><select id="race-select"><option>Race 1 · 17 runners</option></select></div>
+        <div class="live-controls">
+          <div class="control-group"><label class="control-label" for="race-select">Race</label><select id="race-select"><option>Race 1 · 17 runners</option></select></div>
+          <div class="control-group"><label class="control-label" for="live-pool-select">Pool</label><select id="live-pool-select"></select></div>
+          <div class="control-group"><label class="control-label" for="live-sort-select">Sort</label><select id="live-sort-select"><option value="gain">Gain after 18%</option><option value="ev">Expected value</option><option value="edge">Edge</option><option value="probability">Probability</option><option value="market_odds">Market odds</option></select></div>
+        </div>
       </div>
       <div class="live-summary">
         <div><strong>17</strong><span>Active runners</span></div>
+        <div><strong>0</strong><span>Ratable runners</span></div>
         <div><strong>108</strong><span>Priced candidates</span></div>
+        <div><strong>1</strong><span>Recommended bets</span></div>
         <div><strong>$10</strong><span>Recommended cost</span></div>
         <div><strong>$14.97</strong><span>Expected gross return</span></div>
         <div><strong>+49.69%</strong><span>Expected ROI</span></div>
+        <div><strong>+22.75%</strong><span>Gain after 18%</span></div>
       </div>
       <div class="warning-panel"><strong>Public-market fallback</strong><p>No runner had the complete live historical feature row required by the model. Runner strengths therefore use the documented public WIN fallback; no independent fundamental edge is claimed.</p></div>
+      <div class="formula-strip">
+        <div><code>market_probability</code><span>1 / current market odds</span></div>
+        <div><code>fallback_probability</code><span>Public-derived staking probability when unratable</span></div>
+        <div><code>our_odds</code><span>1 / staking probability</span></div>
+        <div><code>edge</code><span>staking probability - market probability</span></div>
+        <div><code>gain_after_18pct</code><span>p × odds × 0.82 - 1</span></div>
+      </div>
       <div class="live-grid">
         <section class="page-panel">
-          <div class="panel-header"><div><h2>Runner probabilities</h2><p class="subtitle">Market probability, model fair odds and current WIN price</p></div><div class="legend"><span class="legend-item"><i class="legend-mark market"></i>Public WIN fallback</span></div></div>
-          <div class="table-scroll"><table class="runner-table"><thead><tr><th>No.</th><th>Horse</th><th>Public probability</th><th>Fair odds</th><th>WIN odds</th><th>Edge</th></tr></thead><tbody id="live-runner-table"></tbody></table></div>
+          <div class="panel-header"><div><h2>All priced pool candidates</h2><p class="subtitle">Every priced combination with market odds, probability, edge, EV and takeout-adjusted gain</p></div><div class="legend"><span class="legend-item"><i class="legend-mark market"></i>Fallback probability</span></div></div>
+          <div class="table-scroll"><table class="runner-table"><thead><tr><th>Pool</th><th>Combination</th><th>Probability</th><th>Market prob.</th><th>Our odds</th><th>Market odds</th><th>Edge</th><th>EV / $10</th><th>Gain after 18%</th><th>Finish estimate</th></tr></thead><tbody id="live-candidate-table"></tbody></table></div>
         </section>
         <aside class="page-panel wager-card">
           <h2>Recommended paper wager</h2><p class="subtitle">One candidate passed configured limits</p>
           <div class="wager-combination"><div><span class="run-tag">PLACE</span><h3 style="margin-top:9px">Horse 2</h3></div><span class="horse-number">2</span></div>
           <div class="wager-metrics">
-            <div><strong>$10.00</strong><span>Stake</span></div><div><strong>14.97%</strong><span>Probability</span></div>
-            <div><strong>6.68</strong><span>Fair odds</span></div><div><strong>10.00</strong><span>Current odds</span></div>
-            <div><strong>+49.69%</strong><span>Expected value</span></div><div><strong>1.00%</strong><span>Kelly fraction</span></div>
+            <div><strong>$10.00</strong><span>Stake</span></div><div><strong>14.97%</strong><span>Fallback probability</span></div>
+            <div><strong>6.68</strong><span>Our fair odds</span></div><div><strong>10.00</strong><span>Market odds</span></div>
+            <div><strong>+49.69%</strong><span>Expected value</span></div><div><strong>+22.75%</strong><span>Gain after 18%</span></div>
+            <div><strong>84.03s</strong><span>Estimated finish</span></div><div><strong>1.00%</strong><span>Kelly fraction</span></div>
           </div>
           <p class="feature-footnote">Paper execution only. Authenticated submission remains disabled behind credentials, MFA confirmation and transaction limits.</p>
         </aside>
@@ -904,10 +926,33 @@
       pipelineMode: params.get("mode") || "training",
       pipelineStage: Number(params.get("stage") || 0),
       dataset: params.get("dataset") || "notebook-rich-v2",
-      variableView: params.get("variable") || "contribution"
+      variableView: params.get("variable") || "contribution",
+      livePool: params.get("pool") || "all",
+      liveSort: params.get("sort") || "gain"
     };
     const pct = value => `${(value * 100).toFixed(2)}%`;
     const num = (value, digits = 4) => Number(value).toFixed(digits);
+    const money = value => `$${Number(value).toFixed(2)}`;
+
+    const LIVE_CANDIDATES = [
+      { pool: "PLACE", combo: ["2"], p: .149691, market: .100000, odds: 10.0, finish: 84.03, rank: 1 },
+      { pool: "PLACE", combo: ["5"], p: .191094, market: .175439, odds: 5.7, finish: 84.11, rank: 4 },
+      { pool: "PLACE", combo: ["6"], p: .143626, market: .147059, odds: 6.8, finish: 84.19, rank: 7 },
+      { pool: "WIN", combo: ["10"], p: .081110, market: .100000, odds: 10.0, finish: 84.08, rank: 2 },
+      { pool: "WIN", combo: ["2"], p: .042690, market: .052632, odds: 19.0, finish: 84.03, rank: 1 },
+      { pool: "QIN", combo: ["1", "2"], p: .037315, market: .166667, odds: 6.0, finish: 84.03, rank: 1 },
+      { pool: "QPL", combo: ["1", "2"], p: .127060, market: .400000, odds: 2.5, finish: 84.03, rank: 1 },
+      { pool: "TRI", combo: ["1", "3", "10"], p: .016018, market: .019231, odds: 52.0, finish: 84.08, rank: 2 },
+      { pool: "TIERCE", combo: ["2", "10", "1"], p: .004910, market: .006667, odds: 150.0, finish: 84.03, rank: 1 },
+      { pool: "FIRST4", combo: ["1", "2", "3", "10"], p: .011440, market: .010000, odds: 100.0, finish: 84.10, rank: 3 },
+      { pool: "QUARTET", combo: ["2", "10", "1", "3"], p: .001180, market: .001000, odds: 1000.0, finish: 84.10, rank: 3 }
+    ].map(item => ({
+      ...item,
+      ourOdds: 1 / item.p,
+      edge: item.p - item.market,
+      ev: item.p * item.odds - 1,
+      gain: item.p * item.odds * .82 - 1
+    }));
 
     function visibleRuns() {
       return RUNS.filter(run => (state.schema === "all" || run.schema === state.schema) && (state.family === "all" || run.family === state.family));
@@ -1143,12 +1188,28 @@
     }
 
     function renderLive() {
-      const horses = [
-        ["2", "Viva Graciousness", .1497, 6.68, 10.0], ["5", "Golden Luck", .1128, 8.87, 8.1], ["11", "Sky Trust", .0984, 10.16, 9.8],
-        ["7", "Lucky Symphony", .0879, 11.38, 12.0], ["3", "Fast Network", .0821, 12.18, 11.5], ["14", "Dragon Four Seas", .0744, 13.44, 14.0],
-        ["9", "Superb Move", .0691, 14.47, 15.0], ["1", "Winning Data", .0618, 16.18, 17.0]
-      ];
-      document.getElementById("live-runner-table").innerHTML = horses.map(row => `<tr><td><strong>${row[0]}</strong></td><td>${row[1]}</td><td>${pct(row[2])}</td><td>${num(row[3], 2)}</td><td>${num(row[4], 1)}</td><td class="${row[4] > row[3] ? "metric-good" : ""}">${pct(row[2] * row[4] - 1)}</td></tr>`).join("");
+      const poolSelect = document.getElementById("live-pool-select");
+      const pools = ["all", ...Array.from(new Set(LIVE_CANDIDATES.map(item => item.pool)))];
+      poolSelect.innerHTML = pools.map(pool => `<option value="${pool}" ${pool === state.livePool ? "selected" : ""}>${pool === "all" ? "All pools" : pool}</option>`).join("");
+      document.getElementById("live-sort-select").value = state.liveSort;
+      const filtered = LIVE_CANDIDATES
+        .filter(item => state.livePool === "all" || item.pool === state.livePool)
+        .sort((a, b) => {
+          const key = { gain: "gain", ev: "ev", edge: "edge", probability: "p", market_odds: "odds" }[state.liveSort] || "gain";
+          return b[key] - a[key];
+        });
+      document.getElementById("live-candidate-table").innerHTML = filtered.map(item => `<tr>
+        <td><strong>${item.pool}</strong></td>
+        <td>${item.combo.join(" + ")}</td>
+        <td>${pct(item.p)}<br><span class="subtitle">fallback</span></td>
+        <td>${pct(item.market)}</td>
+        <td>${num(item.ourOdds, 2)}</td>
+        <td>${num(item.odds, 2)}</td>
+        <td class="${item.edge > 0 ? "metric-good" : ""}">${pct(item.edge)}</td>
+        <td class="${item.ev > 0 ? "metric-good" : ""}">${money(item.ev * 10)}</td>
+        <td class="${item.gain > 0 ? "metric-good" : ""}">${pct(item.gain)}</td>
+        <td><div class="candidate-detail"><strong>${num(item.finish, 2)}s avg</strong><span>best runner rank ${item.rank}</span></div></td>
+      </tr>`).join("");
     }
 
     function renderView() {
@@ -1187,6 +1248,8 @@
     document.querySelectorAll("#pipeline-mode-control .segment").forEach(button => button.addEventListener("click", () => { state.pipelineMode = button.dataset.mode; state.pipelineStage = 0; renderPipeline(); }));
     document.querySelectorAll("#dataset-control .segment").forEach(button => button.addEventListener("click", () => { state.dataset = button.dataset.dataset; renderVariables(); }));
     document.querySelectorAll("#variable-tabs .analysis-tab").forEach(button => button.addEventListener("click", () => { state.variableView = button.dataset.variableView; renderVariables(); }));
+    document.getElementById("live-pool-select").addEventListener("change", event => { state.livePool = event.target.value; renderLive(); });
+    document.getElementById("live-sort-select").addEventListener("change", event => { state.liveSort = event.target.value; renderLive(); });
 
     document.querySelectorAll("#source-control .segment").forEach(item => item.classList.toggle("active", item.dataset.source === state.source));
     document.querySelectorAll("#scope-control .segment").forEach(item => item.classList.toggle("active", item.dataset.scope === state.scope));

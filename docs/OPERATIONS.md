@@ -9,11 +9,43 @@ Use Python 3.11 and keep raw snapshots, model artifacts, and the prediction ledg
 ## Initial Verification
 
 ```sh
+.venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/python -m unittest discover -v
 .venv/bin/python -m scripts.smoke --live --race 1
 .venv/bin/ima-scrape --race 1 --all-pools --without-history --without-horse-pages
 .venv/bin/python -m scripts.train --output artifacts/models/latest
 ```
+
+## MLflow Tracking
+
+Use MLflow as the local/server experiment registry before publishing the static racing dashboard. Prefer a SQLite tracking backend locally and on the first server deployment; MLflow 3 treats the old filesystem tracking backend as migration-only.
+
+```sh
+export IMA_MLFLOW_URI="sqlite:////Users/milkingthesun/Projects/iMa/artifacts/mlflow/mlflow.db"
+
+.venv/bin/python -m scripts.import_results_to_mlflow \
+  --results public/results.json \
+  --tracking-uri "$IMA_MLFLOW_URI" \
+  --experiment ima-racing
+
+.venv/bin/python -m scripts.run_benter_grid \
+  --schema benter-rich-v1 \
+  --mlflow-tracking-uri "$IMA_MLFLOW_URI" \
+  --mlflow-experiment ima-racing
+
+.venv/bin/python -m scripts.export_mlflow_dashboard \
+  --tracking-uri "$IMA_MLFLOW_URI" \
+  --experiment ima-racing \
+  --base-results public/results.json
+```
+
+Open the local MLflow UI when inspecting raw experiment runs:
+
+```sh
+.venv/bin/mlflow ui --backend-store-uri "$IMA_MLFLOW_URI" --host 127.0.0.1 --port 5000
+```
+
+MLflow owns run IDs, params, metrics, model artifacts, feature schema, pool metrics, and run JSON. The static dashboard remains the domain audit view for pipeline transparency, market/model disagreement, pool candidates, expected value, Kelly sizing, and takeout-adjusted gain.
 
 ## Meeting Cycle
 
