@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ima.data import build_full_history_dataset
 from ima.experiments import run_experiments
+from ima.mlflow_tracking import MLflowConfig
 
 
 def main() -> int:
@@ -20,11 +21,18 @@ def main() -> int:
     parser.add_argument(
         "--template", type=Path, default=Path("docs/model-results/dashboard-template.html")
     )
+    parser.add_argument("--mlflow-tracking-uri")
+    parser.add_argument("--mlflow-experiment", default="ima-racing")
     args = parser.parse_args()
     frame = build_full_history_dataset(
         args.legacy_runs, args.legacy_races, args.canonical_runners
     )
-    summary = run_experiments(frame, args.output, args.template)
+    summary = run_experiments(
+        frame,
+        args.output,
+        args.template,
+        mlflow_config=MLflowConfig.from_values(args.mlflow_tracking_uri, args.mlflow_experiment),
+    )
     best = summary["runs"][0]
     print(json.dumps({
         "output": str(args.output),

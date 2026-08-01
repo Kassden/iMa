@@ -23,8 +23,11 @@ def compact_simulator_report(report: dict) -> dict:
         "race": {
             "race_no": race.get("race_no"),
             "prediction_basis": race.get("prediction_basis", {}),
+            "candidate_formula": race.get("candidate_formula", {}),
             "summary": race.get("summary", {}),
             "recommendations": race.get("recommendations", []),
+            "priced_candidates": race.get("priced_candidates", []),
+            "auxiliary_predictions": race.get("auxiliary_predictions", []),
         } if race else None,
     }
 

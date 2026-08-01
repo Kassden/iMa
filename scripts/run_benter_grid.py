@@ -13,6 +13,7 @@ from ima.experiments import (
     run_experiments,
 )
 from ima.feature_sets import FEATURE_SCHEMAS, NOTEBOOK_RICH_SCHEMA
+from ima.mlflow_tracking import MLflowConfig
 from ima.rich_features import load_full_rich_history
 
 
@@ -47,6 +48,8 @@ def main() -> int:
         "--skip-auxiliary", action="store_true",
         help="Keep the existing published auxiliary bundle instead of retraining it.",
     )
+    parser.add_argument("--mlflow-tracking-uri")
+    parser.add_argument("--mlflow-experiment", default="ima-racing")
     args = parser.parse_args()
     feature_schema = FEATURE_SCHEMAS[args.schema]
 
@@ -58,7 +61,12 @@ def main() -> int:
     )
     specs = selected_experiment_specs(args.run_id)
     rich_summary = run_experiments(
-        rich, args.output, args.template, specs=specs, feature_schema=feature_schema,
+        rich,
+        args.output,
+        args.template,
+        specs=specs,
+        feature_schema=feature_schema,
+        mlflow_config=MLflowConfig.from_values(args.mlflow_tracking_uri, args.mlflow_experiment),
     )
     if not args.skip_auxiliary:
         auxiliary = train_auxiliary_bundle(chronological_race_split(rich), feature_schema)
