@@ -146,7 +146,10 @@ class ExperimentTests(unittest.TestCase):
             'id="simulator-warning"',
             'id="simulator-recommendations-body"',
             'id="simulator-candidates-body"',
+            'id="simulator-race-select"',
             'id="simulator-pool-select"',
+            'id="mlflow-status"',
+            'id="mlflow-summary"',
             "Gain after 18%",
             'id="results-body"',
             'href="results.csv"',
@@ -201,6 +204,21 @@ class ExperimentTests(unittest.TestCase):
                     "expected_value_per_dollar": 0.5,
                 }],
                 "auxiliary_predictions": [{"horse_no": "2", "predicted_finish_time": 84.0}],
+            }, {
+                "race_no": 2,
+                "prediction_basis": {"basis": "model_market_blend"},
+                "summary": {"recommended_bets": 0},
+                "recommendations": [],
+                "priced_candidates": [{
+                    "pool": "WIN",
+                    "combination": ["1"],
+                    "probability_basis": "model_market_blend",
+                    "model_probability": 0.20,
+                    "market_probability": 0.10,
+                    "market_odds": 10.0,
+                    "expected_value_per_dollar": 1.0,
+                }],
+                "auxiliary_predictions": [{"horse_no": "1", "predicted_finish_time": 82.0}],
             }],
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -222,6 +240,7 @@ class ExperimentTests(unittest.TestCase):
         self.assertEqual(166, published["pipeline_manifest"]["feature_contracts"]["notebook-rich-v2"]["count"])
         self.assertEqual(auxiliary, published["auxiliary_predictions"])
         self.assertEqual(winner, published["notebook_rich_benchmark"])
+        self.assertEqual(2, len(published["simulator"]["races"]))
         self.assertEqual("public_win_market_fallback", published["simulator"]["race"]["prediction_basis"]["basis"])
         self.assertEqual(1, len(published["simulator"]["race"]["priced_candidates"]))
         self.assertIsNone(published["simulator"]["race"]["priced_candidates"][0]["model_probability"])
@@ -230,6 +249,8 @@ class ExperimentTests(unittest.TestCase):
             published["simulator"]["race"]["priced_candidates"][0]["probability_basis"],
         )
         self.assertEqual(84.0, published["simulator"]["race"]["auxiliary_predictions"][0]["predicted_finish_time"])
+        self.assertEqual(2, published["simulator"]["races"][1]["race_no"])
+        self.assertEqual("model_market_blend", published["simulator"]["races"][1]["prediction_basis"]["basis"])
 
     def test_compact_simulator_handles_no_available_race(self):
         compact = compact_simulator_report({"requested_date": "2026-07-27", "races": []})

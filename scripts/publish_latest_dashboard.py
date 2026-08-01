@@ -13,14 +13,9 @@ def _read_json(path: Path) -> dict:
 
 
 def compact_simulator_report(report: dict) -> dict:
-    races = report.get("races", [])
-    race = races[0] if races else {}
-    return {
-        "requested_date": report.get("requested_date"),
-        "displayed_date": report.get("displayed_date"),
-        "date_status": report.get("date_status"),
-        "meeting": report.get("meeting", {}),
-        "race": {
+    compact_races = []
+    for race in report.get("races", []):
+        compact_races.append({
             "race_no": race.get("race_no"),
             "prediction_basis": race.get("prediction_basis", {}),
             "candidate_formula": race.get("candidate_formula", {}),
@@ -28,7 +23,15 @@ def compact_simulator_report(report: dict) -> dict:
             "recommendations": race.get("recommendations", []),
             "priced_candidates": race.get("priced_candidates", []),
             "auxiliary_predictions": race.get("auxiliary_predictions", []),
-        } if race else None,
+        })
+    race = compact_races[0] if compact_races else None
+    return {
+        "requested_date": report.get("requested_date"),
+        "displayed_date": report.get("displayed_date"),
+        "date_status": report.get("date_status"),
+        "meeting": report.get("meeting", {}),
+        "races": compact_races,
+        "race": race,
     }
 
 
