@@ -21,6 +21,7 @@ PROVIDER_POOL_ALIASES = {
     "QTT": "QUARTET",
 }
 UNORDERED_POOLS = {"QIN", "QPL", "TRI", "FIRST4"}
+HKJC_WIN_TAKEOUT_RATE = 0.18
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,141 @@ def priced_candidates(
     return candidates
 
 
+def _expected_value_per_dollar(probability: float, decimal_odds: float) -> float:
+    return probability * decimal_odds - 1.0
+
+
+def _takeout_adjusted_gain_per_dollar(
+    probability: float,
+    decimal_odds: float,
+    takeout_rate: float = HKJC_WIN_TAKEOUT_RATE,
+) -> float:
+    return probability * decimal_odds * (1.0 - takeout_rate) - 1.0
+
+
+def _finish_estimates_by_horse(
+    auxiliary_predictions: list[dict[str, Any]],
+) -> dict[tuple[str, str], dict[str, float | int]]:
+    estimates: dict[tuple[str, str], dict[str, float | int]] = {}
+    for row in auxiliary_predictions:
+        horse_no = row.get("horse_no")
+        race_id = row.get("race_id")
+        if horse_no is None or race_id is None:
+            continue
+        estimates[(str(race_id), str(horse_no))] = {
+            "predicted_finish_time": row.get("predicted_finish_time"),
+            "predicted_position": row.get("predicted_position"),
+            "predicted_position_rank": row.get("predicted_position_rank"),
+        }
+    return estimates
+
+
+def _candidate_finish_detail(
+    candidate: PoolCandidate,
+    estimates: dict[tuple[str, str], dict[str, float | int]],
+) -> dict[str, Any]:
+    members = []
+    times = []
+    ranks = []
+    positions = []
+    for runner in candidate.combination:
+        estimate = estimates.get((candidate.race_id, str(runner)), {})
+        finish_time = estimate.get("predicted_finish_time")
+        position = estimate.get("predicted_position")
+        rank = estimate.get("predicted_position_rank")
+        if finish_time is not None:
+            times.append(float(finish_time))
+        if position is not None:
+            positions.append(float(position))
+        if rank is not None:
+            ranks.append(int(rank))
+        members.append({
+            "horse_no": str(runner),
+            "predicted_finish_time": finish_time,
+            "predicted_position": position,
+            "predicted_position_rank": rank,
+        })
+    return {
+        "estimated_finish_time": sum(times) / len(times) if times else None,
+        "estimated_position": sum(positions) / len(positions) if positions else None,
+        "best_estimated_position_rank": min(ranks) if ranks else None,
+        "runner_estimates": members,
+    }
+
+
+def _basis_fields(probability: float, probability_basis: str) -> dict[str, float | str | None]:
+    is_fallback = probability_basis == "public_win_market_fallback"
+    return {
+        "probability_basis": probability_basis,
+        "model_probability": None if is_fallback else probability,
+        "fallback_probability": probability if is_fallback else None,
+        "staking_probability": probability,
+    }
+
+
+def serialize_candidate(
+    item: PoolCandidate,
+    finish_estimates: dict[tuple[str, str], dict[str, float | int]],
+    probability_basis: str,
+    stake_unit: float = 10.0,
+) -> dict[str, Any]:
+    probability = float(item.probability)
+    market_probability = float(item.market_probability)
+    market_odds = float(item.current_decimal_odds)
+    ev_per_dollar = _expected_value_per_dollar(probability, market_odds)
+    takeout_gain = _takeout_adjusted_gain_per_dollar(probability, market_odds)
+    finish_detail = _candidate_finish_detail(item, finish_estimates)
+    return {
+        "race_id": item.race_id,
+        "pool": item.pool,
+        "combination": item.combination,
+        **_basis_fields(probability, probability_basis),
+        "market_probability": market_probability,
+        "probability_edge": probability - market_probability,
+        "our_odds": item.fair_odds,
+        "market_odds": market_odds,
+        "expected_value_per_dollar": ev_per_dollar,
+        "expected_value_per_10": ev_per_dollar * stake_unit,
+        "takeout_rate": HKJC_WIN_TAKEOUT_RATE,
+        "takeout_adjusted_gain_per_dollar": takeout_gain,
+        "takeout_adjusted_gain_per_10": takeout_gain * stake_unit,
+        "odds_updated_at": item.odds_updated_at,
+        **finish_detail,
+    }
+
+
+def serialize_recommendation(
+    item: WagerRecommendation,
+    finish_estimates: dict[tuple[str, str], dict[str, float | int]],
+    probability_basis: str,
+) -> dict[str, Any]:
+    probability = float(item.probability)
+    market_odds = float(item.current_decimal_odds)
+    market_probability = 0.0 if market_odds <= 0 else 1.0 / market_odds
+    takeout_gain = _takeout_adjusted_gain_per_dollar(probability, market_odds)
+    candidate = PoolCandidate(
+        race_id=item.race_id,
+        pool=item.pool,
+        combination=item.combination,
+        probability=probability,
+        current_decimal_odds=market_odds,
+        model_version=item.model_version,
+    )
+    return {
+        **asdict(item),
+        **_basis_fields(probability, probability_basis),
+        "market_probability": market_probability,
+        "probability_edge": probability - market_probability,
+        "our_odds": item.fair_odds,
+        "market_odds": market_odds,
+        "expected_value_per_10": item.expected_value_per_unit * item.stake,
+        "takeout_rate": HKJC_WIN_TAKEOUT_RATE,
+        "takeout_adjusted_gain_per_dollar": takeout_gain,
+        "takeout_adjusted_gain": takeout_gain * item.stake,
+        **_candidate_finish_detail(candidate, finish_estimates),
+    }
+
+
 def summarize_recommendations(
     recommendations: list[WagerRecommendation],
     priced_count: int,
@@ -151,7 +287,9 @@ def simulate_race(
     candidates = priced_candidates(predictions, prices, model_version)
     recommendations = recommend_wagers(candidates, bankroll, budget)
     auxiliary_predictions = auxiliary.predict(live_frame).to_dict("records") if auxiliary else []
+    finish_estimates = _finish_estimates_by_horse(auxiliary_predictions)
     ratable_count = int(live_frame["ratable"].sum()) if "ratable" in live_frame else len(live_frame)
+    probability_basis = "fundamental_plus_market" if ratable_count else "public_win_market_fallback"
     return {
         "race_ids": sorted(predictions),
         "model_version": model_version,
@@ -163,25 +301,36 @@ def simulate_race(
         "prediction_basis": {
             "runners": len(live_frame),
             "fundamental_ratable_runners": ratable_count,
-            "basis": "fundamental_plus_market" if ratable_count else "public_win_market_fallback",
+            "basis": probability_basis,
             "warning": None if ratable_count else (
                 "No runner had the complete live historical feature row required by the model; "
                 "runner strengths therefore use the documented public WIN fallback."
             ),
         },
+        "candidate_formula": {
+            "model_probability": (
+                "Independent model probability after calibration and market blending; unavailable when the "
+                "race is fully public-fallback."
+            ),
+            "fallback_probability": "Public-derived staking probability used when runners are unratable.",
+            "staking_probability": "The probability used for EV and Kelly sizing.",
+            "market_probability": "Raw reciprocal of currently displayed decimal market odds: 1 / market_odds.",
+            "our_odds": "Model fair decimal odds: 1 / model_probability.",
+            "probability_edge": "model_probability - market_probability.",
+            "expected_value_per_dollar": "model_probability * market_odds - 1.",
+            "takeout_adjusted_gain_per_dollar": (
+                "model_probability * market_odds * (1 - 0.18) - 1, using the requested 18% HKJC "
+                "WIN takeout haircut."
+            ),
+        },
         "summary": summarize_recommendations(recommendations, len(candidates)),
-        "recommendations": [asdict(item) for item in recommendations],
+        "recommendations": [
+            serialize_recommendation(item, finish_estimates, probability_basis)
+            for item in recommendations
+        ],
         "auxiliary_predictions": auxiliary_predictions,
         "priced_candidates": [
-            {
-                "race_id": item.race_id,
-                "pool": item.pool,
-                "combination": item.combination,
-                "probability": item.probability,
-                "fair_odds": item.fair_odds,
-                "market_odds": item.current_decimal_odds,
-                "expected_value_per_dollar": item.probability * item.current_decimal_odds - 1.0,
-            }
+            serialize_candidate(item, finish_estimates, probability_basis)
             for item in sorted(
                 candidates,
                 key=lambda candidate: candidate.probability * candidate.current_decimal_odds,

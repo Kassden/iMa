@@ -16,6 +16,7 @@ from .modeling import (
     MarketBlend, MultiMarketBlend, RaceProbabilityModel, TemperatureCalibrator, disagreement_report,
     evaluate_probabilities, incremental_pseudo_r2,
 )
+from .mlflow_tracking import MLflowConfig, log_experiment_run
 from .pipeline_transparency import pipeline_manifest
 from .pools import SUPPORTED_POOLS, evaluate_top_pool_selections, fit_order_exponents
 
@@ -248,12 +249,25 @@ def run_experiments(
     template_path: Path,
     specs: list[ExperimentSpec] | None = None,
     feature_schema: FeatureSchema = BASELINE_SCHEMA,
+    mlflow_config: MLflowConfig | None = None,
 ) -> dict:
     validate_runner_dataset(frame)
     splits = chronological_race_split(frame)
     specs = specs or default_experiment_specs()
     market = evaluate_probabilities(splits.test["market_probability"].to_numpy(), splits.test)
     execution_id = datetime.now(timezone.utc).isoformat()
+    dataset = {
+        "runners": len(frame),
+        "races": int(frame["race_id"].nunique()),
+        "date_min": frame["date"].min().date().isoformat(),
+        "date_max": frame["date"].max().date().isoformat(),
+        "train_races": int(splits.train["race_id"].nunique()),
+        "validation_races": int(splits.validation["race_id"].nunique()),
+        "test_races": int(splits.test["race_id"].nunique()),
+        "test_date_min": splits.test["date"].min().date().isoformat(),
+        "test_date_max": splits.test["date"].max().date().isoformat(),
+    }
+    mlflow_config = mlflow_config or MLflowConfig.from_values()
     runs = []
     for sequence, spec in enumerate(specs):
         run = _run_one(spec, splits, output_dir / "models", feature_schema)
@@ -265,20 +279,22 @@ def run_experiments(
             "feature_count": len(feature_schema.features),
             "variables": list(feature_schema.features),
         })
+        log_experiment_run(
+            run,
+            dataset,
+            market,
+            output_dir / "models" / f"{spec.run_id}.joblib",
+            mlflow_config,
+        )
         runs.append(run)
     runs.sort(key=lambda run: run["test_fundamental"]["race_log_loss"])
     summary = {
         "created_at": execution_id,
-        "dataset": {
-            "runners": len(frame),
-            "races": int(frame["race_id"].nunique()),
-            "date_min": frame["date"].min().date().isoformat(),
-            "date_max": frame["date"].max().date().isoformat(),
-            "train_races": int(splits.train["race_id"].nunique()),
-            "validation_races": int(splits.validation["race_id"].nunique()),
-            "test_races": int(splits.test["race_id"].nunique()),
-            "test_date_min": splits.test["date"].min().date().isoformat(),
-            "test_date_max": splits.test["date"].max().date().isoformat(),
+        "dataset": dataset,
+        "mlflow": {
+            "enabled": mlflow_config.enabled,
+            "tracking_uri": mlflow_config.tracking_uri,
+            "experiment_name": mlflow_config.experiment_name,
         },
         "market_test": market,
         "prediction_sources": {
