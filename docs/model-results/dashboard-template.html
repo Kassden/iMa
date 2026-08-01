@@ -407,6 +407,7 @@
           <h3 class="technical-subtitle">Recommended wagers</h3>
           <p class="pipeline-note">Only bets passing edge, Kelly, exposure, and $10 unit constraints.</p>
         </div>
+        <div class="control"><label for="simulator-race-select">Race</label><select id="simulator-race-select"></select></div>
       </div>
       <div class="table-scroll"><table class="compact-table">
         <thead><tr><th>Race</th><th>Pool</th><th>Horse / combination</th><th>Stake</th><th>Model/fallback prob.</th><th>Market prob.</th><th>Our odds</th><th>Market odds</th><th>Edge</th><th>EV</th><th>Gain after 18%</th><th>Estimated finish</th></tr></thead>
@@ -571,6 +572,14 @@
       </div>
     </section>
 
+    <section class="technical-section" id="mlflow-status" aria-labelledby="mlflow-status-title">
+      <h2 id="mlflow-status-title">MLflow registry status</h2>
+      <p class="pipeline-note">MLflow is the experiment registry. The static dashboard only shows MLflow run lineage when the dashboard artifact was exported from the tracking store.</p>
+      <div class="simulation-meta" id="mlflow-meta"></div>
+      <div class="study-summary" id="mlflow-summary"></div>
+      <div class="simulator-warning" id="mlflow-warning"></div>
+    </section>
+
     <section class="visuals">
       <article class="panel">
         <h2 id="chart-title">Top-1 accuracy by run</h2>
@@ -650,6 +659,7 @@
       correlationRun: null,
       correlationFeature: null,
       studySchema: "notebook-rich-v2",
+      simulatorRace: null,
       simulatorPool: "all"
     };
 
@@ -862,32 +872,46 @@
 
     function renderSimulator() {
       const simulator = DATA.simulator;
-      const race = simulator?.race;
-      if (!simulator || !race) {
+      const races = simulator?.races?.length ? simulator.races : (simulator?.race ? [simulator.race] : []);
+      if (!simulator || !races.length) {
         document.getElementById("simulator-results").hidden = true;
         return;
       }
+      if (!races.some(item => String(item.race_no) === String(state.simulatorRace))) {
+        state.simulatorRace = races[0].race_no;
+      }
+      const race = races.find(item => String(item.race_no) === String(state.simulatorRace)) || races[0];
       const meeting = simulator.meeting || {};
       const summary = race.summary || {};
       const basis = race.prediction_basis || {};
       const formula = race.candidate_formula || {};
+      const raceSelect = document.getElementById("simulator-race-select");
+      raceSelect.innerHTML = races.map(item => {
+        const count = item.summary?.priced_candidates ?? item.priced_candidates?.length ?? 0;
+        return `<option value="${escapeHtml(item.race_no)}" ${String(item.race_no) === String(race.race_no) ? "selected" : ""}>Race ${escapeHtml(item.race_no)} (${count} candidates)</option>`;
+      }).join("");
       document.getElementById("simulator-meta").innerHTML = `
         <span>Requested date <strong>${escapeHtml(simulator.requested_date)}</strong></span>
         <span>HKJC displayed <strong>${escapeHtml(simulator.displayed_date)}</strong></span>
         <span>Date status <strong>${escapeHtml(String(simulator.date_status).replaceAll("_", " "))}</strong></span>
-        <span>Race <strong>${race.race_no}</strong></span>
+        <span>Races in artifact <strong>${races.length}</strong></span>
+        <span>Selected race <strong>${race.race_no}</strong></span>
         <span>Prediction basis <strong>${escapeHtml(String(basis.basis).replaceAll("_", " "))}</strong></span>`;
       document.getElementById("simulator-summary").innerHTML = `
         <div class="study-stat"><strong>$${fmt(meeting.total_cost, 2)}</strong><span>Total paper cost</span></div>
+        <div class="study-stat"><strong>${races.length}</strong><span>Races available in artifact</span></div>
         <div class="study-stat"><strong>${summary.priced_candidates || 0}</strong><span>Priced candidates</span></div>
         <div class="study-stat"><strong>${summary.recommended_bets || 0}</strong><span>Recommended bets</span></div>
         <div class="study-stat"><strong>${fmt(meeting.expected_wins || 0, 3)}</strong><span>Expected winning bets</span></div>
         <div class="study-stat"><strong>$${fmt(meeting.expected_gross_return || 0, 2)}</strong><span>Expected gross return</span></div>
         <div class="study-stat"><strong>$${fmt(meeting.expected_net_return || 0, 2)}</strong><span>Expected net return</span></div>
         <div class="study-stat"><strong>${pct(meeting.expected_roi || 0)}</strong><span>Assumption-based expected ROI</span></div>`;
+      const fallbackNote = basis.basis === "public_win_market_fallback"
+        ? " WIN pool EV is identical in this fallback because probability is normalized from public inverse odds: p_i = (1 / odds_i) / sum(1 / odds). Therefore p_i * odds_i is constant across runners; this is not an independent model edge."
+        : "";
       document.getElementById("simulator-warning").innerHTML = `
-        <strong>Public-market fallback: no independent fundamental signal in this simulation</strong>
-        <span>${escapeHtml(basis.warning || "The prediction basis uses public market probabilities.")}</span>`;
+        <strong>${basis.basis === "public_win_market_fallback" ? "Public-market fallback: no independent fundamental signal in this simulation" : "Model-backed paper simulation"}</strong>
+        <span>${escapeHtml((basis.warning || "The prediction basis uses available simulator probabilities.") + fallbackNote)}</span>`;
       document.getElementById("simulator-formula").innerHTML = `
         <div><code>model_probability</code>: ${escapeHtml(formula.model_probability || "Independent model probability after calibration and market blending; unavailable for full public fallback.")}</div>
         <div><code>fallback_probability</code>: ${escapeHtml(formula.fallback_probability || "Public-derived staking probability for unratable runners.")}</div>
@@ -943,6 +967,29 @@
         state.simulatorPool = event.target.value;
         renderSimulator();
       };
+      raceSelect.onchange = event => {
+        state.simulatorRace = event.target.value;
+        state.simulatorPool = "all";
+        renderSimulator();
+      };
+    }
+
+    function renderMlflowStatus() {
+      const mlflow = DATA.mlflow || {};
+      const runs = runHistory().filter(run => run.mlflow_run_id);
+      document.getElementById("mlflow-meta").innerHTML = `
+        <span>Enabled in artifact <strong>${mlflow.enabled ? "yes" : "no"}</strong></span>
+        <span>Tracking URI <strong>${escapeHtml(mlflow.tracking_uri || "not exported")}</strong></span>
+        <span>Experiment <strong>${escapeHtml(mlflow.experiment_name || "not exported")}</strong></span>
+        <span>Experiment ID <strong>${escapeHtml(mlflow.experiment_id || "-")}</strong></span>`;
+      document.getElementById("mlflow-summary").innerHTML = `
+        <div class="study-stat"><strong>${mlflow.exported_runs ?? runs.length}</strong><span>MLflow-exported runs</span></div>
+        <div class="study-stat"><strong>${runHistory().length}</strong><span>Runs in dashboard</span></div>
+        <div class="study-stat"><strong>${runs.length}</strong><span>Runs with MLflow IDs</span></div>
+        <div class="study-stat"><strong>${mlflow.enabled ? "ready" : "off"}</strong><span>Registry state</span></div>`;
+      document.getElementById("mlflow-warning").innerHTML = runs.length
+        ? `<strong>MLflow lineage present</strong><span>Runs in this dashboard include MLflow run IDs. Open the MLflow UI against the listed tracking URI to inspect artifacts, params, and metrics.</span>`
+        : `<strong>MLflow tooling is installed, but this dashboard artifact was not exported from MLflow</strong><span>Run <code>scripts.import_results_to_mlflow</code>, then <code>scripts.export_mlflow_dashboard</code>, to publish run IDs and registry lineage into the static dashboard.</span>`;
     }
 
     function selectedSchemaStudy() {
@@ -1552,6 +1599,7 @@
     renderPipeline();
     renderNotebookRichResults();
     renderSimulator();
+    renderMlflowStatus();
     renderFeatureStudy();
     render();
   </script>
