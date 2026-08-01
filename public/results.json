@@ -60020,6 +60020,16 @@
         "basis": "public_win_market_fallback",
         "warning": "No runner had the complete live historical feature row required by the model; runner strengths therefore use the documented public WIN fallback."
       },
+      "candidate_formula": {
+        "model_probability": "Independent model probability after calibration and market blending; unavailable when the race is fully public-fallback.",
+        "fallback_probability": "Public-derived staking probability used when runners are unratable.",
+        "staking_probability": "The probability used for EV and Kelly sizing.",
+        "market_probability": "Raw reciprocal of currently displayed decimal market odds: 1 / market_odds.",
+        "our_odds": "Model fair decimal odds: 1 / model_probability.",
+        "probability_edge": "model_probability - market_probability.",
+        "expected_value_per_dollar": "model_probability * market_odds - 1.",
+        "takeout_adjusted_gain_per_dollar": "model_probability * market_odds * (1 - 0.18) - 1, using the requested 18% HKJC WIN takeout haircut."
+      },
       "summary": {
         "priced_candidates": 108,
         "recommended_bets": 1,
@@ -60049,7 +60059,5043 @@
           "expected_value_per_unit": 0.49691198761557454,
           "kelly_fraction": 0.01,
           "model_version": "benter-boost-lr003-leaf15",
-          "created_at": "2026-07-25T20:02:52.869414+00:00"
+          "created_at": "2026-08-01T19:48:38.090599+00:00",
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.14969119876155745,
+          "staking_probability": 0.14969119876155745,
+          "market_probability": 0.1,
+          "probability_edge": 0.04969119876155745,
+          "our_odds": 6.6804194787223015,
+          "market_odds": 10.0,
+          "expected_value_per_10": 4.969119876155745,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": 0.2274678298447712,
+          "takeout_adjusted_gain": 2.274678298447712,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.230595320670176,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            }
+          ]
+        }
+      ],
+      "priced_candidates": [
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "2"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.14969119876155745,
+          "staking_probability": 0.14969119876155745,
+          "market_probability": 0.1,
+          "probability_edge": 0.04969119876155745,
+          "our_odds": 6.6804194787223015,
+          "market_odds": 10.0,
+          "expected_value_per_dollar": 0.49691198761557454,
+          "expected_value_per_10": 4.969119876155745,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": 0.2274678298447712,
+          "takeout_adjusted_gain_per_10": 2.274678298447712,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.230595320670176,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "5"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.19109398102930622,
+          "staking_probability": 0.19109398102930622,
+          "market_probability": 0.17543859649122806,
+          "probability_edge": 0.01565538453807816,
+          "our_odds": 5.233027197474314,
+          "market_odds": 5.7,
+          "expected_value_per_dollar": 0.08923569186704539,
+          "expected_value_per_10": 0.8923569186704539,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.10682673266902276,
+          "takeout_adjusted_gain_per_10": -1.0682673266902276,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 6,
+          "runner_estimates": [
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "6"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.1436264363367671,
+          "staking_probability": 0.1436264363367671,
+          "market_probability": 0.14705882352941177,
+          "probability_edge": -0.003432387192644659,
+          "our_odds": 6.962506523905229,
+          "market_odds": 6.8,
+          "expected_value_per_dollar": -0.02334023290998366,
+          "expected_value_per_10": -0.2334023290998366,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.1991389909861866,
+          "takeout_adjusted_gain_per_10": -1.991389909861866,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 7,
+          "runner_estimates": [
+            {
+              "horse_no": "6",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 7
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.2158016075532536,
+          "staking_probability": 0.2158016075532536,
+          "market_probability": 0.23809523809523808,
+          "probability_edge": -0.022293630541984494,
+          "our_odds": 4.633885777487682,
+          "market_odds": 4.2,
+          "expected_value_per_dollar": -0.0936332482763349,
+          "expected_value_per_10": -0.936332482763349,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.25677926358659453,
+          "takeout_adjusted_gain_per_10": -2.5677926358659455,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 5,
+          "runner_estimates": [
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "3",
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.01601750785615977,
+          "staking_probability": 0.01601750785615977,
+          "market_probability": 0.019230769230769232,
+          "probability_edge": -0.0032132613746094635,
+          "our_odds": 62.4316846902894,
+          "market_odds": 52.0,
+          "expected_value_per_dollar": -0.16708959147969205,
+          "expected_value_per_10": -1.6708959147969205,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3170134650133474,
+          "takeout_adjusted_gain_per_10": -3.1701346501334737,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.33267515832287364,
+          "staking_probability": 0.33267515832287364,
+          "market_probability": 0.4,
+          "probability_edge": -0.06732484167712638,
+          "our_odds": 3.00593529448166,
+          "market_odds": 2.5,
+          "expected_value_per_dollar": -0.16831210419281595,
+          "expected_value_per_10": -1.6831210419281595,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.31801592543810897,
+          "takeout_adjusted_gain_per_10": -3.1801592543810897,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.08111033842897739,
+          "staking_probability": 0.08111033842897739,
+          "market_probability": 0.1,
+          "probability_edge": -0.01888966157102262,
+          "our_odds": 12.328884570930864,
+          "market_odds": 10.0,
+          "expected_value_per_dollar": -0.1888966157102261,
+          "expected_value_per_10": -1.888966157102261,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3348952248823853,
+          "takeout_adjusted_gain_per_10": -3.3489522488238532,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 11,
+          "runner_estimates": [
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "12"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.033795974345407244,
+          "staking_probability": 0.033795974345407244,
+          "market_probability": 0.041666666666666664,
+          "probability_edge": -0.00787069232125942,
+          "our_odds": 29.589322970234072,
+          "market_odds": 24.0,
+          "expected_value_per_dollar": -0.1888966157102261,
+          "expected_value_per_10": -1.888966157102261,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3348952248823853,
+          "takeout_adjusted_gain_per_10": -3.3489522488238532,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 13,
+          "runner_estimates": [
+            {
+              "horse_no": "12",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 13
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.08111033842897739,
+          "staking_probability": 0.08111033842897739,
+          "market_probability": 0.1,
+          "probability_edge": -0.01888966157102262,
+          "our_odds": 12.328884570930864,
+          "market_odds": 10.0,
+          "expected_value_per_dollar": -0.1888966157102261,
+          "expected_value_per_10": -1.888966157102261,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3348952248823853,
+          "takeout_adjusted_gain_per_10": -3.3489522488238532,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 14,
+          "runner_estimates": [
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "2"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.04268965180472494,
+          "staking_probability": 0.04268965180472494,
+          "market_probability": 0.05263157894736842,
+          "probability_edge": -0.009941927142643477,
+          "our_odds": 23.42488068476864,
+          "market_odds": 19.0,
+          "expected_value_per_dollar": -0.1888966157102261,
+          "expected_value_per_10": -1.888966157102261,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3348952248823853,
+          "takeout_adjusted_gain_per_10": -3.3489522488238532,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.230595320670176,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.06759194869081449,
+          "staking_probability": 0.06759194869081449,
+          "market_probability": 0.08333333333333333,
+          "probability_edge": -0.01574138464251884,
+          "our_odds": 14.794661485117036,
+          "market_odds": 12.0,
+          "expected_value_per_dollar": -0.1888966157102261,
+          "expected_value_per_10": -1.888966157102261,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3348952248823853,
+          "takeout_adjusted_gain_per_10": -3.3489522488238532,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 5,
+          "runner_estimates": [
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "6"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.04055516921448869,
+          "staking_probability": 0.04055516921448869,
+          "market_probability": 0.05,
+          "probability_edge": -0.00944483078551131,
+          "our_odds": 24.657769141861728,
+          "market_odds": 20.0,
+          "expected_value_per_dollar": -0.1888966157102261,
+          "expected_value_per_10": -1.888966157102261,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3348952248823853,
+          "takeout_adjusted_gain_per_10": -3.3489522488238532,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 7,
+          "runner_estimates": [
+            {
+              "horse_no": "6",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 7
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.11265324781802415,
+          "staking_probability": 0.11265324781802415,
+          "market_probability": 0.1388888888888889,
+          "probability_edge": -0.02623564107086475,
+          "our_odds": 8.876796891070223,
+          "market_odds": 7.2,
+          "expected_value_per_dollar": -0.1888966157102261,
+          "expected_value_per_10": -1.888966157102261,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3348952248823853,
+          "takeout_adjusted_gain_per_10": -3.3489522488238532,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 8,
+          "runner_estimates": [
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "9"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.04506129912720966,
+          "staking_probability": 0.04506129912720966,
+          "market_probability": 0.05555555555555555,
+          "probability_edge": -0.010494256428345894,
+          "our_odds": 22.191992227675556,
+          "market_odds": 18.0,
+          "expected_value_per_dollar": -0.1888966157102261,
+          "expected_value_per_10": -1.888966157102261,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3348952248823853,
+          "takeout_adjusted_gain_per_10": -3.3489522488238532,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 10,
+          "runner_estimates": [
+            {
+              "horse_no": "9",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 10
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.11927990945437851,
+          "staking_probability": 0.11927990945437851,
+          "market_probability": 0.14705882352941177,
+          "probability_edge": -0.02777891407503326,
+          "our_odds": 8.383641508232987,
+          "market_odds": 6.8,
+          "expected_value_per_dollar": -0.1888966157102262,
+          "expected_value_per_10": -1.888966157102262,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.33489522488238543,
+          "takeout_adjusted_gain_per_10": -3.3489522488238546,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "11"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.027969082216888753,
+          "staking_probability": 0.027969082216888753,
+          "market_probability": 0.034482758620689655,
+          "probability_edge": -0.006513676403800902,
+          "our_odds": 35.753765255699506,
+          "market_odds": 29.0,
+          "expected_value_per_dollar": -0.1888966157102262,
+          "expected_value_per_10": -1.888966157102262,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.33489522488238543,
+          "takeout_adjusted_gain_per_10": -3.3489522488238546,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 12,
+          "runner_estimates": [
+            {
+              "horse_no": "11",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 12
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "14"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.018862869402087763,
+          "staking_probability": 0.018862869402087763,
+          "market_probability": 0.023255813953488372,
+          "probability_edge": -0.0043929445514006085,
+          "our_odds": 53.01420365500272,
+          "market_odds": 43.0,
+          "expected_value_per_dollar": -0.1888966157102262,
+          "expected_value_per_10": -1.888966157102262,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.33489522488238543,
+          "takeout_adjusted_gain_per_10": -3.3489522488238546,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.230595320670176,
+          "best_estimated_position_rank": 2,
+          "runner_estimates": [
+            {
+              "horse_no": "14",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 2
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "5"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.05793595602069813,
+          "staking_probability": 0.05793595602069813,
+          "market_probability": 0.07142857142857142,
+          "probability_edge": -0.013492615407873297,
+          "our_odds": 17.26043839930321,
+          "market_odds": 14.0,
+          "expected_value_per_dollar": -0.1888966157102262,
+          "expected_value_per_10": -1.888966157102262,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.33489522488238543,
+          "takeout_adjusted_gain_per_10": -3.3489522488238546,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 6,
+          "runner_estimates": [
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "8"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.05793595602069813,
+          "staking_probability": 0.05793595602069813,
+          "market_probability": 0.07142857142857142,
+          "probability_edge": -0.013492615407873297,
+          "our_odds": 17.26043839930321,
+          "market_odds": 14.0,
+          "expected_value_per_dollar": -0.1888966157102262,
+          "expected_value_per_10": -1.888966157102262,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.33489522488238543,
+          "takeout_adjusted_gain_per_10": -3.3489522488238546,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 9,
+          "runner_estimates": [
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "WIN",
+          "combination": [
+            "3"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.21344825902362466,
+          "staking_probability": 0.21344825902362466,
+          "market_probability": 0.2631578947368421,
+          "probability_edge": -0.04970963571321743,
+          "our_odds": 4.684976136953729,
+          "market_odds": 3.8,
+          "expected_value_per_dollar": -0.1888966157102263,
+          "expected_value_per_10": -1.8889661571022631,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.33489522488238554,
+          "takeout_adjusted_gain_per_10": -3.3489522488238554,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 4,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "3",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.01601750785615977,
+          "staking_probability": 0.01601750785615977,
+          "market_probability": 0.02,
+          "probability_edge": -0.003982492143840232,
+          "our_odds": 62.4316846902894,
+          "market_odds": 50.0,
+          "expected_value_per_dollar": -0.19912460719201164,
+          "expected_value_per_10": -1.9912460719201164,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3432821778974495,
+          "takeout_adjusted_gain_per_10": -3.4328217789744953,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.318950797250039,
+          "staking_probability": 0.318950797250039,
+          "market_probability": 0.4,
+          "probability_edge": -0.08104920274996102,
+          "our_odds": 3.1352798256718506,
+          "market_odds": 2.5,
+          "expected_value_per_dollar": -0.20262300687490253,
+          "expected_value_per_10": -2.026230068749025,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.34615086563742004,
+          "takeout_adjusted_gain_per_10": -3.4615086563742006,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 8,
+          "runner_estimates": [
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.24870670521846241,
+          "staking_probability": 0.24870670521846241,
+          "market_probability": 0.3125,
+          "probability_edge": -0.06379329478153759,
+          "our_odds": 4.020800320287329,
+          "market_odds": 3.2,
+          "expected_value_per_dollar": -0.20413854330092018,
+          "expected_value_per_10": -2.041385433009202,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.34739360550675447,
+          "takeout_adjusted_gain_per_10": -3.4739360550675444,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 11,
+          "runner_estimates": [
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.2487067052184624,
+          "staking_probability": 0.2487067052184624,
+          "market_probability": 0.3125,
+          "probability_edge": -0.06379329478153761,
+          "our_odds": 4.0208003202873295,
+          "market_odds": 3.2,
+          "expected_value_per_dollar": -0.2041385433009203,
+          "expected_value_per_10": -2.0413854330092027,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3473936055067546,
+          "takeout_adjusted_gain_per_10": -3.4739360550675458,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 14,
+          "runner_estimates": [
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "11"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.10621844907304569,
+          "staking_probability": 0.10621844907304569,
+          "market_probability": 0.13513513513513511,
+          "probability_edge": -0.028916686062089428,
+          "our_odds": 9.414560358646424,
+          "market_odds": 7.4,
+          "expected_value_per_dollar": -0.21398347685946184,
+          "expected_value_per_10": -2.1398347685946186,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3554664510247587,
+          "takeout_adjusted_gain_per_10": -3.554664510247587,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 12,
+          "runner_estimates": [
+            {
+              "horse_no": "11",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 12
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "7",
+            "9"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.005857735746223382,
+          "staking_probability": 0.005857735746223382,
+          "market_probability": 0.007518796992481203,
+          "probability_edge": -0.0016610612462578207,
+          "our_odds": 170.7144267552054,
+          "market_odds": 133.0,
+          "expected_value_per_dollar": -0.22092114575229016,
+          "expected_value_per_10": -2.2092114575229016,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.36115533951687784,
+          "takeout_adjusted_gain_per_10": -3.6115533951687784,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "9",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 10
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "14"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.07692832800642965,
+          "staking_probability": 0.07692832800642965,
+          "market_probability": 0.1,
+          "probability_edge": -0.023071671993570353,
+          "our_odds": 12.99911262748906,
+          "market_odds": 10.0,
+          "expected_value_per_dollar": -0.23071671993570342,
+          "expected_value_per_10": -2.307167199357034,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3691877103472767,
+          "takeout_adjusted_gain_per_10": -3.691877103472767,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.230595320670176,
+          "best_estimated_position_rank": 2,
+          "runner_estimates": [
+            {
+              "horse_no": "14",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 2
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "4",
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.006133041679158199,
+          "staking_probability": 0.006133041679158199,
+          "market_probability": 0.008064516129032258,
+          "probability_edge": -0.0019314744498740589,
+          "our_odds": 163.05123172377603,
+          "market_odds": 124.0,
+          "expected_value_per_dollar": -0.23950283178438336,
+          "expected_value_per_10": -2.395028317843834,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3763923220631943,
+          "takeout_adjusted_gain_per_10": -3.763923220631943,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "8"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.19109398102930597,
+          "staking_probability": 0.19109398102930597,
+          "market_probability": 0.25641025641025644,
+          "probability_edge": -0.06531627538095047,
+          "our_odds": 5.23302719747432,
+          "market_odds": 3.9,
+          "expected_value_per_dollar": -0.2547334739857068,
+          "expected_value_per_10": -2.547334739857068,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.38888144866827956,
+          "takeout_adjusted_gain_per_10": -3.8888144866827954,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 9,
+          "runner_estimates": [
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "9"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.156346526671002,
+          "staking_probability": 0.156346526671002,
+          "market_probability": 0.2127659574468085,
+          "probability_edge": -0.05641943077580652,
+          "our_odds": 6.396048708547823,
+          "market_odds": 4.7,
+          "expected_value_per_dollar": -0.2651713246462907,
+          "expected_value_per_10": -2.651713246462907,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.3974404862099583,
+          "takeout_adjusted_gain_per_10": -3.974404862099583,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 10,
+          "runner_estimates": [
+            {
+              "horse_no": "9",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 10
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "12"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.12391330588615589,
+          "staking_probability": 0.12391330588615589,
+          "market_probability": 0.17543859649122806,
+          "probability_edge": -0.051525290605072174,
+          "our_odds": 8.070158348601723,
+          "market_odds": 5.7,
+          "expected_value_per_dollar": -0.2936941564489114,
+          "expected_value_per_10": -2.936941564489114,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.4208292082881073,
+          "takeout_adjusted_gain_per_10": -4.208292082881073,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 13,
+          "runner_estimates": [
+            {
+              "horse_no": "12",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 13
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "PLACE",
+          "combination": [
+            "3"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.49624681717714897,
+          "staking_probability": 0.49624681717714897,
+          "market_probability": 0.7142857142857143,
+          "probability_edge": -0.21803889710856533,
+          "our_odds": 2.015126274639707,
+          "market_odds": 1.4,
+          "expected_value_per_dollar": -0.3052544559519915,
+          "expected_value_per_10": -3.052544559519915,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.430308653880633,
+          "takeout_adjusted_gain_per_10": -4.30308653880633,
+          "odds_updated_at": null,
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 4,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "3",
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.013556722780845201,
+          "staking_probability": 0.013556722780845201,
+          "market_probability": 0.02,
+          "probability_edge": -0.006443277219154799,
+          "our_odds": 73.76414021041555,
+          "market_odds": 50.0,
+          "expected_value_per_dollar": -0.32216386095773997,
+          "expected_value_per_10": -3.2216386095773997,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.44417436598534676,
+          "takeout_adjusted_gain_per_10": -4.441743659853468,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "3",
+            "4",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.012827024675415775,
+          "staking_probability": 0.012827024675415775,
+          "market_probability": 0.019230769230769232,
+          "probability_edge": -0.006403744555353457,
+          "our_odds": 77.96040198757831,
+          "market_odds": 52.0,
+          "expected_value_per_dollar": -0.33299471687837967,
+          "expected_value_per_10": -3.3299471687837965,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.4530556678402713,
+          "takeout_adjusted_gain_per_10": -4.5305566784027125,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 4,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "7",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.009977794606096026,
+          "staking_probability": 0.009977794606096026,
+          "market_probability": 0.016666666666666666,
+          "probability_edge": -0.006688872060570641,
+          "our_odds": 100.22254811589735,
+          "market_odds": 60.0,
+          "expected_value_per_dollar": -0.40133232363423843,
+          "expected_value_per_10": -4.0133232363423845,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.5090925053800754,
+          "takeout_adjusted_gain_per_10": -5.090925053800754,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "3",
+            "13",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0030963507692400192,
+          "staking_probability": 0.0030963507692400192,
+          "market_probability": 0.005376344086021506,
+          "probability_edge": -0.0022799933167814866,
+          "our_odds": 322.9608253477832,
+          "market_odds": 186.0,
+          "expected_value_per_dollar": -0.42407875692135644,
+          "expected_value_per_10": -4.240787569213564,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.5277445806755122,
+          "takeout_adjusted_gain_per_10": -5.277445806755122,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "7",
+            "8"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.00732531392970614,
+          "staking_probability": 0.00732531392970614,
+          "market_probability": 0.013333333333333334,
+          "probability_edge": -0.006008019403627194,
+          "our_odds": 136.5129207561642,
+          "market_odds": 75.0,
+          "expected_value_per_dollar": -0.45060145527203954,
+          "expected_value_per_10": -4.506014552720395,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.5494931933230724,
+          "takeout_adjusted_gain_per_10": -5.494931933230724,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "3",
+            "7",
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.003176921783846508,
+          "staking_probability": 0.003176921783846508,
+          "market_probability": 0.005847953216374269,
+          "probability_edge": -0.0026710314325277605,
+          "our_odds": 314.77010390518154,
+          "market_odds": 171.0,
+          "expected_value_per_dollar": -0.4567463749622471,
+          "expected_value_per_10": -4.567463749622471,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.5545320274690426,
+          "takeout_adjusted_gain_per_10": -5.545320274690426,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 4,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "3",
+            "8"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.011796087614926523,
+          "staking_probability": 0.011796087614926523,
+          "market_probability": 0.021739130434782608,
+          "probability_edge": -0.009943042819856085,
+          "our_odds": 84.77387017154915,
+          "market_odds": 46.0,
+          "expected_value_per_dollar": -0.4573799697133799,
+          "expected_value_per_10": -4.573799697133799,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.5550515751649715,
+          "takeout_adjusted_gain_per_10": -5.550515751649715,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "7",
+            "12"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0045613727648936495,
+          "staking_probability": 0.0045613727648936495,
+          "market_probability": 0.008620689655172414,
+          "probability_edge": -0.004059316890278764,
+          "our_odds": 219.2322468570085,
+          "market_odds": 116.0,
+          "expected_value_per_dollar": -0.47088075927233664,
+          "expected_value_per_10": -4.708807592723367,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.566122222603316,
+          "takeout_adjusted_gain_per_10": -5.661222226033161,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "12",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 13
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "3",
+            "4",
+            "7",
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.005791248688228575,
+          "staking_probability": 0.005791248688228575,
+          "market_probability": 0.011235955056179775,
+          "probability_edge": -0.0054447063679512,
+          "our_odds": 172.67433222693802,
+          "market_odds": 89.0,
+          "expected_value_per_dollar": -0.4845788667476568,
+          "expected_value_per_10": -4.845788667476568,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.5773546707330786,
+          "takeout_adjusted_gain_per_10": -5.773546707330786,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 4,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "4",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.008426231023166504,
+          "staking_probability": 0.008426231023166504,
+          "market_probability": 0.01639344262295082,
+          "probability_edge": -0.007967211599784316,
+          "our_odds": 118.6770214643615,
+          "market_odds": 61.0,
+          "expected_value_per_dollar": -0.4859999075868432,
+          "expected_value_per_10": -4.859999075868432,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.5785199242212113,
+          "takeout_adjusted_gain_per_10": -5.785199242212114,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "1",
+            "3",
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0024754384787480156,
+          "staking_probability": 0.0024754384787480156,
+          "market_probability": 0.005376344086021506,
+          "probability_edge": -0.0029009056072734902,
+          "our_odds": 403.96883565685005,
+          "market_odds": 186.0,
+          "expected_value_per_dollar": -0.5395684429528691,
+          "expected_value_per_10": -5.395684429528691,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6224461232213526,
+          "takeout_adjusted_gain_per_10": -6.224461232213526,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "5",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.006121688674069689,
+          "staking_probability": 0.006121688674069689,
+          "market_probability": 0.0136986301369863,
+          "probability_edge": -0.0075769414629166115,
+          "our_odds": 163.3536191142503,
+          "market_odds": 73.0,
+          "expected_value_per_dollar": -0.5531167267929127,
+          "expected_value_per_10": -5.531167267929127,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6335557159701883,
+          "takeout_adjusted_gain_per_10": -6.335557159701883,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "8",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0053296262136659335,
+          "staking_probability": 0.0053296262136659335,
+          "market_probability": 0.0125,
+          "probability_edge": -0.007170373786334067,
+          "our_odds": 187.63041907814383,
+          "market_odds": 80.0,
+          "expected_value_per_dollar": -0.5736299029067253,
+          "expected_value_per_10": -5.736299029067253,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6503765203835148,
+          "takeout_adjusted_gain_per_10": -6.5037652038351474,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "1",
+            "3",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.003618627378866059,
+          "staking_probability": 0.003618627378866059,
+          "market_probability": 0.008547008547008548,
+          "probability_edge": -0.0049283811681424886,
+          "our_odds": 276.3478787123316,
+          "market_odds": 117.0,
+          "expected_value_per_dollar": -0.5766205966726712,
+          "expected_value_per_10": -5.766205966726712,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6528288892715903,
+          "takeout_adjusted_gain_per_10": -6.528288892715903,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "5",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.007325313929706138,
+          "staking_probability": 0.007325313929706138,
+          "market_probability": 0.017857142857142856,
+          "probability_edge": -0.010531828927436718,
+          "our_odds": 136.51292075616422,
+          "market_odds": 56.0,
+          "expected_value_per_dollar": -0.5897824199364563,
+          "expected_value_per_10": -5.897824199364563,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6636215843478941,
+          "takeout_adjusted_gain_per_10": -6.636215843478941,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "4",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.005148663002514283,
+          "staking_probability": 0.005148663002514283,
+          "market_probability": 0.012658227848101266,
+          "probability_edge": -0.007509564845586982,
+          "our_odds": 194.2251803063558,
+          "market_odds": 79.0,
+          "expected_value_per_dollar": -0.5932556228013717,
+          "expected_value_per_10": -5.932556228013716,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6664696106971246,
+          "takeout_adjusted_gain_per_10": -6.664696106971246,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "3",
+            "1",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0033574222525023004,
+          "staking_probability": 0.0033574222525023004,
+          "market_probability": 0.008264462809917356,
+          "probability_edge": -0.004907040557415055,
+          "our_odds": 297.84755231627355,
+          "market_odds": 121.0,
+          "expected_value_per_dollar": -0.5937519074472217,
+          "expected_value_per_10": -5.937519074472217,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6668765641067218,
+          "takeout_adjusted_gain_per_10": -6.668765641067218,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "13",
+            "1",
+            "3"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0020723318987917383,
+          "staking_probability": 0.0020723318987917383,
+          "market_probability": 0.00510204081632653,
+          "probability_edge": -0.003029708917534792,
+          "our_odds": 482.5481866987834,
+          "market_odds": 196.0,
+          "expected_value_per_dollar": -0.5938229478368193,
+          "expected_value_per_10": -5.938229478368193,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6669348172261917,
+          "takeout_adjusted_gain_per_10": -6.669348172261918,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "4",
+            "8"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.004496623864327808,
+          "staking_probability": 0.004496623864327808,
+          "market_probability": 0.011111111111111112,
+          "probability_edge": -0.0066144872467833035,
+          "our_odds": 222.38907014951943,
+          "market_odds": 90.0,
+          "expected_value_per_dollar": -0.5953038522104972,
+          "expected_value_per_10": -5.953038522104972,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6681491588126077,
+          "takeout_adjusted_gain_per_10": -6.681491588126077,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "2",
+            "3"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.008993073323057831,
+          "staking_probability": 0.008993073323057831,
+          "market_probability": 0.022222222222222223,
+          "probability_edge": -0.013229148899164392,
+          "our_odds": 111.1966915065671,
+          "market_odds": 45.0,
+          "expected_value_per_dollar": -0.5953117004623976,
+          "expected_value_per_10": -5.953117004623976,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6681555943791659,
+          "takeout_adjusted_gain_per_10": -6.681555943791659,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.246774419865778,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "13",
+            "3",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.002388739246046518,
+          "staking_probability": 0.002388739246046518,
+          "market_probability": 0.005952380952380952,
+          "probability_edge": -0.003563641706334434,
+          "our_odds": 418.63087469888126,
+          "market_odds": 168.0,
+          "expected_value_per_dollar": -0.5986918066641849,
+          "expected_value_per_10": -5.986918066641849,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6709272814646317,
+          "takeout_adjusted_gain_per_10": -6.709272814646317,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "7",
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.009977794606096026,
+          "staking_probability": 0.009977794606096026,
+          "market_probability": 0.025,
+          "probability_edge": -0.015022205393903976,
+          "our_odds": 100.22254811589735,
+          "market_odds": 40.0,
+          "expected_value_per_dollar": -0.600888215756159,
+          "expected_value_per_10": -6.00888215756159,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6727283369200503,
+          "takeout_adjusted_gain_per_10": -6.727283369200503,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "3",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.02179963158361843,
+          "staking_probability": 0.02179963158361843,
+          "market_probability": 0.05555555555555555,
+          "probability_edge": -0.03375592397193712,
+          "our_odds": 45.87233486787276,
+          "market_odds": 18.0,
+          "expected_value_per_dollar": -0.6076066314948683,
+          "expected_value_per_10": -6.076066314948683,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6782374378257919,
+          "takeout_adjusted_gain_per_10": -6.782374378257919,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "3",
+            "4",
+            "5"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.004496623864327808,
+          "staking_probability": 0.004496623864327808,
+          "market_probability": 0.011494252873563218,
+          "probability_edge": -0.00699762900923541,
+          "our_odds": 222.38907014951943,
+          "market_odds": 87.0,
+          "expected_value_per_dollar": -0.6087937238034806,
+          "expected_value_per_10": -6.087937238034806,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.6792108535188541,
+          "takeout_adjusted_gain_per_10": -6.792108535188541,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "3",
+            "7",
+            "10",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0005329482445511932,
+          "staking_probability": 0.0005329482445511932,
+          "market_probability": 0.0014858841010401188,
+          "probability_edge": -0.0009529358564889256,
+          "our_odds": 1876.354805975805,
+          "market_odds": 673.0,
+          "expected_value_per_dollar": -0.6413258314170469,
+          "expected_value_per_10": -6.413258314170469,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7058871817619785,
+          "takeout_adjusted_gain_per_10": -7.058871817619785,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "1",
+            "4",
+            "3"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0019151144440164463,
+          "staking_probability": 0.0019151144440164463,
+          "market_probability": 0.005376344086021506,
+          "probability_edge": -0.0034612296420050595,
+          "our_odds": 522.1620061006716,
+          "market_odds": 186.0,
+          "expected_value_per_dollar": -0.643788713412941,
+          "expected_value_per_10": -6.43788713412941,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7079067449986116,
+          "takeout_adjusted_gain_per_10": -7.079067449986116,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "5",
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.004471094116118143,
+          "staking_probability": 0.004471094116118143,
+          "market_probability": 0.01282051282051282,
+          "probability_edge": -0.008349418704394677,
+          "our_odds": 223.65890183233537,
+          "market_odds": 78.0,
+          "expected_value_per_dollar": -0.6512546589427848,
+          "expected_value_per_10": -6.512546589427847,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7140288203330836,
+          "takeout_adjusted_gain_per_10": -7.140288203330836,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "3",
+            "7",
+            "1",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0005562024585928523,
+          "staking_probability": 0.0005562024585928523,
+          "market_probability": 0.0016,
+          "probability_edge": -0.0010437975414071478,
+          "our_odds": 1797.9064719165751,
+          "market_odds": 625.0,
+          "expected_value_per_dollar": -0.6523734633794673,
+          "expected_value_per_10": -6.523734633794673,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7149462399711632,
+          "takeout_adjusted_gain_per_10": -7.149462399711632,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "3",
+            "4",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.002612029612146556,
+          "staking_probability": 0.002612029612146556,
+          "market_probability": 0.007575757575757576,
+          "probability_edge": -0.00496372796361102,
+          "our_odds": 382.84405174802123,
+          "market_odds": 132.0,
+          "expected_value_per_dollar": -0.6552120911966546,
+          "expected_value_per_10": -6.552120911966545,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7172739147812568,
+          "takeout_adjusted_gain_per_10": -7.1727391478125675,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "3",
+            "1",
+            "2"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0020836224504479296,
+          "staking_probability": 0.0020836224504479296,
+          "market_probability": 0.006134969325153374,
+          "probability_edge": -0.004051346874705444,
+          "our_odds": 479.93339665975645,
+          "market_odds": 163.0,
+          "expected_value_per_dollar": -0.6603695405769875,
+          "expected_value_per_10": -6.603695405769875,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7215030232731297,
+          "takeout_adjusted_gain_per_10": -7.215030232731296,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.246774419865778,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "3",
+            "1",
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0029319297459890386,
+          "staking_probability": 0.0029319297459890386,
+          "market_probability": 0.008695652173913044,
+          "probability_edge": -0.005763722427924005,
+          "our_odds": 341.0722925295287,
+          "market_odds": 115.0,
+          "expected_value_per_dollar": -0.6628280792112606,
+          "expected_value_per_10": -6.628280792112607,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7235190249532337,
+          "takeout_adjusted_gain_per_10": -7.235190249532337,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "3",
+            "1",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.004285932105698569,
+          "staking_probability": 0.004285932105698569,
+          "market_probability": 0.01282051282051282,
+          "probability_edge": -0.008534580714814251,
+          "our_odds": 233.32147484800365,
+          "market_odds": 78.0,
+          "expected_value_per_dollar": -0.6656972957555116,
+          "expected_value_per_10": -6.656972957555116,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7258717825195196,
+          "takeout_adjusted_gain_per_10": -7.258717825195196,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "3",
+            "1",
+            "7",
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0005633546997461797,
+          "staking_probability": 0.0005633546997461797,
+          "market_probability": 0.0016863406408094434,
+          "probability_edge": -0.0011229859410632637,
+          "our_odds": 1775.0806027721994,
+          "market_odds": 593.0,
+          "expected_value_per_dollar": -0.6659306630505155,
+          "expected_value_per_10": -6.659306630505155,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7260631437014227,
+          "takeout_adjusted_gain_per_10": -7.260631437014227,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "1",
+            "7",
+            "3"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0030925165494052652,
+          "staking_probability": 0.0030925165494052652,
+          "market_probability": 0.009433962264150943,
+          "probability_edge": -0.006341445714745678,
+          "our_odds": 323.3612444830131,
+          "market_odds": 106.0,
+          "expected_value_per_dollar": -0.672193245763042,
+          "expected_value_per_10": -6.72193245763042,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7311984615256943,
+          "takeout_adjusted_gain_per_10": -7.311984615256943,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "2",
+            "3",
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.005253983465100616,
+          "staking_probability": 0.005253983465100616,
+          "market_probability": 0.01639344262295082,
+          "probability_edge": -0.011139459157850204,
+          "our_odds": 190.3317752411026,
+          "market_odds": 61.0,
+          "expected_value_per_dollar": -0.6795070086288624,
+          "expected_value_per_10": -6.795070086288623,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7371957470756672,
+          "takeout_adjusted_gain_per_10": -7.371957470756671,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.246774419865778,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "4",
+            "3",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.001938673362563689,
+          "staking_probability": 0.001938673362563689,
+          "market_probability": 0.006329113924050633,
+          "probability_edge": -0.0043904405614869435,
+          "our_odds": 515.8166503498076,
+          "market_odds": 158.0,
+          "expected_value_per_dollar": -0.6936896087149371,
+          "expected_value_per_10": -6.936896087149371,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7488254791462484,
+          "takeout_adjusted_gain_per_10": -7.488254791462484,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "3",
+            "7",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.004231518749423108,
+          "staking_probability": 0.004231518749423108,
+          "market_probability": 0.013888888888888888,
+          "probability_edge": -0.009657370139465781,
+          "our_odds": 236.3217698459524,
+          "market_odds": 72.0,
+          "expected_value_per_dollar": -0.6953306500415362,
+          "expected_value_per_10": -6.953306500415362,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7501711330340597,
+          "takeout_adjusted_gain_per_10": -7.501711330340597,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "2",
+            "3",
+            "5"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0029745228646962736,
+          "staking_probability": 0.0029745228646962736,
+          "market_probability": 0.010526315789473684,
+          "probability_edge": -0.007551792924777411,
+          "our_odds": 336.1883722154912,
+          "market_odds": 95.0,
+          "expected_value_per_dollar": -0.717420327853854,
+          "expected_value_per_10": -7.17420327853854,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7682846688401603,
+          "takeout_adjusted_gain_per_10": -7.682846688401604,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.248796807265228,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "7",
+            "9"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.004884298678068553,
+          "staking_probability": 0.004884298678068553,
+          "market_probability": 0.01818181818181818,
+          "probability_edge": -0.013297519503749628,
+          "our_odds": 204.737684140856,
+          "market_odds": 55.0,
+          "expected_value_per_dollar": -0.7313635727062295,
+          "expected_value_per_10": -7.313635727062295,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7797181296191082,
+          "takeout_adjusted_gain_per_10": -7.7971812961910825,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "9",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 10
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "4",
+            "1",
+            "3"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0016835371373814553,
+          "staking_probability": 0.0016835371373814553,
+          "market_probability": 0.006329113924050633,
+          "probability_edge": -0.004645576786669178,
+          "our_odds": 593.9874908583145,
+          "market_odds": 158.0,
+          "expected_value_per_dollar": -0.7340011322937301,
+          "expected_value_per_10": -7.3400113229373005,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.7818809284808586,
+          "takeout_adjusted_gain_per_10": -7.8188092848085855,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "3",
+            "4",
+            "5",
+            "8"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.002257086784757373,
+          "staking_probability": 0.002257086784757373,
+          "market_probability": 0.009174311926605505,
+          "probability_edge": -0.006917225141848132,
+          "our_odds": 443.0489809932123,
+          "market_odds": 109.0,
+          "expected_value_per_dollar": -0.7539775404614464,
+          "expected_value_per_10": -7.539775404614463,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.798261583178386,
+          "takeout_adjusted_gain_per_10": -7.9826158317838605,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 4,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "3",
+            "7",
+            "4",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0004580948027727859,
+          "staking_probability": 0.0004580948027727859,
+          "market_probability": 0.0019083969465648854,
+          "probability_edge": -0.0014503021437920994,
+          "our_odds": 2182.9542573876306,
+          "market_odds": 524.0,
+          "expected_value_per_dollar": -0.7599583233470601,
+          "expected_value_per_10": -7.599583233470602,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8031658251445893,
+          "takeout_adjusted_gain_per_10": -8.031658251445894,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "5",
+            "8"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0032740019132001734,
+          "staking_probability": 0.0032740019132001734,
+          "market_probability": 0.0136986301369863,
+          "probability_edge": -0.010424628223786127,
+          "our_odds": 305.4365961022148,
+          "market_odds": 73.0,
+          "expected_value_per_dollar": -0.7609978603363874,
+          "expected_value_per_10": -7.609978603363874,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8040182454758376,
+          "takeout_adjusted_gain_per_10": -8.040182454758376,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "1",
+            "10",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0014104177689694057,
+          "staking_probability": 0.0014104177689694057,
+          "market_probability": 0.005952380952380952,
+          "probability_edge": -0.004541963183411546,
+          "our_odds": 709.0097856117493,
+          "market_odds": 168.0,
+          "expected_value_per_dollar": -0.7630498148131398,
+          "expected_value_per_10": -7.630498148131398,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8057008481467747,
+          "takeout_adjusted_gain_per_10": -8.057008481467747,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "7",
+            "3",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0035222112135677246,
+          "staking_probability": 0.0035222112135677246,
+          "market_probability": 0.015151515151515152,
+          "probability_edge": -0.011629303937947427,
+          "our_odds": 283.9125592888787,
+          "market_odds": 66.0,
+          "expected_value_per_dollar": -0.7675340599045302,
+          "expected_value_per_10": -7.675340599045302,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8093779291217147,
+          "takeout_adjusted_gain_per_10": -8.093779291217146,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "7",
+            "1",
+            "3"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0030488255866577083,
+          "staking_probability": 0.0030488255866577083,
+          "market_probability": 0.013333333333333334,
+          "probability_edge": -0.010284507746675626,
+          "our_odds": 327.99514815678765,
+          "market_odds": 75.0,
+          "expected_value_per_dollar": -0.7713380810006719,
+          "expected_value_per_10": -7.713380810006719,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.812497226420551,
+          "takeout_adjusted_gain_per_10": -8.12497226420551,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "8",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.004471094116118143,
+          "staking_probability": 0.004471094116118143,
+          "market_probability": 0.0196078431372549,
+          "probability_edge": -0.015136749021136759,
+          "our_odds": 223.65890183233537,
+          "market_odds": 51.0,
+          "expected_value_per_dollar": -0.7719742000779747,
+          "expected_value_per_10": -7.719742000779747,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8130188440639392,
+          "takeout_adjusted_gain_per_10": -8.130188440639392,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "4",
+            "5"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0037723273414467786,
+          "staking_probability": 0.0037723273414467786,
+          "market_probability": 0.01694915254237288,
+          "probability_edge": -0.013176825200926102,
+          "our_odds": 265.0883418872329,
+          "market_odds": 59.0,
+          "expected_value_per_dollar": -0.7774326868546401,
+          "expected_value_per_10": -7.7743268685464,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8174948032208048,
+          "takeout_adjusted_gain_per_10": -8.174948032208048,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "4",
+            "7",
+            "9"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0017978414432780585,
+          "staking_probability": 0.0017978414432780585,
+          "market_probability": 0.00847457627118644,
+          "probability_edge": -0.006676734827908383,
+          "our_odds": 556.2225766565209,
+          "market_odds": 118.0,
+          "expected_value_per_dollar": -0.7878547096931892,
+          "expected_value_per_10": -7.878547096931891,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8260408619484151,
+          "takeout_adjusted_gain_per_10": -8.260408619484151,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "9",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 10
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "2",
+            "3",
+            "4",
+            "5"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.001716592339890497,
+          "staking_probability": 0.001716592339890497,
+          "market_probability": 0.008928571428571428,
+          "probability_edge": -0.007211979088680931,
+          "our_odds": 582.5494945781891,
+          "market_odds": 112.0,
+          "expected_value_per_dollar": -0.8077416579322644,
+          "expected_value_per_10": -8.077416579322644,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8423481595044567,
+          "takeout_adjusted_gain_per_10": -8.423481595044567,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.248796807265228,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "3",
+            "7",
+            "1",
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0004857138633441827,
+          "staking_probability": 0.0004857138633441827,
+          "market_probability": 0.002564102564102564,
+          "probability_edge": -0.0020783887007583815,
+          "our_odds": 2058.8253197364224,
+          "market_odds": 390.0,
+          "expected_value_per_dollar": -0.8105715932957688,
+          "expected_value_per_10": -8.105715932957688,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8446687065025303,
+          "takeout_adjusted_gain_per_10": -8.446687065025303,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "3",
+            "7",
+            "1",
+            "10"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0005562024585928523,
+          "staking_probability": 0.0005562024585928523,
+          "market_probability": 0.002976190476190476,
+          "probability_edge": -0.0024199880175976235,
+          "our_odds": 1797.9064719165751,
+          "market_odds": 336.0,
+          "expected_value_per_dollar": -0.8131159739128017,
+          "expected_value_per_10": -8.131159739128016,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8467550986084973,
+          "takeout_adjusted_gain_per_10": -8.467550986084973,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "4",
+            "8"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0037723273414467786,
+          "staking_probability": 0.0037723273414467786,
+          "market_probability": 0.021739130434782608,
+          "probability_edge": -0.01796680309333583,
+          "our_odds": 265.0883418872329,
+          "market_odds": 46.0,
+          "expected_value_per_dollar": -0.8264729422934481,
+          "expected_value_per_10": -8.264729422934481,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8577078126806275,
+          "takeout_adjusted_gain_per_10": -8.577078126806274,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "3",
+            "1",
+            "7",
+            "5"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.00043870291238120234,
+          "staking_probability": 0.00043870291238120234,
+          "market_probability": 0.002544529262086514,
+          "probability_edge": -0.002105826349705312,
+          "our_odds": 2279.4469144783557,
+          "market_odds": 393.0,
+          "expected_value_per_dollar": -0.8275897554341874,
+          "expected_value_per_10": -8.275897554341874,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8586235994560337,
+          "takeout_adjusted_gain_per_10": -8.586235994560337,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "4",
+            "8",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0016347890168027055,
+          "staking_probability": 0.0016347890168027055,
+          "market_probability": 0.009615384615384616,
+          "probability_edge": -0.00798059559858191,
+          "our_odds": 611.6997298867252,
+          "market_odds": 104.0,
+          "expected_value_per_dollar": -0.8299819422525186,
+          "expected_value_per_10": -8.299819422525186,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8605851926470652,
+          "takeout_adjusted_gain_per_10": -8.605851926470653,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "1",
+            "3",
+            "5",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0003476499190861375,
+          "staking_probability": 0.0003476499190861375,
+          "market_probability": 0.002070393374741201,
+          "probability_edge": -0.0017227434556550635,
+          "our_odds": 2876.4568754357433,
+          "market_odds": 483.0,
+          "expected_value_per_dollar": -0.8320850890813956,
+          "expected_value_per_10": -8.320850890813956,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8623097730467444,
+          "takeout_adjusted_gain_per_10": -8.623097730467444,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "5",
+            "8",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.002253339341198289,
+          "staking_probability": 0.002253339341198289,
+          "market_probability": 0.013513513513513514,
+          "probability_edge": -0.011260174172315226,
+          "our_odds": 443.7857990213833,
+          "market_odds": 74.0,
+          "expected_value_per_dollar": -0.8332528887513266,
+          "expected_value_per_10": -8.332528887513266,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8632673687760879,
+          "takeout_adjusted_gain_per_10": -8.632673687760878,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 6,
+          "runner_estimates": [
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "3",
+            "1",
+            "5",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0004117594307877307,
+          "staking_probability": 0.0004117594307877307,
+          "market_probability": 0.002506265664160401,
+          "probability_edge": -0.00209450623337267,
+          "our_odds": 2428.6025412627832,
+          "market_odds": 399.0,
+          "expected_value_per_dollar": -0.8357079871156954,
+          "expected_value_per_10": -8.357079871156953,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8652805494348703,
+          "takeout_adjusted_gain_per_10": -8.652805494348703,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "4",
+            "8",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.002598123105535561,
+          "staking_probability": 0.002598123105535561,
+          "market_probability": 0.01639344262295082,
+          "probability_edge": -0.01379531951741526,
+          "our_odds": 384.8932322988853,
+          "market_odds": 61.0,
+          "expected_value_per_dollar": -0.8415144905623307,
+          "expected_value_per_10": -8.415144905623308,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8700418822611112,
+          "takeout_adjusted_gain_per_10": -8.700418822611113,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 5,
+          "runner_estimates": [
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.00342525648546223,
+          "staking_probability": 0.00342525648546223,
+          "market_probability": 0.022222222222222223,
+          "probability_edge": -0.018796965736759992,
+          "our_odds": 291.9489399536317,
+          "market_odds": 45.0,
+          "expected_value_per_dollar": -0.8458634581541996,
+          "expected_value_per_10": -8.458634581541997,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8736080356864437,
+          "takeout_adjusted_gain_per_10": -8.736080356864438,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.248796807265228,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "1",
+            "10",
+            "12"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.002760472768212416,
+          "staking_probability": 0.002760472768212416,
+          "market_probability": 0.02,
+          "probability_edge": -0.017239527231787583,
+          "our_odds": 362.2567885889939,
+          "market_odds": 50.0,
+          "expected_value_per_dollar": -0.8619763615893792,
+          "expected_value_per_10": -8.619763615893792,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.8868206165032909,
+          "takeout_adjusted_gain_per_10": -8.868206165032909,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            },
+            {
+              "horse_no": "12",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 13
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TIERCE",
+          "combination": [
+            "13",
+            "8",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0006854733599106618,
+          "staking_probability": 0.0006854733599106618,
+          "market_probability": 0.005681818181818182,
+          "probability_edge": -0.00499634482190752,
+          "our_odds": 1458.845899030023,
+          "market_odds": 176.0,
+          "expected_value_per_dollar": -0.8793566886557235,
+          "expected_value_per_10": -8.793566886557235,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9010724846976933,
+          "takeout_adjusted_gain_per_10": -9.010724846976933,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "1",
+            "6",
+            "3",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.00018523957770243298,
+          "staking_probability": 0.00018523957770243298,
+          "market_probability": 0.0015873015873015873,
+          "probability_edge": -0.0014020620095991543,
+          "our_odds": 5398.414379924738,
+          "market_odds": 630.0,
+          "expected_value_per_dollar": -0.8832990660474672,
+          "expected_value_per_10": -8.832990660474673,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.904305234158923,
+          "takeout_adjusted_gain_per_10": -9.043052341589231,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "6",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 7
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "TRI",
+          "combination": [
+            "8",
+            "11",
+            "13"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.001171830881764159,
+          "staking_probability": 0.001171830881764159,
+          "market_probability": 0.012658227848101266,
+          "probability_edge": -0.011486396966337107,
+          "our_odds": 853.3654604617755,
+          "market_odds": 79.0,
+          "expected_value_per_dollar": -0.9074253603406315,
+          "expected_value_per_10": -9.074253603406316,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9240887954793178,
+          "takeout_adjusted_gain_per_10": -9.240887954793177,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 9,
+          "runner_estimates": [
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "11",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 12
+            },
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "2",
+            "4",
+            "5"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0009072112161882988,
+          "staking_probability": 0.0009072112161882988,
+          "market_probability": 0.010101010101010102,
+          "probability_edge": -0.009193798884821802,
+          "our_odds": 1102.2791409056413,
+          "market_odds": 99.0,
+          "expected_value_per_dollar": -0.9101860895973584,
+          "expected_value_per_10": -9.101860895973584,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9263525934698339,
+          "takeout_adjusted_gain_per_10": -9.26352593469834,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.248796807265228,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "4",
+            "3",
+            "2",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.00013793547748575777,
+          "staking_probability": 0.00013793547748575777,
+          "market_probability": 0.0016863406408094434,
+          "probability_edge": -0.0015484051633236856,
+          "our_odds": 7249.766472177202,
+          "market_odds": 593.0,
+          "expected_value_per_dollar": -0.9182042618509456,
+          "expected_value_per_10": -9.182042618509456,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9329274947177755,
+          "takeout_adjusted_gain_per_10": -9.329274947177755,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.248796807265228,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "FIRST4",
+          "combination": [
+            "1",
+            "10",
+            "11",
+            "12"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0004596387947001623,
+          "staking_probability": 0.0004596387947001623,
+          "market_probability": 0.007462686567164179,
+          "probability_edge": -0.0070030477724640165,
+          "our_odds": 2175.621404307992,
+          "market_odds": 134.0,
+          "expected_value_per_dollar": -0.9384084015101782,
+          "expected_value_per_10": -9.384084015101783,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9494948892383461,
+          "takeout_adjusted_gain_per_10": -9.494948892383462,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            },
+            {
+              "horse_no": "11",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 12
+            },
+            {
+              "horse_no": "12",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 13
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.000133091594154591,
+          "staking_probability": 0.000133091594154591,
+          "market_probability": 0.0021691973969631237,
+          "probability_edge": -0.0020361058028085326,
+          "our_odds": 7513.622527043004,
+          "market_odds": 461.0,
+          "expected_value_per_dollar": -0.9386447750947335,
+          "expected_value_per_10": -9.386447750947335,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9496887155776815,
+          "takeout_adjusted_gain_per_10": -9.496887155776815,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.248796807265228,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "1",
+            "3",
+            "8",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.0003476499190861375,
+          "staking_probability": 0.0003476499190861375,
+          "market_probability": 0.006329113924050633,
+          "probability_edge": -0.0059814640049644955,
+          "our_odds": 2876.4568754357433,
+          "market_odds": 158.0,
+          "expected_value_per_dollar": -0.9450713127843903,
+          "expected_value_per_10": -9.450713127843903,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9549584764832,
+          "takeout_adjusted_gain_per_10": -9.549584764832,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "8",
+            "4",
+            "3",
+            "1"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.00012946618456672194,
+          "staking_probability": 0.00012946618456672194,
+          "market_probability": 0.002544529262086514,
+          "probability_edge": -0.002415063077519792,
+          "our_odds": 7724.0246427795055,
+          "market_odds": 393.0,
+          "expected_value_per_dollar": -0.9491197894652783,
+          "expected_value_per_10": -9.491197894652784,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9582782273615282,
+          "takeout_adjusted_gain_per_10": -9.582782273615283,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "8",
+            "4",
+            "1",
+            "3"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 0.00011941623632853078,
+          "staking_probability": 0.00011941623632853078,
+          "market_probability": 0.002544529262086514,
+          "probability_edge": -0.0024251130257579834,
+          "our_odds": 8374.070651907501,
+          "market_odds": 393.0,
+          "expected_value_per_dollar": -0.9530694191228875,
+          "expected_value_per_10": -9.530694191228875,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9615169236807677,
+          "takeout_adjusted_gain_per_10": -9.615169236807677,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "8",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 9
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "3",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 4
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "5",
+            "7",
+            "1",
+            "6"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 5.853920895085149e-05,
+          "staking_probability": 5.853920895085149e-05,
+          "market_probability": 0.0017761989342806395,
+          "probability_edge": -0.001717659725329788,
+          "our_odds": 17082.567699874162,
+          "market_odds": 563.0,
+          "expected_value_per_dollar": -0.9670424253606706,
+          "expected_value_per_10": -9.670424253606706,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.97297478879575,
+          "takeout_adjusted_gain_per_10": -9.7297478879575,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "6",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 7
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "4",
+            "5",
+            "7",
+            "9"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 3.6938992783864847e-05,
+          "staking_probability": 3.6938992783864847e-05,
+          "market_probability": 0.0015128593040847202,
+          "probability_edge": -0.0014759203113008552,
+          "our_odds": 27071.6639690513,
+          "market_odds": 661.0,
+          "expected_value_per_dollar": -0.9755833257698653,
+          "expected_value_per_10": -9.755833257698653,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9799783271312896,
+          "takeout_adjusted_gain_per_10": -9.799783271312897,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 5,
+          "runner_estimates": [
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "9",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 10
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "1",
+            "4",
+            "7",
+            "9"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 8.756122443181686e-05,
+          "staking_probability": 8.756122443181686e-05,
+          "market_probability": 0.004310344827586207,
+          "probability_edge": -0.00422278360315439,
+          "our_odds": 11420.58035950252,
+          "market_odds": 232.0,
+          "expected_value_per_dollar": -0.9796857959318185,
+          "expected_value_per_10": -9.796857959318185,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9833423526640912,
+          "takeout_adjusted_gain_per_10": -9.833423526640912,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 3,
+          "runner_estimates": [
+            {
+              "horse_no": "1",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 3
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            },
+            {
+              "horse_no": "9",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 10
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "9",
+            "5",
+            "2",
+            "7"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 2.0703340084667904e-05,
+          "staking_probability": 2.0703340084667904e-05,
+          "market_probability": 0.002506265664160401,
+          "probability_edge": -0.002485562324075733,
+          "our_odds": 48301.38498959216,
+          "market_odds": 399.0,
+          "expected_value_per_dollar": -0.9917393673062175,
+          "expected_value_per_10": -9.917393673062175,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9932262811910983,
+          "takeout_adjusted_gain_per_10": -9.932262811910984,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.248796807265228,
+          "best_estimated_position_rank": 1,
+          "runner_estimates": [
+            {
+              "horse_no": "9",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 10
+            },
+            {
+              "horse_no": "5",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 6
+            },
+            {
+              "horse_no": "2",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.230595320670176,
+              "predicted_position_rank": 1
+            },
+            {
+              "horse_no": "7",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 8
+            }
+          ]
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "pool": "QUARTET",
+          "combination": [
+            "13",
+            "6",
+            "10",
+            "4"
+          ],
+          "probability_basis": "public_win_market_fallback",
+          "model_probability": null,
+          "fallback_probability": 3.3634784270651775e-05,
+          "staking_probability": 3.3634784270651775e-05,
+          "market_probability": 0.004739336492890996,
+          "probability_edge": -0.0047057017086203435,
+          "our_odds": 29731.1257284488,
+          "market_odds": 211.0,
+          "expected_value_per_dollar": -0.9929030605188924,
+          "expected_value_per_10": -9.929030605188924,
+          "takeout_rate": 0.18,
+          "takeout_adjusted_gain_per_dollar": -0.9941805096254919,
+          "takeout_adjusted_gain_per_10": -9.94180509625492,
+          "odds_updated_at": "26/07/2026 04:02",
+          "estimated_finish_time": 84.02746745762585,
+          "estimated_position": 8.254863969463578,
+          "best_estimated_position_rank": 5,
+          "runner_estimates": [
+            {
+              "horse_no": "13",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 14
+            },
+            {
+              "horse_no": "6",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 7
+            },
+            {
+              "horse_no": "10",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 11
+            },
+            {
+              "horse_no": "4",
+              "predicted_finish_time": 84.02746745762585,
+              "predicted_position": 8.254863969463578,
+              "predicted_position_rank": 5
+            }
+          ]
+        }
+      ],
+      "auxiliary_predictions": [
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "1",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 18.618913420828914,
+          "predicted_place_odds": 5.391064244943595,
+          "predicted_position_rank": 3
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "2",
+          "predicted_position": 8.230595320670176,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 18.756050334710427,
+          "predicted_place_odds": 5.391064244943595,
+          "predicted_position_rank": 1
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "3",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 19.79273170441998,
+          "predicted_place_odds": 5.391064244943595,
+          "predicted_position_rank": 4
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "4",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 19.93851433318458,
+          "predicted_place_odds": 5.391064244943595,
+          "predicted_position_rank": 5
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "5",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 19.79273170441998,
+          "predicted_place_odds": 5.391064244943595,
+          "predicted_position_rank": 6
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "6",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 21.226558996568013,
+          "predicted_place_odds": 5.712917417401827,
+          "predicted_position_rank": 7
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "7",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 22.47120636007396,
+          "predicted_place_odds": 6.311299506814833,
+          "predicted_position_rank": 8
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "8",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 23.3014543205305,
+          "predicted_place_odds": 6.560779133411845,
+          "predicted_position_rank": 9
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "9",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 23.86988383476971,
+          "predicted_place_odds": 6.685717023437403,
+          "predicted_position_rank": 10
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "10",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 28.092439663587392,
+          "predicted_place_odds": 7.203986762785227,
+          "predicted_position_rank": 11
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "11",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 28.092439663587392,
+          "predicted_place_odds": 7.312156988405413,
+          "predicted_position_rank": 12
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "12",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 28.092439663587392,
+          "predicted_place_odds": 7.312156988405413,
+          "predicted_position_rank": 13
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "13",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 27.607257407481512,
+          "predicted_place_odds": 7.312156988405413,
+          "predicted_position_rank": 14
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "14",
+          "predicted_position": 8.230595320670176,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 28.092439663587392,
+          "predicted_place_odds": 7.312156988405413,
+          "predicted_position_rank": 2
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "15",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 22.47120636007396,
+          "predicted_place_odds": 6.311299506814833,
+          "predicted_position_rank": 15
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "16",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 22.47120636007396,
+          "predicted_place_odds": 6.311299506814833,
+          "predicted_position_rank": 16
+        },
+        {
+          "race_id": "browser:2026-07-26:S1:R1",
+          "horse_no": "17",
+          "predicted_position": 8.254863969463578,
+          "predicted_finish_time": 84.02746745762585,
+          "predicted_win_odds": 22.47120636007396,
+          "predicted_place_odds": 6.311299506814833,
+          "predicted_position_rank": 17
         }
       ]
     }
