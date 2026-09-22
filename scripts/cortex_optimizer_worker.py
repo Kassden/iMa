@@ -9,9 +9,11 @@ from pathlib import Path
 
 DEFAULT_HOST = "100.95.24.121"
 DEFAULT_ADMIN_USER = "cortex"
+DEFAULT_SSH_USER = "root"
 DEFAULT_WORKER_USER = "imaopt"
 DEFAULT_REMOTE_ROOT = Path("/home/imaopt/iMa")
 DEFAULT_LOCAL_PULL_ROOT = Path("artifacts/remote-cortex")
+DEFAULT_VENV_DIR = ".venv"
 
 
 class UnsafeRemoteRoot(ValueError):
@@ -23,10 +25,11 @@ class RemoteTarget:
     host: str = DEFAULT_HOST
     user: str = DEFAULT_WORKER_USER
     remote_root: Path = DEFAULT_REMOTE_ROOT
+    ssh_user: str = DEFAULT_SSH_USER
 
     @property
     def login(self) -> str:
-        return f"{self.user}@{self.host}"
+        return f"{self.ssh_user}@{self.host}"
 
 
 def require_safe_remote_root(remote_root: Path, worker_user: str = DEFAULT_WORKER_USER) -> Path:
@@ -59,6 +62,14 @@ def ssh_command(login: str, remote_command: str) -> list[str]:
         login,
         remote_command,
     ]
+
+
+def worker_shell_command(target: RemoteTarget, inner_command: str) -> str:
+    worker = shlex.quote(target.user)
+    if target.ssh_user == target.user:
+        return inner_command
+    home = shlex.quote(f"/home/{target.user}")
+    return f"sudo -u {worker} -H env HOME={home} bash -lc {shlex.quote(inner_command)}"
 
 
 def check_command(host: str = DEFAULT_HOST, admin_user: str = DEFAULT_ADMIN_USER) -> list[str]:
@@ -122,19 +133,57 @@ def rsync_push_command(target: RemoteTarget, local_root: Path = Path(".")) -> li
     ]
 
 
+def remote_chown_command(target: RemoteTarget) -> list[str]:
+    remote_root = require_safe_remote_root(target.remote_root, target.user)
+    root = shlex.quote(remote_root.as_posix())
+    worker = shlex.quote(target.user)
+    remote = f"set -eu; chown -R {worker}:{worker} {root}"
+    return ssh_command(target.login, remote)
+
+
 def remote_install_command(target: RemoteTarget, python_bin: str = "python3.12") -> list[str]:
+    return remote_install_command_with_options(target, python_bin=python_bin)
+
+
+def remote_install_command_with_options(
+    target: RemoteTarget,
+    python_bin: str = "python3.12",
+    venv_dir: str = DEFAULT_VENV_DIR,
+    pip_index_url: str | None = None,
+    pip_trusted_host: str | None = None,
+    upgrade_pip: bool = True,
+    ignore_requires_python: bool = False,
+    no_deps: bool = False,
+) -> list[str]:
     remote_root = require_safe_remote_root(target.remote_root, target.user)
     root = shlex.quote(remote_root.as_posix())
     py = shlex.quote(python_bin)
-    remote = (
+    venv = shlex.quote(venv_dir)
+    env_parts = []
+    if pip_index_url:
+        env_parts.append(f"PIP_INDEX_URL={shlex.quote(pip_index_url)}")
+    if pip_trusted_host:
+        env_parts.append(f"PIP_TRUSTED_HOST={shlex.quote(pip_trusted_host)}")
+    pip_env = (" ".join(env_parts) + " ") if env_parts else ""
+    install_flags = []
+    if ignore_requires_python:
+        install_flags.append("--ignore-requires-python")
+    if no_deps:
+        install_flags.append("--no-deps")
+    rendered_install_flags = " ".join(install_flags)
+    if rendered_install_flags:
+        rendered_install_flags = f"{rendered_install_flags} "
+    upgrade = f"{pip_env}{venv}/bin/python -m pip install --upgrade pip; " if upgrade_pip else ""
+    inner = (
         f"set -eu; cd {root}; "
-        f"{py} -m venv .venv; "
-        ".venv/bin/python -m pip install --upgrade pip; "
-        ".venv/bin/python -m pip install -e .; "
-        ".venv/bin/python --version; "
-        ".venv/bin/ima-optimize --help >/dev/null; "
+        f"{py} -m venv {venv}; "
+        f"{upgrade}"
+        f"{pip_env}{venv}/bin/python -m pip install {rendered_install_flags}-e .; "
+        f"{venv}/bin/python --version; "
+        f"{venv}/bin/ima-optimize --help >/dev/null; "
         "echo install_ok"
     )
+    remote = worker_shell_command(target, inner)
     return ssh_command(target.login, remote)
 
 
@@ -144,13 +193,15 @@ def remote_optimizer_command(
     max_trials: int = 1,
     proposal_batch_size: int = 1,
     max_concurrent_trials: int = 1,
+    venv_dir: str = DEFAULT_VENV_DIR,
     dry_run: bool = False,
 ) -> list[str]:
     remote_root = require_safe_remote_root(target.remote_root, target.user)
     root = shlex.quote(remote_root.as_posix())
     campaign_arg = shlex.quote(campaign)
+    venv = shlex.quote(venv_dir)
     args = [
-        ".venv/bin/ima-optimize",
+        f"{venv}/bin/ima-optimize",
         "run",
         "--campaign",
         campaign_arg,
@@ -165,7 +216,8 @@ def remote_optimizer_command(
     ]
     if dry_run:
         args.append("--dry-run")
-    remote = f"set -eu; cd {root}; {' '.join(args)}"
+    inner = f"set -eu; cd {root}; {' '.join(args)}"
+    remote = worker_shell_command(target, inner)
     return ssh_command(target.login, remote)
 
 
@@ -211,6 +263,7 @@ def parser() -> argparse.ArgumentParser:
     for name in ("sync", "install", "remote-dry-run", "remote-run", "pull"):
         item = sub.add_parser(name)
         item.add_argument("--worker-user", default=DEFAULT_WORKER_USER)
+        item.add_argument("--ssh-user", default=DEFAULT_SSH_USER)
         item.add_argument("--remote-root", type=Path, default=DEFAULT_REMOTE_ROOT)
         item.add_argument("--dry-run-command", action="store_true")
         if name in {"remote-dry-run", "remote-run"}:
@@ -223,6 +276,14 @@ def parser() -> argparse.ArgumentParser:
             item.add_argument("--local-pull-root", type=Path, default=DEFAULT_LOCAL_PULL_ROOT)
         if name == "install":
             item.add_argument("--python-bin", default="python3.12")
+            item.add_argument("--venv-dir", default=DEFAULT_VENV_DIR)
+            item.add_argument("--pip-index-url")
+            item.add_argument("--pip-trusted-host")
+            item.add_argument("--no-pip-upgrade", action="store_true")
+            item.add_argument("--ignore-requires-python", action="store_true")
+            item.add_argument("--no-deps", action="store_true")
+        if name in {"remote-dry-run", "remote-run"}:
+            item.add_argument("--venv-dir", default=DEFAULT_VENV_DIR)
 
     return root
 
@@ -235,11 +296,26 @@ def main() -> int:
         print(admin_commands(args.worker_user, args.source_user))
         return 0
 
-    target = RemoteTarget(args.host, args.worker_user, args.remote_root)
+    target = RemoteTarget(args.host, args.worker_user, args.remote_root, args.ssh_user)
     if args.command == "sync":
-        return run(rsync_push_command(target), args.dry_run_command)
+        code = run(rsync_push_command(target), args.dry_run_command)
+        if code != 0:
+            return code
+        return run(remote_chown_command(target), args.dry_run_command)
     if args.command == "install":
-        return run(remote_install_command(target, args.python_bin), args.dry_run_command)
+        return run(
+            remote_install_command_with_options(
+                target,
+                python_bin=args.python_bin,
+                venv_dir=args.venv_dir,
+                pip_index_url=args.pip_index_url,
+                pip_trusted_host=args.pip_trusted_host,
+                upgrade_pip=not args.no_pip_upgrade,
+                ignore_requires_python=args.ignore_requires_python,
+                no_deps=args.no_deps,
+            ),
+            args.dry_run_command,
+        )
     if args.command == "remote-dry-run":
         return run(
             remote_optimizer_command(
@@ -248,6 +324,7 @@ def main() -> int:
                 args.max_trials,
                 args.proposal_batch_size,
                 args.max_concurrent_trials,
+                args.venv_dir,
                 dry_run=True,
             ),
             args.dry_run_command,
@@ -260,6 +337,7 @@ def main() -> int:
                 args.max_trials,
                 args.proposal_batch_size,
                 args.max_concurrent_trials,
+                args.venv_dir,
             ),
             args.dry_run_command,
         )
