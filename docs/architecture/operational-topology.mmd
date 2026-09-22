@@ -1,0 +1,7 @@
+flowchart LR
+  n_config_DASHBOARD_URL["config:DASHBOARD_URL"] -->|classifies-as| n_target_class_external_service["target-class:external-service"]
+  n_state_data_historical_hkjc_2005_2025_checkpoint_sqlite["state:data/historical/hkjc-2005-2025/checkpoint.sqlite"] -->|supports| n_capability_state["capability:state"]
+  n_state_data_historical_hkjc_boundary_checkpoint_sqlite["state:data/historical/hkjc-boundary/checkpoint.sqlite"] -->|supports| n_capability_state["capability:state"]
+  n_state_docs_prototypes_run_centric_pages_02_runs_by_schema_png["state:docs/prototypes/run-centric-pages/02-runs-by-schema.png"] -->|supports| n_capability_state["capability:state"]
+  n_config_MLFLOW_TRACKING_URI["config:MLFLOW_TRACKING_URI"] -->|classifies-as| n_target_class_external_service["target-class:external-service"]
+  n_state_scripts_run_schema_feature_study_py["state:scripts/run_schema_feature_study.py"] -->|supports| n_capability_state["capability:state"]

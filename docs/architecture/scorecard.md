@@ -1,15 +1,16 @@
 # Architecture Scorecard
 
-- Risk tier: low
-- Risk points: 0
-- systems: 1
-- file_edges: 11
-- cycles: 0
-- max_hub_degree: 4
+- Risk tier: moderate
+- Risk points: 6
+- systems: 5
+- file_edges: 154
+- cycles: 1
+- max_hub_degree: 18
 - api_routes: 0
-- workers: 2
-- schemas: 6
-- integrations: 0
+- workers: 48
+- schemas: 71
+- integrations: 5
 
 ## Recommendations
-- Architecture risk appears low; preserve simplicity and add only targeted boundaries.
+- Break dependency cycles before extracting services.
+- Review top hubs for accidental shared-kernel or god-module behavior.

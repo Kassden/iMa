@@ -1,0 +1,31 @@
+{
+  "generated_from": "Python AST imports over focused ML pipeline files",
+  "nodes": 23,
+  "internal_edges": 57,
+  "external_edges": 33,
+  "focus_files": [
+    "scripts/optimize.py",
+    "scripts/run_experiments.py",
+    "scripts/run_benter_grid.py",
+    "scripts/run_feature_study.py",
+    "scripts/run_schema_feature_study.py",
+    "scripts/train.py",
+    "scripts/export_mlflow_dashboard.py",
+    "scripts/import_results_to_mlflow.py",
+    "scripts/enrich_pool_metrics.py",
+    "scripts/publish_latest_dashboard.py",
+    "ima/optimizer.py",
+    "ima/openrouter_orchestrator.py",
+    "ima/experiments.py",
+    "ima/modeling.py",
+    "ima/data.py",
+    "ima/feature_sets.py",
+    "ima/rich_features.py",
+    "ima/auxiliary.py",
+    "ima/feature_analysis.py",
+    "ima/mlflow_tracking.py",
+    "ima/pipeline_transparency.py",
+    "ima/pools.py",
+    "ima/training.py"
+  ]
+}

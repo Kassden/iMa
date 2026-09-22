@@ -1,2 +1,12 @@
 flowchart LR
+  artifacts["artifacts"]
+  ima["ima"]
   scrapper["scrapper"]
+  scripts["scripts"]
+  tests["tests"]
+  ima --> scrapper
+  scripts --> ima
+  scripts --> scrapper
+  tests --> ima
+  tests --> scrapper
+  tests --> scripts

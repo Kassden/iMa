@@ -1,0 +1,5 @@
+digraph architecture {
+  rankdir="LR";
+  "artifacts/feature-study/dashboard-qa.spec.js";
+  "artifacts/feature-study/playwright.config.js";
+}

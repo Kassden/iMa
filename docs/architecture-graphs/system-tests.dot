@@ -1,0 +1,23 @@
+digraph architecture {
+  rankdir="LR";
+  "tests/__init__.py";
+  "tests/test_authenticated_execution.py";
+  "tests/test_auxiliary_models.py";
+  "tests/test_browser_pools.py";
+  "tests/test_bulk_history.py";
+  "tests/test_data.py";
+  "tests/test_experiments.py";
+  "tests/test_feature_analysis.py";
+  "tests/test_historical.py";
+  "tests/test_historical_sources.py";
+  "tests/test_horse_profile_backfill.py";
+  "tests/test_ledger_registry.py";
+  "tests/test_mlflow_tracking.py";
+  "tests/test_modeling.py";
+  "tests/test_operations_inference.py";
+  "tests/test_optimizer.py";
+  "tests/test_pools.py";
+  "tests/test_rich_features.py";
+  "tests/test_simulator.py";
+  "tests/test_strategy.py";
+}

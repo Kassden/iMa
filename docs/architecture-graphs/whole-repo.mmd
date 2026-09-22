@@ -1,21 +1,238 @@
 flowchart LR
+  artifacts_feature_study_dashboard_qa_spec_js["artifacts/feature-study/dashboard-qa.spec.js"]
+  artifacts_feature_study_playwright_config_js["artifacts/feature-study/playwright.config.js"]
+  ima___init___py["ima/__init__.py"]
+  ima_authenticated_execution_py["ima/authenticated_execution.py"]
+  ima_auxiliary_py["ima/auxiliary.py"]
+  ima_data_py["ima/data.py"]
+  ima_domain_py["ima/domain.py"]
+  ima_execution_py["ima/execution.py"]
+  ima_experiments_py["ima/experiments.py"]
+  ima_feature_analysis_py["ima/feature_analysis.py"]
+  ima_feature_sets_py["ima/feature_sets.py"]
+  ima_historical_sources_py["ima/historical_sources.py"]
+  ima_inference_py["ima/inference.py"]
+  ima_ledger_py["ima/ledger.py"]
+  ima_market_py["ima/market.py"]
+  ima_mlflow_tracking_py["ima/mlflow_tracking.py"]
+  ima_modeling_py["ima/modeling.py"]
+  ima_openrouter_orchestrator_py["ima/openrouter_orchestrator.py"]
+  ima_operations_py["ima/operations.py"]
+  ima_optimizer_py["ima/optimizer.py"]
+  ima_pipeline_transparency_py["ima/pipeline_transparency.py"]
+  ima_pools_py["ima/pools.py"]
+  ima_registry_py["ima/registry.py"]
+  ima_rich_features_py["ima/rich_features.py"]
+  ima_simulator_py["ima/simulator.py"]
+  ima_strategy_py["ima/strategy.py"]
+  ima_training_py["ima/training.py"]
   scrapper___init___py["scrapper/__init__.py"]
+  scrapper_browser_odds_py["scrapper/browser_odds.py"]
+  scrapper_browser_pools_py["scrapper/browser_pools.py"]
   scrapper_cli_py["scrapper/cli.py"]
   scrapper_contracts_py["scrapper/contracts.py"]
+  scrapper_historical___init___py["scrapper/historical/__init__.py"]
+  scrapper_historical_bulk_py["scrapper/historical/bulk.py"]
+  scrapper_historical_results_py["scrapper/historical/results.py"]
   scrapper_history_py["scrapper/history.py"]
   scrapper_hkjc_py["scrapper/hkjc.py"]
   scrapper_horse_pages_py["scrapper/horse_pages.py"]
   scrapper_pipeline_py["scrapper/pipeline.py"]
   scrapper_tests___init___py["scrapper/tests/__init__.py"]
   scrapper_tests_test_scrapper_py["scrapper/tests/test_scrapper.py"]
+  scripts___init___py["scripts/__init__.py"]
+  scripts_backfill_horse_profiles_py["scripts/backfill_horse_profiles.py"]
+  scripts_build_historical_py["scripts/build_historical.py"]
+  scripts_bulk_history_py["scripts/bulk_history.py"]
+  scripts_enrich_pool_metrics_py["scripts/enrich_pool_metrics.py"]
+  scripts_export_mlflow_dashboard_py["scripts/export_mlflow_dashboard.py"]
+  scripts_finalize_meeting_py["scripts/finalize_meeting.py"]
+  scripts_import_results_to_mlflow_py["scripts/import_results_to_mlflow.py"]
+  scripts_optimize_py["scripts/optimize.py"]
+  scripts_paper_trade_py["scripts/paper_trade.py"]
+  scripts_predict_pools_py["scripts/predict_pools.py"]
+  scripts_publish_latest_dashboard_py["scripts/publish_latest_dashboard.py"]
+  scripts_reparse_official_history_py["scripts/reparse_official_history.py"]
+  scripts_report_horse_age_py["scripts/report_horse_age.py"]
+  scripts_run_benter_grid_py["scripts/run_benter_grid.py"]
+  scripts_run_experiments_py["scripts/run_experiments.py"]
+  scripts_run_feature_study_py["scripts/run_feature_study.py"]
+  scripts_run_schema_feature_study_py["scripts/run_schema_feature_study.py"]
+  scripts_scrape_history_py["scripts/scrape_history.py"]
+  scripts_simulate_tomorrow_py["scripts/simulate_tomorrow.py"]
+  scripts_smoke_py["scripts/smoke.py"]
+  scripts_train_py["scripts/train.py"]
+  tests___init___py["tests/__init__.py"]
+  tests_test_authenticated_execution_py["tests/test_authenticated_execution.py"]
+  tests_test_auxiliary_models_py["tests/test_auxiliary_models.py"]
+  tests_test_browser_pools_py["tests/test_browser_pools.py"]
+  tests_test_bulk_history_py["tests/test_bulk_history.py"]
+  tests_test_data_py["tests/test_data.py"]
+  tests_test_experiments_py["tests/test_experiments.py"]
+  tests_test_feature_analysis_py["tests/test_feature_analysis.py"]
+  tests_test_historical_py["tests/test_historical.py"]
+  tests_test_historical_sources_py["tests/test_historical_sources.py"]
+  tests_test_horse_profile_backfill_py["tests/test_horse_profile_backfill.py"]
+  tests_test_ledger_registry_py["tests/test_ledger_registry.py"]
+  tests_test_mlflow_tracking_py["tests/test_mlflow_tracking.py"]
+  tests_test_modeling_py["tests/test_modeling.py"]
+  tests_test_operations_inference_py["tests/test_operations_inference.py"]
+  tests_test_optimizer_py["tests/test_optimizer.py"]
+  tests_test_pools_py["tests/test_pools.py"]
+  tests_test_rich_features_py["tests/test_rich_features.py"]
+  tests_test_simulator_py["tests/test_simulator.py"]
+  tests_test_strategy_py["tests/test_strategy.py"]
+  ima_authenticated_execution_py --> ima_domain_py
+  ima_auxiliary_py --> ima_data_py
+  ima_auxiliary_py --> ima_feature_sets_py
+  ima_execution_py --> ima_domain_py
+  ima_experiments_py --> ima_data_py
+  ima_experiments_py --> ima_feature_sets_py
+  ima_experiments_py --> ima_mlflow_tracking_py
+  ima_experiments_py --> ima_modeling_py
+  ima_experiments_py --> ima_pipeline_transparency_py
+  ima_experiments_py --> ima_pools_py
+  ima_feature_analysis_py --> ima_feature_sets_py
+  ima_feature_analysis_py --> ima_modeling_py
+  ima_feature_sets_py --> ima_data_py
+  ima_inference_py --> ima_data_py
+  ima_inference_py --> ima_feature_sets_py
+  ima_inference_py --> ima_modeling_py
+  ima_inference_py --> ima_pools_py
+  ima_ledger_py --> ima_domain_py
+  ima_modeling_py --> ima_data_py
+  ima_modeling_py --> ima_feature_sets_py
+  ima_openrouter_orchestrator_py --> ima_experiments_py
+  ima_operations_py --> ima_registry_py
+  ima_operations_py --> ima_training_py
+  ima_operations_py --> scrapper_historical_results_py
+  ima_optimizer_py --> ima_data_py
+  ima_optimizer_py --> ima_experiments_py
+  ima_optimizer_py --> ima_openrouter_orchestrator_py
+  ima_pipeline_transparency_py --> ima_data_py
+  ima_pipeline_transparency_py --> ima_feature_sets_py
+  ima_rich_features_py --> ima_data_py
+  ima_rich_features_py --> ima_feature_sets_py
+  ima_simulator_py --> ima_auxiliary_py
+  ima_simulator_py --> ima_domain_py
+  ima_simulator_py --> ima_inference_py
+  ima_simulator_py --> ima_pools_py
+  ima_simulator_py --> ima_strategy_py
+  ima_strategy_py --> ima_domain_py
+  ima_training_py --> ima_data_py
+  ima_training_py --> ima_modeling_py
+  ima_training_py --> ima_pools_py
   scrapper___init___py --> scrapper_pipeline_py
+  scrapper_browser_odds_py --> scrapper_browser_pools_py
+  scrapper_browser_pools_py --> scrapper_browser_odds_py
   scrapper_cli_py --> scrapper_history_py
   scrapper_cli_py --> scrapper_pipeline_py
+  scrapper_historical_bulk_py --> scrapper_historical_results_py
+  scrapper_historical_results_py --> scrapper_horse_pages_py
+  scrapper_pipeline_py --> scrapper_browser_odds_py
   scrapper_pipeline_py --> scrapper_contracts_py
   scrapper_pipeline_py --> scrapper_history_py
   scrapper_pipeline_py --> scrapper_hkjc_py
   scrapper_pipeline_py --> scrapper_horse_pages_py
+  scrapper_tests_test_scrapper_py --> scrapper_browser_odds_py
   scrapper_tests_test_scrapper_py --> scrapper_contracts_py
   scrapper_tests_test_scrapper_py --> scrapper_history_py
   scrapper_tests_test_scrapper_py --> scrapper_horse_pages_py
   scrapper_tests_test_scrapper_py --> scrapper_pipeline_py
+  scripts_backfill_horse_profiles_py --> scrapper_horse_pages_py
+  scripts_build_historical_py --> ima_historical_sources_py
+  scripts_bulk_history_py --> scrapper_historical_bulk_py
+  scripts_enrich_pool_metrics_py --> ima_data_py
+  scripts_enrich_pool_metrics_py --> ima_experiments_py
+  scripts_enrich_pool_metrics_py --> ima_pools_py
+  scripts_enrich_pool_metrics_py --> ima_rich_features_py
+  scripts_export_mlflow_dashboard_py --> ima_experiments_py
+  scripts_export_mlflow_dashboard_py --> ima_mlflow_tracking_py
+  scripts_export_mlflow_dashboard_py --> ima_pipeline_transparency_py
+  scripts_finalize_meeting_py --> ima_operations_py
+  scripts_import_results_to_mlflow_py --> ima_mlflow_tracking_py
+  scripts_optimize_py --> ima_optimizer_py
+  scripts_paper_trade_py --> ima_domain_py
+  scripts_paper_trade_py --> ima_execution_py
+  scripts_paper_trade_py --> ima_inference_py
+  scripts_paper_trade_py --> ima_strategy_py
+  scripts_paper_trade_py --> scrapper_pipeline_py
+  scripts_predict_pools_py --> ima_inference_py
+  scripts_predict_pools_py --> ima_pools_py
+  scripts_publish_latest_dashboard_py --> ima_experiments_py
+  scripts_publish_latest_dashboard_py --> ima_pipeline_transparency_py
+  scripts_reparse_official_history_py --> scrapper_historical_results_py
+  scripts_run_benter_grid_py --> ima_auxiliary_py
+  scripts_run_benter_grid_py --> ima_data_py
+  scripts_run_benter_grid_py --> ima_experiments_py
+  scripts_run_benter_grid_py --> ima_feature_sets_py
+  scripts_run_benter_grid_py --> ima_mlflow_tracking_py
+  scripts_run_benter_grid_py --> ima_rich_features_py
+  scripts_run_experiments_py --> ima_data_py
+  scripts_run_experiments_py --> ima_experiments_py
+  scripts_run_experiments_py --> ima_mlflow_tracking_py
+  scripts_run_feature_study_py --> ima_data_py
+  scripts_run_feature_study_py --> ima_experiments_py
+  scripts_run_feature_study_py --> ima_feature_analysis_py
+  scripts_run_feature_study_py --> ima_feature_sets_py
+  scripts_run_feature_study_py --> ima_modeling_py
+  scripts_run_feature_study_py --> ima_pipeline_transparency_py
+  scripts_run_feature_study_py --> ima_rich_features_py
+  scripts_run_schema_feature_study_py --> ima_data_py
+  scripts_run_schema_feature_study_py --> ima_feature_analysis_py
+  scripts_run_schema_feature_study_py --> ima_feature_sets_py
+  scripts_run_schema_feature_study_py --> ima_rich_features_py
+  scripts_run_schema_feature_study_py --> scripts_run_feature_study_py
+  scripts_scrape_history_py --> scrapper_historical_results_py
+  scripts_simulate_tomorrow_py --> ima_inference_py
+  scripts_simulate_tomorrow_py --> ima_simulator_py
+  scripts_simulate_tomorrow_py --> ima_strategy_py
+  scripts_simulate_tomorrow_py --> scrapper_pipeline_py
+  scripts_smoke_py --> ima_data_py
+  scripts_smoke_py --> scrapper_browser_odds_py
+  scripts_smoke_py --> scrapper_pipeline_py
+  scripts_train_py --> ima_training_py
+  tests_test_authenticated_execution_py --> ima_authenticated_execution_py
+  tests_test_authenticated_execution_py --> ima_domain_py
+  tests_test_auxiliary_models_py --> ima_auxiliary_py
+  tests_test_auxiliary_models_py --> ima_data_py
+  tests_test_auxiliary_models_py --> ima_feature_sets_py
+  tests_test_browser_pools_py --> scrapper_browser_pools_py
+  tests_test_bulk_history_py --> scrapper_historical_bulk_py
+  tests_test_data_py --> ima_data_py
+  tests_test_experiments_py --> ima_experiments_py
+  tests_test_experiments_py --> ima_pipeline_transparency_py
+  tests_test_experiments_py --> scripts_publish_latest_dashboard_py
+  tests_test_experiments_py --> scripts_run_benter_grid_py
+  tests_test_experiments_py --> scripts_run_feature_study_py
+  tests_test_feature_analysis_py --> ima_feature_analysis_py
+  tests_test_feature_analysis_py --> ima_feature_sets_py
+  tests_test_feature_analysis_py --> ima_modeling_py
+  tests_test_historical_py --> scrapper_historical_results_py
+  tests_test_historical_sources_py --> ima_historical_sources_py
+  tests_test_horse_profile_backfill_py --> scripts_backfill_horse_profiles_py
+  tests_test_ledger_registry_py --> ima_domain_py
+  tests_test_ledger_registry_py --> ima_ledger_py
+  tests_test_ledger_registry_py --> ima_registry_py
+  tests_test_ledger_registry_py --> ima_strategy_py
+  tests_test_mlflow_tracking_py --> ima_mlflow_tracking_py
+  tests_test_modeling_py --> ima_feature_sets_py
+  tests_test_modeling_py --> ima_modeling_py
+  tests_test_modeling_py --> ima_pools_py
+  tests_test_operations_inference_py --> ima_inference_py
+  tests_test_operations_inference_py --> ima_operations_py
+  tests_test_operations_inference_py --> ima_pools_py
+  tests_test_optimizer_py --> ima___init___py
+  tests_test_optimizer_py --> ima_experiments_py
+  tests_test_optimizer_py --> ima_openrouter_orchestrator_py
+  tests_test_optimizer_py --> ima_optimizer_py
+  tests_test_pools_py --> ima_pools_py
+  tests_test_pools_py --> scripts_enrich_pool_metrics_py
+  tests_test_rich_features_py --> ima_data_py
+  tests_test_rich_features_py --> ima_feature_sets_py
+  tests_test_rich_features_py --> ima_rich_features_py
+  tests_test_simulator_py --> ima_simulator_py
+  tests_test_simulator_py --> ima_strategy_py
+  tests_test_strategy_py --> ima_domain_py
+  tests_test_strategy_py --> ima_execution_py
+  tests_test_strategy_py --> ima_strategy_py

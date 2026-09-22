@@ -1,6 +1,6 @@
 {
   "root": "/Users/milkingthesun/Projects/iMa",
-  "files": 127,
+  "files": 34279,
   "stacks": [
     "python"
   ],
@@ -8,23 +8,151 @@
   "entrypoints": [],
   "api_routes": [],
   "workers": [
+    "artifacts/agentic-learning/local-exec-smoke/trials/trial-0001/models/logit-c005-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf15.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf31.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf15.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2three.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2zero.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf63.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf15.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf31.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf63.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c005-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c010-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c050-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c050-unweighted.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c100-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c200-balanced.joblib",
+    "artifacts/experiments/full-history/models/boost-lr003-leaf15.joblib",
+    "artifacts/experiments/full-history/models/boost-lr003-leaf31.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf15.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf31-l2three.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf31-l2zero.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf31.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf63.joblib",
+    "artifacts/experiments/full-history/models/boost-lr010-leaf15.joblib",
+    "artifacts/experiments/full-history/models/boost-lr010-leaf31.joblib",
+    "artifacts/experiments/full-history/models/boost-lr010-leaf63.joblib",
+    "artifacts/experiments/full-history/models/logit-c005-balanced.joblib",
+    "artifacts/experiments/full-history/models/logit-c010-balanced.joblib",
+    "artifacts/experiments/full-history/models/logit-c050-balanced.joblib",
+    "artifacts/experiments/full-history/models/logit-c050-unweighted.joblib",
+    "artifacts/experiments/full-history/models/logit-c100-balanced.joblib",
+    "artifacts/experiments/full-history/models/logit-c200-balanced.joblib",
+    "artifacts/experiments/notebook-rich-v2-logit/models/notebook-logit-c050-balanced.joblib",
+    "artifacts/experiments/notebook-rich-v2/models/notebook-boost-lr006-leaf15.joblib",
+    "artifacts/feature-study/selected-rich-model.joblib",
+    "artifacts/models/benchmark/boosted.joblib",
+    "artifacts/models/benchmark/logit.joblib",
+    "artifacts/models/benter-benchmark/boosted.joblib",
+    "artifacts/models/benter-benchmark/logit.joblib",
+    "artifacts/models/canonical-2005-2025/boosted.joblib",
+    "artifacts/models/canonical-2005-2025/logit.joblib",
+    "artifacts/models/legacy-rerun/boosted.joblib",
+    "artifacts/models/legacy-rerun/logit.joblib",
+    "artifacts/smoke/notebook-rich-auxiliary/auxiliary.joblib",
+    "artifacts/smoke/notebook-rich-winner/winner.joblib",
     "notebooks/logreg_poly.joblib",
     "notebooks/nn.joblib"
   ],
   "schemas": [
+    ".mega/dashboards/MODEL_SELF_OPTIMIZER_PLAN.html",
+    "artifacts/agentic-learning/local-exec-smoke/trials/trial-0001/models/logit-c005-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf15.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf31.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf15.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2three.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2zero.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf63.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf15.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf31.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf63.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c005-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c010-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c050-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c050-unweighted.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c100-balanced.joblib",
+    "artifacts/experiments/benter-rich-grid/models/benter-logit-c200-balanced.joblib",
+    "artifacts/experiments/full-history/models/boost-lr003-leaf15.joblib",
+    "artifacts/experiments/full-history/models/boost-lr003-leaf31.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf15.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf31-l2three.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf31-l2zero.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf31.joblib",
+    "artifacts/experiments/full-history/models/boost-lr006-leaf63.joblib",
+    "artifacts/experiments/full-history/models/boost-lr010-leaf15.joblib",
+    "artifacts/experiments/full-history/models/boost-lr010-leaf31.joblib",
+    "artifacts/experiments/full-history/models/boost-lr010-leaf63.joblib",
+    "artifacts/experiments/full-history/models/logit-c005-balanced.joblib",
+    "artifacts/experiments/full-history/models/logit-c010-balanced.joblib",
+    "artifacts/experiments/full-history/models/logit-c050-balanced.joblib",
+    "artifacts/experiments/full-history/models/logit-c050-unweighted.joblib",
+    "artifacts/experiments/full-history/models/logit-c100-balanced.joblib",
+    "artifacts/experiments/full-history/models/logit-c200-balanced.joblib",
+    "artifacts/experiments/notebook-rich-v2-logit/models/notebook-logit-c050-balanced.joblib",
+    "artifacts/experiments/notebook-rich-v2/models/notebook-boost-lr006-leaf15.joblib",
+    "artifacts/feature-study/selected-rich-model.joblib",
+    "artifacts/models/benchmark/boosted.joblib",
+    "artifacts/models/benchmark/logit.joblib",
+    "artifacts/models/benchmark/report.json",
+    "artifacts/models/benter-benchmark/boosted.joblib",
+    "artifacts/models/benter-benchmark/logit.joblib",
+    "artifacts/models/benter-benchmark/report.json",
+    "artifacts/models/canonical-2005-2025/boosted.joblib",
+    "artifacts/models/canonical-2005-2025/logit.joblib",
+    "artifacts/models/canonical-2005-2025/report.json",
+    "artifacts/models/legacy-rerun/boosted.joblib",
+    "artifacts/models/legacy-rerun/logit.joblib",
+    "artifacts/models/legacy-rerun/report.json",
+    "artifacts/simulations/next-available/snapshots/2026-07-26_S1_R1_2026-07-25T20_00_50_552269Z.model.csv",
+    "artifacts/simulations/next-available/snapshots/2026-07-26_S1_R1_2026-07-25T20_02_51_509509Z.model.csv",
+    "artifacts/simulations/tomorrow/snapshots/2026-07-26_S1_R1_2026-07-25T19_59_56_145845Z.model.csv",
+    "data/historical/hkjc-2005-2025/checkpoint.sqlite",
+    "data/historical/hkjc-boundary/checkpoint.sqlite",
+    "docs/MODEL_EXPERIMENT_DASHBOARD_PLAN.md",
+    "docs/MODEL_SELF_OPTIMIZER_PLAN.md",
+    "docs/model-results/dashboard-template.html",
+    "docs/prototypes/run-centric-pages/02-runs-by-schema.png",
+    "ima/modeling.py",
     "notebooks/Model Selection and Creation.ipynb",
     "notebooks/Simplified Horse Model Testing Multiclass.ipynb",
     "notebooks/Simplified Horse Model Testing Polynomial.ipynb",
     "notebooks/Simplified Horse Model Testing.ipynb",
     "notebooks/TrackX_model_hyperparam_tunning (1).ipynb",
-    "notebooks/TrackX_model_hyperparam_tunning.ipynb"
+    "notebooks/TrackX_model_hyperparam_tunning.ipynb",
+    "scrapper/snapshots/2026-07-25_S1_R1_2026-07-24T20_20_52_519654Z.model.csv",
+    "scrapper/snapshots/2026-07-25_S1_R1_2026-07-24T20_42_42_050818Z.model.csv",
+    "scrapper/snapshots/2026-07-25_S1_R1_2026-07-25T05_45_35_598043Z.model.csv",
+    "scripts/run_schema_feature_study.py",
+    "tests/test_auxiliary_models.py",
+    "tests/test_modeling.py"
   ],
-  "configs": [],
+  "configs": [
+    "vercel.json"
+  ],
   "docs": [
+    ".mega/PLAN-dashboard-pools-age.md",
+    ".mega/PLAN-notebook-features-simulator.md",
     "README.md",
+    "artifacts/agentic-learning/local-exec-smoke/report.md",
+    "docs/.DS_Store",
+    "docs/EXECUTION_PLAN.md",
+    "docs/MODEL_EXPERIMENT_DASHBOARD_PLAN.md",
+    "docs/MODEL_SELF_OPTIMIZER_PLAN.md",
+    "docs/MULTI_POOL_MARKET_PIPELINE_PLAN.md",
+    "docs/OPERATIONS.md",
+    "docs/PIPELINE_TRANSPARENCY_PLAN.md",
+    "docs/RICH_FEATURE_STUDY_PLAN.md",
+    "docs/RUN_CENTRIC_DASHBOARD_REDESIGN_PLAN.md",
+    "docs/WEDNESDAY_RACE_READINESS_PLAN.md",
     "docs/architecture-graphs/architecture-index.json",
     "docs/architecture-graphs/meta-systems.dot",
     "docs/architecture-graphs/meta-systems.mmd",
+    "docs/architecture-graphs/system-scrapper.dot",
+    "docs/architecture-graphs/system-scrapper.mmd",
     "docs/architecture-graphs/whole-repo.dot",
     "docs/architecture-graphs/whole-repo.mmd",
     "docs/architecture/CONTEXT.md",
@@ -32,12 +160,2149 @@
     "docs/architecture/TARGET_ARCHITECTURE.md",
     "docs/architecture/boundary-report.json",
     "docs/architecture/context-manifest.json",
+    "docs/architecture/decisions/2026-07-27-use-a-static-modular-run-analysis-dashboard.md",
     "docs/architecture/inventory.json",
     "docs/architecture/pattern-fit.json",
     "docs/architecture/scorecard.json",
     "docs/architecture/scorecard.md",
+    "docs/data/HISTORICAL_COVERAGE.md",
+    "docs/data/HISTORICAL_SOURCE_RESEARCH.md",
+    "docs/data/horse-age-provenance.md",
+    "docs/data/source-registry.json",
+    "docs/model-results/dashboard-template.html",
+    "docs/prototypes/.DS_Store",
+    "docs/prototypes/run-centric-dashboard-all-pages.png",
+    "docs/prototypes/run-centric-dashboard-gallery.html",
+    "docs/prototypes/run-centric-dashboard-mobile.png",
+    "docs/prototypes/run-centric-dashboard.html",
+    "docs/prototypes/run-centric-dashboard.png",
+    "docs/prototypes/run-centric-pages/01-runs-all-fundamental.png",
+    "docs/prototypes/run-centric-pages/02-runs-by-schema.png",
+    "docs/prototypes/run-centric-pages/03-runs-by-family.png",
+    "docs/prototypes/run-centric-pages/04-runs-by-execution.png",
+    "docs/prototypes/run-centric-pages/05-runs-combined.png",
+    "docs/prototypes/run-centric-pages/06-run-overview.png",
+    "docs/prototypes/run-centric-pages/07-run-evaluation.png",
+    "docs/prototypes/run-centric-pages/08-run-pools.png",
+    "docs/prototypes/run-centric-pages/09-run-variables.png",
+    "docs/prototypes/run-centric-pages/10-run-parameters.png",
+    "docs/prototypes/run-centric-pages/11-pipeline-training.png",
+    "docs/prototypes/run-centric-pages/12-pipeline-live.png",
+    "docs/prototypes/run-centric-pages/13-variables-baseline-contribution.png",
+    "docs/prototypes/run-centric-pages/14-variables-benter-ranking.png",
+    "docs/prototypes/run-centric-pages/15-variables-notebook-correlation.png",
+    "docs/prototypes/run-centric-pages/16-variables-notebook-coverage.png",
+    "docs/prototypes/run-centric-pages/17-live-simulation.png",
+    "docs/prototypes/run-centric-pages/18-mobile-runs.png",
+    "docs/prototypes/run-centric-pages/19-mobile-pipeline.png",
+    "docs/prototypes/run-centric-pages/20-mobile-variables.png",
+    "docs/prototypes/run-centric-pages/21-mobile-live.png",
     "notebooks/README.md",
     "scrapper/README.md"
   ],
-  "integrations": []
+  "integrations": [
+    "aws",
+    "azure",
+    "postgres",
+    "redis",
+    "vercel"
+  ],
+  "integration_evidence": [
+    {
+      "claim": "aws",
+      "category": "integration",
+      "status": "probable",
+      "confidence": 0.79,
+      "sources": [
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2006_H174.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2007_J164.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2009_L228.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2011_N105.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2013_S152.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2015_V167.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2018_C165.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2019_D460.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2020_E348.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2021_G135.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2022_H806.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2023_J207.json",
+          "type": "config"
+        }
+      ],
+      "counter_evidence": [],
+      "missing_evidence": [
+        "additional runtime/config evidence"
+      ]
+    },
+    {
+      "claim": "azure",
+      "category": "integration",
+      "status": "probable",
+      "confidence": 0.79,
+      "sources": [
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-10-27/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-11-13/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-12-04/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-01-08/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-04-30/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-11-02/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-12-10/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-12-23/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/horse-profiles/normalized/HK_2023_J227.json",
+          "type": "config"
+        }
+      ],
+      "counter_evidence": [],
+      "missing_evidence": [
+        "additional runtime/config evidence"
+      ]
+    },
+    {
+      "claim": "openai",
+      "category": "integration",
+      "status": "mentioned",
+      "confidence": 0.2,
+      "sources": [
+        {
+          "detail": "openai",
+          "path": "scripts/optimize.py",
+          "type": "keyword"
+        },
+        {
+          "detail": "openai",
+          "path": "tests/test_optimizer.py",
+          "type": "keyword"
+        }
+      ],
+      "counter_evidence": [],
+      "missing_evidence": [
+        "manifest dependency",
+        "source import",
+        "runtime configuration"
+      ]
+    },
+    {
+      "claim": "postgres",
+      "category": "integration",
+      "status": "probable",
+      "confidence": 0.73,
+      "sources": [
+        {
+          "detail": "sqlalchemy",
+          "path": "pyproject.toml",
+          "type": "manifest"
+        }
+      ],
+      "counter_evidence": [],
+      "missing_evidence": [
+        "additional runtime/config evidence"
+      ]
+    },
+    {
+      "claim": "redis",
+      "category": "integration",
+      "status": "probable",
+      "confidence": 0.73,
+      "sources": [
+        {
+          "detail": "redis",
+          "path": "docs/data/source-registry.json",
+          "type": "config"
+        }
+      ],
+      "counter_evidence": [],
+      "missing_evidence": [
+        "additional runtime/config evidence"
+      ]
+    },
+    {
+      "claim": "vercel",
+      "category": "integration",
+      "status": "probable",
+      "confidence": 0.73,
+      "sources": [
+        {
+          "detail": "vercel",
+          "path": "vercel.json",
+          "type": "config"
+        }
+      ],
+      "counter_evidence": [],
+      "missing_evidence": [
+        "additional runtime/config evidence"
+      ]
+    }
+  ],
+  "canonical_sources": {
+    "schema_version": 1,
+    "repo_root": "/Users/milkingthesun/Projects/iMa",
+    "sources": [
+      {
+        "path": "README.md",
+        "kind": "readme",
+        "authority": "supporting",
+        "precedence": 50,
+        "content_hash": "25590807a1596bbe047ea00468fa3ea7e55d5c20a7121a042395720930bcca3c",
+        "headings": [
+          {
+            "level": 1,
+            "title": "iMa"
+          },
+          {
+            "level": 2,
+            "title": "Environment"
+          },
+          {
+            "level": 2,
+            "title": "Live Collection"
+          },
+          {
+            "level": 2,
+            "title": "Historical Acquisition"
+          },
+          {
+            "level": 2,
+            "title": "Current Benchmark"
+          },
+          {
+            "level": 2,
+            "title": "Model Compatibility"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "iMa",
+            "excerpt": "iMa is a horse-racing probability research project based on Hong Kong race data and the modeling/wagering ideas described in the papers under `research/`.\n\nThe repository now has four explicit areas:\n\n- `track/`: historical race datasets and schema references.\n- `notebooks/`: original data preparation and model experiments.\n- `scrapper/`: live HKJC meetings, runners, odds, horse form, trackwork, veterinary, and movement collection.\n- `ima/`: point-in-time datasets, race models, pool probabilities, market blending, strategy, ledgers, and model registry.\n- `docs/architecture/`: current and target architecture evidence."
+          },
+          {
+            "heading": "Environment",
+            "excerpt": "Use Python 3.11-3.13. The existing machine has Python 3.11 available at `python3.11`.\n\n```sh\npython3.11 -m venv .venv\n.venv/bin/python -m pip install --upgrade pip\n.venv/bin/python -m pip install -e .\n```\n\nStart Jupyter:\n\n```sh\n.venv/bin/jupyter lab notebooks\n```\n\nRun scraper tests:\n\n```sh\n.venv/bin/python -m unittest discover -s scrapper/tests -v\n```\n\nRun the complete test suite and historical benchmark:\n\n```sh\n.venv/bin/python -m unittest discover -v\n.venv/bin/python -m scripts.train --output artifacts/models/latest\n.venv/bin/python -m scripts.train \\\n  --canonical-runners data/processed/historical/runners.csv.gz \\\n  --output artifacts/models/canonical-2005-2025\n```\n\nRun the complete 1997-2025 parameter grid and generate the interactive results dashboard:\n\n```sh\n.venv/bin/python -m scripts.run_experiments \\\n  --output artifacts/experiments/full-history\n```\n\nOpen `artifacts/experiments/"
+          },
+          {
+            "heading": "Live Collection",
+            "excerpt": "The default live workflow renders the public HKJC odds application in Chrome because direct GraphQL requests are rejected with `WHITELIST_ERROR`. It collects real WIN/PLACE prices and pool turnover metadata, then follows local Hong Kong runners with stable HKJC horse identifiers to collect:\n\n- Horse profile and recent form records.\n- Trackwork records.\n- Veterinary records.\n- Movement between Hong Kong and Conghua.\n\nEach poll preserves raw and normalized snapshots and emits the exact feature columns used by the legacy all-attributes notebook model. Rows are marked `prediction_ready=false` if required data is missing or the runner is inactive.\n\nThe current Hong Kong mobile egress is accepted by the public browser application. Overseas simulcasts do not expose local HK horse-profile identifiers, so profile enrichment is correctly marked unavailable for those runners. Pass `--all-pools` to "
+          },
+          {
+            "heading": "Historical Acquisition",
+            "excerpt": "Official result collection is checkpointed and resumable:\n\n```sh\n.venv/bin/python -m scripts.bulk_history \\\n  --start 2018-07-01 --end 2025-12-31 \\\n  --output data/historical/hkjc-2005-2025 \\\n  --workers 12 --delay 0.1\n```\n\nFor older seasons, use the reconciled runner archive as a known-meeting index instead of probing every calendar date:\n\n```sh\n.venv/bin/python -m scripts.bulk_history \\\n  --meeting-index data/processed/historical/runners.csv.gz \\\n  --output data/historical/hkjc-2005-2025 \\\n  --workers 12 --delay 0.1\n```\n\nBuild all normalized historical tables:\n\n```sh\n.venv/bin/python -m scripts.reparse_official_history\n.venv/bin/python -m scripts.build_historical\n```\n\nThe builder keeps pre-race race cards and timestamped odds separate from final odds, results, and dividends. It also emits sectionals, horse snapshots, trackwork, barrier trials, runner comments, and steward/veterinary in"
+          },
+          {
+            "heading": "Current Benchmark",
+            "excerpt": "The full-history race-grouped benchmark uses 271,868 runners from 22,146 races\nspanning 1997-06-02 through 2025-12-27. Its fixed held-out period contains 3,322\nraces from 2022-01-05 through 2025-12-27. The best tested fundamental model is\n`boost-lr003-leaf15` at 22.97% Top-1 accuracy and `2.2367` race log loss; the\nfinal WIN market reaches 30.89% and `2.0135`. Validation therefore assigns zero\nfundamental weight to the tested blends. This is a valid abstention signal, not\nevidence of a betting edge; forward timestamped odds are required for tradable\npaper-trading claims."
+          },
+          {
+            "heading": "Model Compatibility",
+            "excerpt": "The committed joblib files were created with scikit-learn 0.23.2. Loading old pickle/joblib artifacts in a modern environment is both unsafe when provenance is unknown and likely incompatible. The supported path is to reproduce feature generation, validate race/time-aware evaluation, and retrain versioned pipelines that contain preprocessing and estimator together.\n\nSee [Target Architecture](docs/architecture/TARGET_ARCHITECTURE.md) for the proposed system.\nSee [Operations](docs/OPERATIONS.md), [Historical Data Research](docs/data/HISTORICAL_SOURCE_RESEARCH.md), and [Historical Coverage](docs/data/HISTORICAL_COVERAGE.md) for deployment and acquisition details."
+          }
+        ],
+        "status": "current",
+        "rationale": "root canonical filename"
+      },
+      {
+        "path": "docs/OPERATIONS.md",
+        "kind": "operations",
+        "authority": "supporting",
+        "precedence": 40,
+        "content_hash": "45ecdd637be4a0b15d1e3593caa01c135b96b2b5d0d5e5e95d2b3850615cb6f8",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Operations"
+          },
+          {
+            "level": 2,
+            "title": "Runtime Boundary"
+          },
+          {
+            "level": 2,
+            "title": "Initial Verification"
+          },
+          {
+            "level": 2,
+            "title": "MLflow Tracking"
+          },
+          {
+            "level": 2,
+            "title": "Meeting Cycle"
+          },
+          {
+            "level": 2,
+            "title": "Credentials and Live Wagers"
+          },
+          {
+            "level": 2,
+            "title": "Scheduling"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Operations",
+            "excerpt": ""
+          },
+          {
+            "heading": "Runtime Boundary",
+            "excerpt": "Run collection and decision generation from a host whose public egress is accepted as Hong Kong by HKJC. Chrome or Chromium is required because direct GraphQL requests currently return `WHITELIST_ERROR` even from the accepted mobile egress.\n\nUse Python 3.11 and keep raw snapshots, model artifacts, and the prediction ledger on persistent storage. Set `Asia/Hong_Kong` as the scheduling timezone. The repository defaults to paper mode."
+          },
+          {
+            "heading": "Initial Verification",
+            "excerpt": "```sh\n.venv/bin/python -m pip install -e '.[dev]'\n.venv/bin/python -m unittest discover -v\n.venv/bin/python -m scripts.smoke --live --race 1\n.venv/bin/ima-scrape --race 1 --all-pools --without-history --without-horse-pages\n.venv/bin/python -m scripts.train --output artifacts/models/latest\n```"
+          },
+          {
+            "heading": "MLflow Tracking",
+            "excerpt": "Use MLflow as the local/server experiment registry before publishing the static racing dashboard. Prefer a SQLite tracking backend locally and on the first server deployment; MLflow 3 treats the old filesystem tracking backend as migration-only.\n\n```sh\nexport IMA_MLFLOW_URI=\"sqlite:////Users/milkingthesun/Projects/iMa/artifacts/mlflow/mlflow.db\"\n\n.venv/bin/python -m scripts.import_results_to_mlflow \\\n  --results public/results.json \\\n  --tracking-uri \"$IMA_MLFLOW_URI\" \\\n  --experiment ima-racing\n\n.venv/bin/python -m scripts.run_benter_grid \\\n  --schema benter-rich-v1 \\\n  --mlflow-tracking-uri \"$IMA_MLFLOW_URI\" \\\n  --mlflow-experiment ima-racing\n\n.venv/bin/python -m scripts.export_mlflow_dashboard \\\n  --tracking-uri \"$IMA_MLFLOW_URI\" \\\n  --experiment ima-racing \\\n  --base-results public/results.json\n```\n\nOpen the local MLflow UI when inspecting raw experiment runs:\n\n```sh\n.venv/bin/mlflow"
+          },
+          {
+            "heading": "Meeting Cycle",
+            "excerpt": "1. Collect timestamped odds repeatedly before each race and preserve raw snapshots.\n2. Generate predictions and recommendations from one pinned model version.\n3. Record the decision before post time and execute in paper mode.\n4. After official declaration, collect results and dividends and settle the ledger.\n5. Finalize the complete meeting, version the enriched dataset, and train challengers.\n6. Compare challengers with the champion and market baseline on untouched recent races.\n7. Promote only after metric gates and operator approval. Live approval is separate."
+          },
+          {
+            "heading": "Credentials and Live Wagers",
+            "excerpt": "HKJC account credentials must be retrieved at runtime from macOS Keychain or an external vault. They must not be stored in `.env`, source control, browser profile archives, logs, screenshots, or model artifacts.\n\nThe current `HKJCWebExecutor` deliberately blocks live submission. Enabling transactions requires an authenticated browser session, multi-factor handling, bet-slip confirmation parsing, idempotent receipt capture, account/race exposure limits, kill switch, and explicit operator approval. Collection and model processes must not hold transaction credentials."
+          },
+          {
+            "heading": "Scheduling",
+            "excerpt": "`deploy/launchd` targets this Mac. Replace `__IMA_REPO__` with the checkout path before loading the plist. `deploy/systemd` targets a persistent Linux host under `/opt/ima`. Retraining is scheduled after typical Wednesday and Sunday meetings; official-result reconciliation should precede it and incomplete meetings must be quarantined."
+          }
+        ],
+        "status": "current",
+        "rationale": "operations filename/path"
+      },
+      {
+        "path": ".mega/PLAN-dashboard-pools-age.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "6a93317ebc4c44e463153bbe5b3b805688632aa713b72fa603ceac55e71b7a0e",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Dashboard pool transparency and horse-age provenance"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Discovery and contracts"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Schema contracts and append-only run history"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Pool evaluation"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Held-out pool metrics and HKJC semantics"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Dashboard visualization"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Plotly schema, pool, and run-history dashboard"
+          },
+          {
+            "level": 2,
+            "title": "Phase 4: Age identity provenance"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.1: HKJC horse identity and archived age references"
+          },
+          {
+            "level": 2,
+            "title": "Phase 5: Verification and deployment"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.1: Full verification and deployment"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Dashboard pool transparency and horse-age provenance",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Clarify feature contracts, publish all run history and pool probability metrics with interactive charts, and strengthen horse-age identity provenance from HKJC profile archives"
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [x] Dashboard distinguishes baseline-v1 (23 inputs) from benter-rich-v1 (81 inputs) and lists the selected run's exact variables.\n- [x] Every persisted experiment run is retained in an append-only run-history payload and visible in progression charts.\n- [x] WIN, PLACE, QIN, QPL, TRI, TIERCE, FIRST4, and QUARTET expose held-out top-selection hit rate and mean predicted probability for fundamental and combined forecasts.\n- [x] FIRST4 is evaluated unordered, QUARTET ordered, and PLACE/QPL paid-place counts follow HKJC field-size rules.\n- [x] Horse-age values carry source, reference timestamp/year, reference age, propagation offset, and identity-match method.\n- [x] HKJC profile/archive research records whether official horse codes can reconcile the 1997-2005 source without speculative joins.\n- [x] Unit tests, local browser checks, push, Vercel deployment, and production smoke verification "
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Built-in options: existing static dashboard generator, experiment artifacts, pool probability engine, HKJC profile scraper, canonical provenance fields.\n- Off-the-shelf options: Plotly.js for interactive static charts; Wayback CDX/API and archived HKJC profile pages for historical evidence.\n- Official / standards sources: HKJC pool definitions and horse profile identifiers/pages; archived captures retain URL and timestamp."
+          },
+          {
+            "heading": "Regression Guardrails",
+            "excerpt": "- Planned edit surface: `ima/experiments.py`, `ima/feature_sets.py`, `ima/pipeline_transparency.py`, `ima/pools.py`, `ima/historical_sources.py`, dashboard template/public artifacts, focused scripts/tests/docs.\n- Protected behaviors: existing WIN model metrics, chronological split/leakage boundaries, live scraper output, immutable raw archive files, public CSV/JSON downloads.\n- Likely consumers: experiment runners, live pool inference, dashboard users, retraining jobs, historical rebuilds, Vercel static deployment.\n- Damage radius: moderate.\n- Proof plan: focused pool/contract/provenance tests, full test suite, artifact consistency checks, local desktop/mobile browser screenshots, production smoke check."
+          },
+          {
+            "heading": "Phase 1: Discovery and contracts",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 1.1: Schema contracts and append-only run history",
+            "excerpt": "- Commit: `feat(experiments): publish schema-aware run history`\n- Tests: `python -m unittest tests.test_experiments tests.test_rich_features`\n- Success Criteria: generated payload exposes both feature contracts and preserves prior run records with stable run keys.\n- Planned Touch Files:\n  - `ima/feature_sets.py`\n  - `ima/pipeline_transparency.py`\n  - `ima/experiments.py`\n  - `scripts/run_benter_grid.py`\n  - `tests/test_experiments.py`\n  - `artifacts/feature-study/dashboard-qa.spec.js`\n- Checklist:\n  - [x] Add schema-specific contracts and stable run metadata.\n  - [x] Merge persisted runs without dropping previous executions.\n  - [x] Verify generated contracts match Python constants."
+          },
+          {
+            "heading": "Phase 2: Pool evaluation",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 2.1: Held-out pool metrics and HKJC semantics",
+            "excerpt": "- Commit: `feat(pools): evaluate every supported betting pool`\n- Tests: `python -m unittest tests.test_modeling tests.test_operations_inference tests.test_pools`\n- Success Criteria: each run contains fundamental and combined metrics for all supported pools with test-covered settlement semantics.\n- Planned Touch Files:\n  - `ima/pools.py`\n  - `ima/experiments.py`\n  - `scripts/enrich_pool_metrics.py`\n  - `tests/test_pools.py`\n- Checklist:\n  - [x] Correct FIRST4, QUARTET, PLACE, and QPL definitions.\n  - [x] Compute top-combination hit rate and predicted-probability summaries.\n  - [x] Publish metrics per prediction source and run."
+          },
+          {
+            "heading": "Phase 3: Dashboard visualization",
+            "excerpt": ""
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": ".mega/PLAN-notebook-features-simulator.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "fa9691725f28c84ba6071100a4e0d6a64e8e997cb1e9bd975a2743d0b77e31d1",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Notebook Features Targets And Tomorrow Simulator"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Feature Contracts"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Leakage-safe notebook-rich feature contract"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Auxiliary Models"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Tuned auxiliary outcome and odds models"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Market And Simulator"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Multi-market ten-dollar-unit simulator"
+          },
+          {
+            "level": 2,
+            "title": "Phase 4: Verification"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.1: Full proof and real next-meeting attempt"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Notebook Features Targets And Tomorrow Simulator",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Add leakage-safe notebook features and polynomial interactions, tuned auxiliary predictions, market-aware pool modeling, and a ten-dollar-unit next-meeting simulator"
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [x] A versioned notebook-rich feature schema adds only point-in-time predictors, including correct prior second/third statistics, six-race and six-month/season form, historical WIN/PLACE odds form, relative ranks, profile signals, and explicit selected degree-two interactions.\n- [x] Current-race WIN, PLACE, and exotic prices remain outside the fundamental estimator and are exposed as independently reportable market inputs.\n- [x] Chronological train/validation/test modeling predicts winner probability, expected finishing position, finish time, final WIN odds, and final PLACE odds; validation selects auxiliary hyperparameters and publishes MAE/rank metrics.\n- [x] A next-meeting simulator produces pool candidates, $10-multiple stakes, total cost, expected gross return, expected net return, maximum payout, and abstention reasons without submitting wagers.\n- [x] Focused and full tests pass;"
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Built-in options: `ima.rich_features`, `RaceProbabilityModel`, validation-fitted market blend, pool expansion, Kelly strategy, browser-backed scraper, experiment artifact registry.\n- Off-the-shelf options: scikit-learn `HistGradientBoostingRegressor`, `PolynomialFeatures` semantics implemented as bounded explicit interactions, validation-grid selection.\n- Official / standards sources: HKJC current WIN/PLACE and pool combination prices from timestamped browser snapshots; no authenticated submission."
+          },
+          {
+            "heading": "Regression Guardrails",
+            "excerpt": "- Planned edit surface: `ima/feature_sets.py`, `ima/rich_features.py`, `ima/modeling.py`, `ima/experiments.py`, `ima/inference.py`, `ima/domain.py`, `ima/strategy.py`, new auxiliary/simulation modules and CLIs, focused tests, README.\n- Protected behaviors: baseline-v1 and benter-rich-v1 contracts, race/time split, no current-outcome leakage, public fallback for first timers, eight pool probability semantics, existing live scraper output and paper executor.\n- Likely consumers: experiment runners, model artifacts, dashboard data, live prediction scripts, paper trading, retraining orchestration.\n- Damage radius: large.\n- Proof plan: contract and leakage tests, auxiliary target/tuning tests, market-boundary tests, simulator settlement/math tests, full unittest suite, CLI smoke, live next-meeting attempt."
+          },
+          {
+            "heading": "Phase 1: Feature Contracts",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 1.1: Leakage-safe notebook-rich feature contract",
+            "excerpt": "- Commit: `feat(features): add point-in-time notebook feature contract`\n- Tests: `.venv/bin/python -m unittest tests.test_rich_features`\n- Success Criteria: current race outcomes cannot affect any current feature; prior count/rate, rolling/time-window, rank, profile, and polynomial fields have deterministic expected values.\n- Planned Touch Files:\n  - `ima/feature_sets.py`\n  - `ima/rich_features.py`\n  - `tests/test_rich_features.py`\n- Checklist:\n  - [x] Add a new schema without mutating persisted 81-feature artifact compatibility.\n  - [x] Add shifted second/third counts/rates, six-start and calendar-window form.\n  - [x] Add historical odds windows, relative ranks, and point-in-time profile inputs when available.\n  - [x] Add bounded, named degree-two interactions rather than an unbounded dense expansion.\n  - [x] Prove leakage boundaries and missing-data defaults."
+          },
+          {
+            "heading": "Phase 2: Auxiliary Models",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 2.1: Tuned auxiliary outcome and odds models",
+            "excerpt": "- Commit: `feat(models): add tuned race auxiliary predictions`\n- Tests: `.venv/bin/python -m unittest tests.test_modeling tests.test_auxiliary_models tests.test_experiments`\n- Success Criteria: validation-only parameter choice returns held-out position, finish-time, WIN-odds, and PLACE-odds predictions with complete metrics and serializable artifacts.\n- Planned Touch Files:\n  - `ima/modeling.py`\n  - `ima/auxiliary.py`\n  - `ima/experiments.py`\n  - `scripts/run_benter_grid.py`\n  - `tests/test_modeling.py`\n  - `tests/test_auxiliary_models.py`\n  - `tests/test_experiments.py`\n- Checklist:\n  - [x] Implement chronological validation-grid tuning for regressors.\n  - [x] Predict expected position and derive within-race position ranking.\n  - [x] Predict finish time and final WIN/PLACE odds without consuming current odds.\n  - [x] Persist candidate scores, selected parameters, and held-out metrics."
+          },
+          {
+            "heading": "Phase 3: Market And Simulator",
+            "excerpt": ""
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": ".vercel/README.txt",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "f5d1ed0f5032ae128931f46459b5faa1af6319fc2dfb3e7a5fe54a84bf93dbd6",
+        "headings": [],
+        "selected_sections": [],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "artifacts/agentic-learning/local-exec-smoke/report.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "daff0d45c31de9f9fd8029195d685c53970200a8e750cb8d8fdde3372d0477b1",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Optimizer Campaign Report"
+          },
+          {
+            "level": 2,
+            "title": "Trials"
+          },
+          {
+            "level": 2,
+            "title": "Decision"
+          },
+          {
+            "level": 2,
+            "title": "Voting Ranker"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Optimizer Campaign Report",
+            "excerpt": "Updated: 2026-09-22T04:45:43.178099+00:00"
+          },
+          {
+            "heading": "Trials",
+            "excerpt": "- trial-0001 `logit-c005-balanced`: completed"
+          },
+          {
+            "heading": "Decision",
+            "excerpt": "- Decision: `continue`\n- Next action: `run_next_trial_or_review`\n- Rationale: Voting ranker currently prefers logit-c005-balanced; candidate remains unpromoted."
+          },
+          {
+            "heading": "Voting Ranker",
+            "excerpt": "- `test_blended.race_log_loss` -> `logit-c005-balanced` (lowest test_blended.race_log_loss=2.01187)\n- `test_fundamental.race_log_loss` -> `logit-c005-balanced` (lowest test_fundamental.race_log_loss=2.29103)\n- `test_blended.top_pick_win_rate` -> `logit-c005-balanced` (highest test_blended.top_pick_win_rate=0.309151)\n- `test_fundamental.top_pick_win_rate` -> `logit-c005-balanced` (highest test_fundamental.top_pick_win_rate=0.203492)\n- `test_blended.winner_top3_rate` -> `logit-c005-balanced` (highest test_blended.winner_top3_rate=0.616797)\n- `incremental_pseudo_r2` -> `logit-c005-balanced` (highest incremental_pseudo_r2=0.000639899)"
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/data/HISTORICAL_COVERAGE.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "0540ef7df4bb11e85d62e650e72e1e0087fd8f34150f0268c8c94e2cc0bf3d69",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Historical Coverage"
+          },
+          {
+            "level": 2,
+            "title": "Canonical Runner Archive"
+          },
+          {
+            "level": 2,
+            "title": "Official Acquisition"
+          },
+          {
+            "level": 2,
+            "title": "Supplemental Tables"
+          },
+          {
+            "level": 2,
+            "title": "Training Gates"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Historical Coverage",
+            "excerpt": "Generated from `data/processed/historical/coverage.json` on 2026-07-25."
+          },
+          {
+            "heading": "Canonical Runner Archive",
+            "excerpt": "- Date range: 2005-01-01 through 2025-12-27.\n- 202,174 runner rows across 16,460 races.\n- 173,456 rows come from reparsed official HKJC result pages.\n- 26,633 rows come from Mexwell, 1,857 from Jeffrey Muller, and 228 from the Swords 2008-09 workbook after deterministic source precedence.\n- 35 dead-heat races are preserved.\n- 176 races have no winner row: 87 in 2005, 54 in 2006, 31 in 2007, and 4 in 2008. These are retained for provenance but must be excluded from supervised outcome training and result-based evaluation.\n\n| Year | Races | Runners | No winner | Dead heat |\n|---:|---:|---:|---:|---:|\n| 2005 | 706 | 7,513 | 87 | 0 |\n| 2006 | 704 | 7,859 | 54 | 1 |\n| 2007 | 731 | 8,552 | 31 | 3 |\n| 2008 | 715 | 8,925 | 4 | 3 |\n| 2009 | 744 | 9,487 | 0 | 1 |\n| 2010 | 777 | 9,753 | 0 | 2 |\n| 2011 | 759 | 9,472 | 0 | 1 |\n| 2012 | 769 | 9,604 | 0 | 1 |\n| 2013 | 778 | 10,012 | 0 | 2 |\n| 2014 | 757"
+          },
+          {
+            "heading": "Official Acquisition",
+            "excerpt": "- 1,506 official venue-dates are complete, containing 14,091 races and 173,456 reparsed runner rows.\n- 4,832 calendar venue-dates were verified as having no meeting.\n- 257 known meetings before the reliable official archive boundary are marked `archive_unavailable`, not `no_meeting`.\n- Earliest recovered official meeting: 2008-04-02 at Happy Valley.\n- Raw HTML is immutable under `data/historical/hkjc-2005-2025/raw/`; normalized JSON can be reproducibly rebuilt with `scripts.reparse_official_history`.\n- The official reparse retains race class, distance, prize, going, course, lengths behind, running positions, jockey name, and trainer name for all 173,456 official runner rows. These fields were present in the immutable HKJC pages but were discarded by the earlier parser."
+          },
+          {
+            "heading": "Supplemental Tables",
+            "excerpt": "| Table | Rows | Date range | Semantics |\n|---|---:|---|---|\n| Timestamped WIN/PLACE odds | 6,402,332 | 2016-09-28 to 2018-06-27 | 259,652 source-naive snapshots across 1,510 races; timezone unverified |\n| Dividends | 26,397 | 2005-01-01 to 2018-07-04 | Post-race payouts only |\n| Sectionals | 365,235 | 2008-06-05 to 2018-06-27 | Runner section positions and times |\n| Horse snapshots | 12,945 | 2016-09-27 to 2018-07-01 | Profile snapshots, not event history |\n| Trackwork | 648,016 | 2015-06-02 to 2017-07-31 | Dated workout events |\n| Barrier trials | 10,219 | 2015-06-02 to 2025-04-15 | Hrosebaby plus DatasetLabs sample |\n| Runner comments | 21,164 | 2015-06-03 to 2017-07-16 | Post-race comments |\n| Incident reports | 3,100 | 2008-09-15 to 2017-07-16 | Steward and veterinary narratives |\n| Point-in-time race cards | 1,278 | 2025-03-02 to 2025-04-09 | Exact capture time unavailable |\n| Lega"
+          },
+          {
+            "heading": "Training Gates",
+            "excerpt": "- Reject races without exactly one winner unless the evaluation explicitly supports dead heats.\n- Never use dividends, result-page odds, final pool totals, incident outcomes, or post-race comments as pre-race features.\n- Keep `odds-snapshots.csv.gz` timestamps source-naive until the timezone is independently verified.\n- Use source and field missingness in `coverage.json`; official results provide race class, distance, course, going, prize, jockey/trainer names, lengths behind, and running positions. Ratings, horse demographics, and stable jockey/trainer IDs still require point-in-time race-card or horse-history joins.\n- Review `source-registry.json` before redistribution or commercial use. Several archives have unknown, share-alike, or non-commercial terms."
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/data/HISTORICAL_SOURCE_RESEARCH.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "d9f2dfc0b3eb7ba181acad1714cc2e748e058e6a0e24132e42f594818461003c",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Historical Data Research"
+          },
+          {
+            "level": 2,
+            "title": "Verified Official Surfaces"
+          },
+          {
+            "level": 2,
+            "title": "Important Limitation"
+          },
+          {
+            "level": 2,
+            "title": "Acquisition Order"
+          },
+          {
+            "level": 2,
+            "title": "Third-Party Archive Acquisition"
+          },
+          {
+            "level": 2,
+            "title": "Archive Semantics"
+          },
+          {
+            "level": 2,
+            "title": "Internet Archive Check"
+          },
+          {
+            "level": 2,
+            "title": "Licensing Boundary"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Historical Data Research",
+            "excerpt": ""
+          },
+          {
+            "heading": "Verified Official Surfaces",
+            "excerpt": "The official HKJC local-results archive accepts date, venue, and race number and returned a complete 2025 race sample without login from the current Hong Kong mobile egress. The result table includes finish order, runner identity, jockey, trainer, carried and declared weights, draw, margins, running positions, finish time, and final displayed WIN odds.\n\nThe official race-card route also returned HTTP 200, but its useful runner content requires browser rendering. Horse profile pages remain directly readable and expose form, trackwork, veterinary, and movement history.\n\nKnown meetings requested through `--meeting-index` are checkpointed as `archive_unavailable` when HKJC returns no parseable result. This is deliberately distinct from `no_meeting`, so inaccessible older records are never reported as races that did not exist."
+          },
+          {
+            "heading": "Important Limitation",
+            "excerpt": "Result-page odds have no observation timestamp. They must be labeled final/result odds and cannot be used as if they were odds available at an earlier wagering decision time. Genuine market-movement and closing-line analysis requires browser snapshots collected before post time or a licensed timestamped feed."
+          },
+          {
+            "heading": "Acquisition Order",
+            "excerpt": "1. Pilot one recent season of official results with immutable raw HTML and normalized JSON.\n2. Browser-collect corresponding pre-race cards and reconcile runner identifiers.\n3. Audit missing meetings, abandoned races, dead heats, scratches, dividends, and sectional availability.\n4. Review HKJC terms and redistribution constraints before bulk collection.\n5. Seek timestamped historical odds from licensed providers while accumulating first-party live snapshots going forward."
+          },
+          {
+            "heading": "Third-Party Archive Acquisition",
+            "excerpt": "The local immutable archive now includes eleven downloaded datasets. SHA-256 hashes, source URLs, licensing, timestamp semantics, and integration status are recorded in `source-registry.json`.\n\nThe most useful additions are:\n\n- Mexwell: 2005-2012 canonical runner coverage, 2016-2018 timestamped WIN/PLACE snapshots, exotic dividends, sectionals, and horse snapshots.\n- Swords 2008-09: runner numbers and names that repair Mexwell missingness, plus 733 steward/veterinary incident narratives.\n- gdaley CC0: final WIN/PLACE odds and dividends for January-August 2005.\n- hrosebaby: 648,016 trackwork events, 9,219 barrier trials, and 21,164 runner comments from 2015-2017.\n- Lantanacamara: 2,367 race incident reports from 2014-2017.\n- DatasetLabs sample: 11 point-in-time race-card dates and 1,000 barrier-trial rows in March-April 2025. The files are dated 2025 despite the dataset's \u201c2024\u201d title.\n- "
+          },
+          {
+            "heading": "Archive Semantics",
+            "excerpt": "Normalized outputs intentionally separate:\n\n- `runners.csv.gz`: race/result facts used to build point-in-time features.\n- `odds-snapshots.csv.gz`: timestamped WIN/PLACE observations; source timezone remains unverified.\n- `legacy-final-odds.csv.gz`: untimestamped result-page WIN/PLACE odds, never valid as earlier pre-race snapshots.\n- `dividends.csv.gz`: post-race payouts, excluded from pre-race outcome features.\n- `sectionals.csv.gz`, `trackwork.csv.gz`, `barrier-trials.csv.gz`, `runner-comments.csv.gz`, `incidents.csv.gz`, and `racecards.csv.gz`: supplemental horse history and point-in-time declarations with explicit source fields."
+          },
+          {
+            "heading": "Internet Archive Check",
+            "excerpt": "The Wayback CDX API was tested for the modern HKJC `LocalResults.aspx` route with a 2005 timestamp filter and returned no captures. Wayback remains useful for targeted recovery when an exact legacy URL is known, but it is not a dependable bulk 2005-2025 source and cannot replace official or structured archives."
+          },
+          {
+            "heading": "Licensing Boundary",
+            "excerpt": "Only the gdaley archive is CC0. Several sources are share-alike, non-commercial, unknown, or inherit unresolved HKJC website terms. Local research use and model-development provenance are recorded, but redistribution and commercial deployment require a source-by-source legal review."
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/data/horse-age-provenance.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "779e9788183e6ae1d0db42ada55e67a43b889eb4385368dedb68f474ae5b4676",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Horse Age Provenance"
+          },
+          {
+            "level": 2,
+            "title": "Model timelines"
+          },
+          {
+            "level": 2,
+            "title": "Why the legacy IDs do not match HKJC"
+          },
+          {
+            "level": 2,
+            "title": "HKJC profile evidence"
+          },
+          {
+            "level": 2,
+            "title": "Accepted age reference contract"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Horse Age Provenance",
+            "excerpt": ""
+          },
+          {
+            "heading": "Model timelines",
+            "excerpt": "The full model joins two timelines, but their age semantics are different.\n\n| Timeline | Age observation | Identity | Calendar semantics |\n|---|---|---|---|\n| Legacy gdaley archive | Directly recorded on each runner row | Anonymized integer `horse_id` | Source dates are deliberately obscured |\n| Canonical 2005-2025 archive | Projected from timestamped profile references | HKJC horse code and profile-cycle ID | Actual race date |\n\nThe legacy age is not inferred and has zero propagation offset. It remains useful as a race-row\nfeature, but it must not be described as an official-ID-linked HKJC profile observation."
+          },
+          {
+            "heading": "Why the legacy IDs do not match HKJC",
+            "excerpt": "The gdaley Kaggle metadata states that horse and jockey names were removed and that the dates in\n`races.csv` were obscured and \"are not the real ones\". The file contains integer horse keys such as\n`1253`; official HKJC result pages instead expose horse codes such as `D263` and profile IDs such as\n`HK_2003_D263`.\n\nThis was verified against the official result page for Sha Tin race 1 on 2005-01-01. The page links\nLEGIONNAIRE as `HK_2003_D263`. The legacy row labeled with the same date/race contains a different\nfield, confirming that date, race number, draw, or runner number cannot be used as a linkage key.\n\nSource metadata:\n\n- <https://www.kaggle.com/datasets/gdaley/hkracing>\n- <https://www.kaggle.com/api/v1/datasets/view/gdaley/hkracing>\n- <https://racing.hkjc.com/racing/information/English/Racing/LocalResults.aspx?RaceDate=2005/01/01&Racecourse=ST&RaceNo=1>"
+          },
+          {
+            "heading": "HKJC profile evidence",
+            "excerpt": "Official historical result pages expose the true HKJC code and profile-cycle ID. Current pages for\nretired horses retain country, colour/sex, import type, owner, rating, sire, dam, and full form, but\ndo not retain the horse's former age. Active profiles expose age at the current capture timestamp.\n\nWayback CDX checks for the sample retired horse returned captures only from 2024 onward, after its\nage had already disappeared. Archived captures can therefore be admitted only when the captured\nHTML contains an explicit age and the Wayback timestamp is stored with it."
+          },
+          {
+            "heading": "Accepted age reference contract",
+            "excerpt": "Every projected canonical age records:\n\n- `horse_age_reference_source`\n- `horse_age_reference_year`\n- `horse_age_reference_value`\n- `horse_age_year_offset`\n- `horse_age_identity_method`\n\nAccepted identity methods are exact profile-page ID or horse-code-to-profile-cycle matching. No\nlegacy anonymized ID is converted into an HKJC code without an explicit upstream linkage table."
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/EXECUTION_PLAN.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "988a16a504d0d81f208962539c8eaf20cffda7b55830cdf9c2c1a63ebcdb5695",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Live Racing Decision Pipeline"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Discovery and contracts"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Lock domain and pool contracts"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Browser live ingestion"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Parse rendered HKJC race pages"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Historical data research and acquisition"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Discover and score 2005-2025 sources"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.2: Prototype historical HKJC collection"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.3: Build the historical coverage manifest"
+          },
+          {
+            "level": 2,
+            "title": "Phase 4: Offline feature pipeline and evaluation"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.1: Build point-in-time race dataset"
+          },
+          {
+            "level": 2,
+            "title": "Phase 5: Models calibration and market blend"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.1: Benchmark race probabilities"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.2: Model finish orders and rank pool combinations"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.3: Estimate fair odds, market odds, and pari-mutuel dividends"
+          },
+          {
+            "level": 2,
+            "title": "Phase 6: Wager strategy, outcome tracking, and continual training"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 6.1: Risk-constrained recommendations and execution port"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 6.2: Reconcile predictions and wagers with official results"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 6.3: Enrich data and retrain after completed meetings"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 6.4: Detect drift and control retraining risk"
+          },
+          {
+            "level": 2,
+            "title": "Phase 7: Hong Kong deployment and end-to-end verification"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 7.1: Package operator workflow"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Live Racing Decision Pipeline",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Build and verify an end-to-end HKJC live odds, horse data, race-aware modeling, calibration, market blending, risk-constrained wagering, and Hong Kong deployment pipeline."
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [ ] Browser-backed HKJC provider captures a real meeting, runners, WIN/PLACE odds, and timestamps on the Hong Kong egress.\n- [ ] Existing horse profile/form/trackwork/veterinary/movement enrichment feeds the same normalized snapshot and model schema.\n- [x] Historical source research identifies and verifies the best obtainable 2005-2025 race, runner, result, dividend, and pre-race odds data, including an HKJC archive-scraping proof of concept where permitted.\n- [x] Every historical source has a coverage, provenance, licensing/access, timestamp semantics, missingness, and reconciliation report before use in training.\n- [ ] Historical data is transformed without future leakage and split chronologically with complete races kept together.\n- [ ] Market baseline, conditional-logit-style race model, and boosted tabular benchmark report race log loss, Brier score, calibration, and simulated WIN"
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Built-in options: pandas/scikit-learn/statsmodels; preserve the existing Python 3.11 environment.\n- Off-the-shelf options: HistGradientBoosting/CatBoost-style tabular ranking before neural race-set models; browser automation only for access paths rejected for direct HTTP.\n- Papers: Benter for fundamental plus public-odds combination; Kelly and chance-constrained work for bankroll growth under estimation risk.\n- Historical data research: inspect official HKJC race results, horse records, race cards, sectional timing, dividends, and archived odds surfaces; compare public datasets and licensed vendors; verify whether archived odds are true pre-race snapshots or only final/starting prices.\n- Pool modeling research: compare Plackett-Luce/Harville-style order models, conditional logit, permutation simulation, calibrated learning-to-rank, and race-set neural models for coherent exact-order an"
+          },
+          {
+            "heading": "Regression Guardrails",
+            "excerpt": "- Planned edit surface: `scrapper/**`, `ima/**`, `tests/**`, `scripts/**`, `deploy/**`, `pyproject.toml`, `README.md`, `docs/**`.\n- Protected behaviors: existing fixture normalization, legacy model columns, horse page extraction, user dataset/notebook reorganization, raw source data.\n- Likely consumers: CLI operators, training jobs, inference jobs, strategy engine, future authenticated transaction worker.\n- Damage radius: systemic.\n- Proof plan: unit tests, temporal leakage assertions, probability-sum assertions, deterministic strategy tests, CLI smoke tests, real browser snapshot, and deployment config validation.\n- Atomic units: browser provider; dataset/splits; model evaluation; calibration/blend; strategy/execution boundary; deployment/runbook.\n- Commit plan: no commits unless requested; preserve user worktree changes."
+          },
+          {
+            "heading": "Phase 1: Discovery and contracts",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 1.1: Lock domain and pool contracts",
+            "excerpt": "- Commit: define race, odds, prediction, recommendation, and execution contracts.\n- Tests: contract serialization and probability validation tests.\n- Success Criteria: WIN works now and other pools can be represented without changing ingestion boundaries.\n- Planned Touch Files: `ima/domain.py`, `tests/test_domain.py`, `docs/EXECUTION_PLAN.md`.\n- Checklist:\n  - [ ] Define timestamped pool snapshot and decision contracts.\n  - [ ] Define fail-closed validation and audit fields."
+          },
+          {
+            "heading": "Phase 2: Browser live ingestion",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 2.1: Parse rendered HKJC race pages",
+            "excerpt": "- Commit: add Chrome-backed odds provider and provider selection.\n- Tests: recorded rendered-HTML parser tests plus existing scraper tests.\n- Success Criteria: stable DOM IDs produce normalized runners and real odds; CLI writes a real snapshot.\n- Planned Touch Files: `scrapper/browser_odds.py`, `scrapper/pipeline.py`, `scrapper/cli.py`, `scrapper/tests/**`, `pyproject.toml`.\n- Checklist:\n  - [ ] Implement Chrome invocation and rendered DOM parsing.\n  - [ ] Map DOM data into the existing provider payload contract.\n  - [ ] Capture all displayed pool combinations, odds/dividend estimates, sell status, pool totals, update timestamps, and scratches rather than only WIN/PLACE runner odds.\n  - [ ] Run and preserve ignored live snapshot evidence."
+          },
+          {
+            "heading": "Phase 3: Historical data research and acquisition",
+            "excerpt": ""
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/MODEL_EXPERIMENT_DASHBOARD_PLAN.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "db23ec88c1014773d1ac480f0b1bdbdec6573f375cbfa58fc3e7b1b2832f05f4",
+        "headings": [
+          {
+            "level": 1,
+            "title": "1997-2025 Model Experiment Dashboard"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Dataset unification"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Join legacy and canonical timelines"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Experiment runner"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Parameter-grid evaluation"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Interactive dashboard"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Accuracy visualization surface"
+          },
+          {
+            "level": 2,
+            "title": "Phase 4: Verification"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.1: End-to-end proof"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "1997-2025 Model Experiment Dashboard",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Run parameterized race-aware models on unified 1997-2025 data and publish interactive accuracy graphs and per-run metrics."
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [x] Unified dataset spans 1997-06-02 through 2025-12-27 without duplicated 2005 races.\n- [x] At least 12 parameterized logit/boosted runs use one fixed chronological split.\n- [x] Every run records parameters, Top-1, Top-3, mean winner rank, log loss, Brier, ECE, pseudo-R2, blend weights, and incremental pseudo-R2.\n- [x] Results are emitted as CSV, JSON, PNG graphs, and a self-contained interactive HTML dashboard.\n- [x] Dashboard filters, metric selection, sorting, table selection, and responsive layouts are browser-verified.\n- [x] Full Python tests and artifact integrity checks pass."
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Built-in options: reuse `ima.data`, `ima.modeling`, calibration, market blend, and chronological race splitting.\n- Off-the-shelf options: matplotlib for exported PNGs; self-contained HTML/CSS/JavaScript for zero-install browser interaction.\n- Official / standards sources: no external model API; preserve documented final-odds versus timestamped-odds semantics."
+          },
+          {
+            "heading": "Regression Guardrails",
+            "excerpt": "- Planned edit surface: `ima/data.py`, `ima/modeling.py`, `ima/experiments.py`, `scripts/run_experiments.py`, `tests/test_data.py`, `tests/test_experiments.py`, `README.md`, `docs/model-results/**`, generated ignored artifacts.\n- Protected behaviors: legacy and canonical single-run training, live scraping, paper trading, model artifact loading, chronological leakage controls, and market timestamp warnings.\n- Likely consumers: researchers running offline training, model promotion jobs, and operators reviewing experiment results.\n- Damage radius: moderate.\n- Proof plan: focused dataset/experiment tests, fixed split assertions, full unit suite, PNG existence, browser interactions, desktop/mobile screenshots, and canvas pixel checks."
+          },
+          {
+            "heading": "Phase 1: Dataset unification",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 1.1: Join legacy and canonical timelines",
+            "excerpt": "- Commit: add a non-overlapping 1997-2025 point-in-time dataset builder.\n- Tests: date bounds, race uniqueness, horse namespace isolation, market normalization, and chronological split boundaries.\n- Success Criteria: one frame spans 1997-2025, uses legacy races only before 2005, and validates all race invariants.\n- Planned Touch Files:\n  - `ima/data.py`\n  - `tests/test_data.py`\n- Checklist:\n  - [x] Prefix legacy race/horse IDs and align feature columns.\n  - [x] Concatenate legacy pre-2005 rows with canonical 2005-2025 rows.\n  - [x] Validate normalized probabilities and fixed chronological split."
+          },
+          {
+            "heading": "Phase 2: Experiment runner",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 2.1: Parameter-grid evaluation",
+            "excerpt": "- Commit: add reproducible experiment specifications, execution, ranking, and artifact export.\n- Tests: parameter application, deterministic run IDs, metric completeness, stable split reuse, and CSV/JSON output.\n- Success Criteria: at least 12 completed runs compare logit and boosted parameters on identical held-out races.\n- Planned Touch Files:\n  - `ima/modeling.py`\n  - `ima/experiments.py`\n  - `scripts/run_experiments.py`\n  - `tests/test_experiments.py`\n- Checklist:\n- [x] Make estimator parameters explicit without changing defaults.\n- [x] Evaluate calibrated fundamentals and market blends for every run.\n- [x] Export ranked machine-readable results and model artifacts."
+          },
+          {
+            "heading": "Phase 3: Interactive dashboard",
+            "excerpt": ""
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/MODEL_SELF_OPTIMIZER_PLAN.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "e2a8ded1c5ea8b7c460ca05f2286b376de82b75b179a966cf9bbc8512cc58605",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Model Self Optimizer Loop"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Out of Scope"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "SOTA, Standards, And Best Practices"
+          },
+          {
+            "level": 2,
+            "title": "Dependency and Tooling Preflight"
+          },
+          {
+            "level": 2,
+            "title": "Server Execution Target"
+          },
+          {
+            "level": 2,
+            "title": "Deterministic Real-User Test"
+          },
+          {
+            "level": 2,
+            "title": "Fulfillment and Readback Proof"
+          },
+          {
+            "level": 2,
+            "title": "Armageddon Mode"
+          },
+          {
+            "level": 2,
+            "title": "Generality Guardrail"
+          },
+          {
+            "level": 2,
+            "title": "Ordered State and Dashboard"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Discovery"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Map Existing Experiment Substrate"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.2: Define Campaign Inputs and Metric Gates"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Contract"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Add Trial and Decision Schemas"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.2: Add Local Deterministic Policy"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Orchestrator"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Add Optional OpenRouter Planner Boundary"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.2: Add Invalid Proposal Rejection"
+          },
+          {
+            "level": 2,
+            "title": "Phase 4: Execution"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.1: Add Terminal CLI"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.2: Prepare Isolated Cortex-Server Runner"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.3: Execute Bounded Trial Batch"
+          },
+          {
+            "level": 2,
+            "title": "Phase 5: Evaluation"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.1: Campaign Report and Best Candidate Readback"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.2: Armageddon and Final Gate"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Model Self Optimizer Loop",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Build a terminal-run, agent-assisted model optimization loop that proposes bounded experiments, executes local training/evaluation, reads metrics, and decides the next model, feature, transformation, calibration, or hyperparameter trial without automatic promotion."
+          },
+          {
+            "heading": "Out of Scope",
+            "excerpt": "- Race-day estimation UI or terminal workflow; keep `docs/WEDNESDAY_RACE_READINESS_PLAN.md` for later.\n- Automated live betting or any wager execution.\n- Automatic champion promotion.\n- Unbounded AutoML searches.\n- Letting an LLM directly run shell commands, edit files, delete data, or bypass validation gates.\n- Using final odds, dividends, results, or future race data as pre-race features."
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [ ] A dedicated terminal command exists conceptually as `ima-optimize run`, with dry-run and resume modes.\n- [ ] The optimizer stores every campaign, trial, metric readback, and decision in append-only JSON/JSONL artifacts.\n- [ ] Each trial has a single bounded hypothesis and one coherent changed surface: hyperparameters, feature family, transform, dataset window, model family, calibration, or market blend.\n- [ ] A local deterministic controller, not the LLM, validates allowed actions, leakage rules, budgets, and promotion gates.\n- [ ] An optional OpenRouter orchestrator can propose the next `ExperimentSpec` as structured JSON, but the local controller owns execution.\n- [ ] The loop can run without OpenRouter in deterministic local-policy mode for testing and offline work.\n- [ ] The loop uses OpenRouter `service_tier: \"flex\"` for lower-cost synchronous planner calls where latency can b"
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Built-in options:\n  - Reuse `ima.experiments.ExperimentSpec`, `run_experiments`, default grids, `results_frame`, MLflow tracking, `ModelRegistry`, `scripts.run_experiments`, `scripts.run_benter_grid`, and feature study scripts.\n  - Reuse existing chronological race splits and race-aware evaluation instead of inventing validation.\n- Off-the-shelf options:\n  - Use OpenRouter-compatible chat completions only as a structured proposal source.\n  - Use OpenRouter `service_tier: \"flex\"` for discounted synchronous planner calls when available.\n  - Use OpenRouter Batch API for asynchronous batches of independent proposal/review requests when a 24-hour completion window is acceptable.\n  - Prefer JSON schema / tool-style outputs where supported; fall back to local deterministic policy if unavailable.\n  - Keep scikit-learn, pandas, joblib, MLflow, and existing repo experiment primitives as executio"
+          },
+          {
+            "heading": "SOTA, Standards, And Best Practices",
+            "excerpt": "- Current SOTA / prior art:\n  - Model search should be champion/challenger, time-aware, and reproducible.\n  - LLM orchestration is useful for proposing next experiments from metric summaries, but unsafe as an executor.\n  - AutoML-style search is helpful for hyperparameters; horse-racing models additionally need feature timing, market baseline, and leakage controls.\n- Official docs, standards, specs, or platform guidance:\n  - OpenRouter structured output and tool-calling APIs support schema-oriented orchestration, but compatibility is model/provider-specific.\n  - OpenRouter flex can be requested with `service_tier: \"flex\"`; for optimizer v1 prefer explicit service tier so cost behavior is visible in logs.\n  - OpenRouter Batch API is for work that does not need immediate response; do not use it for interactive terminal decisions unless the command is explicitly running in async batch mode."
+          },
+          {
+            "heading": "Dependency and Tooling Preflight",
+            "excerpt": "- Required verification tools:\n  - Python 3.11, editable project install, unittest, existing experiment scripts, optional MLflow, optional OpenRouter API key.\n  - For server campaigns: current Tailscale reachability, key-only SSH, `sudo` approval for user creation, Python build tooling, Git, disk space, and resource readback from `free -h`, `nproc`, `lscpu`, and `df -h`.\n- Existing tooling found:\n  - `ima/experiments.py` has `ExperimentSpec`, default experiment specs, `run_experiments`, result flattening, dashboard rendering, and MLflow logging.\n  - `scripts/run_benter_grid.py` can run selected default specs against rich schemas.\n  - `tests/test_experiments.py` covers experiment grids, dashboards, run history, feature studies, and publisher contracts.\n- Install or repair commands:\n  - `python3.11 -m venv .venv`\n  - `.venv/bin/python -m pip install -e '.[dev]'`\n- Browser/runtime binaries:"
+          },
+          {
+            "heading": "Server Execution Target",
+            "excerpt": "- Target host:\n  - `cortex-server` over Tailscale, previously known at `100.95.24.121`; re-verify current peer address before use.\n- Current observed state on 2026-09-22:\n  - Local route to `100.95.24.121` goes through Tailscale interface `utun8`.\n  - `tailscale status` reports `cortex-server` offline, last seen about 6 hours before the probe.\n  - TCP/22 and SSH to `cortex@100.95.24.121` timed out.\n  - Therefore no live server resource claim is current yet; the user-provided `128GB RAM and dual CPU` spec must be verified after the peer comes online.\n- Isolation model:\n  - Create a new OS user, proposed name `imaopt`, only after explicit approval.\n  - Home/work root: `/home/imaopt/iMa`.\n  - Artifact root: `/home/imaopt/iMa/artifacts/agentic-learning`.\n  - Virtualenv owned by `imaopt`, not shared with existing service users.\n  - No writes under `/srv/apps/cortex`, existing `cortex` user ho"
+          },
+          {
+            "heading": "Deterministic Real-User Test",
+            "excerpt": "- Entry point:\n  - `ima-optimize run` from the repository root.\n- User workflow:\n  - Run `ima-optimize run --campaign artifacts/agentic-learning/smoke --max-trials 1 --policy local --dry-run`.\n  - Run `ima-optimize run --campaign artifacts/agentic-learning/smoke --max-trials 4 --proposal-batch-size 2 --max-concurrent-trials 2 --policy local --dry-run`.\n  - In remote mode, use OpenRouter flex planner calls by default and use `--openrouter-batch` only when the operator accepts async proposal turnaround.\n  - Run the same command without `--dry-run` on a tiny fixture or selected specs.\n  - Read terminal summary and campaign artifacts.\n  - Resume the same campaign and confirm it does not repeat completed trials.\n  - For server mode, SSH to `cortex-server`, switch to the isolated optimizer user, and run the same terminal workflow from `/home/imaopt/iMa`.\n- Stable inputs or fixtures:\n  - Existi"
+          },
+          {
+            "heading": "Fulfillment and Readback Proof",
+            "excerpt": "- Requested final user-visible result:\n  - A terminal optimizer loop plus persisted campaign artifacts under `artifacts/agentic-learning/<campaign>/`.\n- Required write/mutation operation:\n  - Write campaign metadata, proposed specs, trial results, decisions, reports, optional models, optional MLflow runs.\n- Readback surface:\n  - Terminal output, `campaign.json`, `trials.jsonl`, `decisions.jsonl`, `best_candidate.json`, `report.md`, generated model artifact paths, and MLflow/exported results when enabled.\n- Expected content, rows, fields, counts, or behavior:\n  - Campaign records data cutoff, validation window, budget, policy, OpenRouter model, `service_tier` preference, async batch preference, allowed actions, metric gates, max proposal batch size, max concurrent trials, and champion baseline.\n  - Trial records include `trial_id`, parent, OpenRouter request id or batch item id when appli"
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/MULTI_POOL_MARKET_PIPELINE_PLAN.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "b7de259586d51022256dd4b286b11f58c5c77157a966fdc5208de39a369ffef1",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Multi-Pool Market-Combined Prediction"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Out Of Scope"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Multi-pool inference"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Expand blended runner strengths into pool combinations"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Market-combination visibility"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Expose source-specific experiment metrics"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Pipeline dashboard"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Visualize transformations and pool outputs"
+          },
+          {
+            "level": 2,
+            "title": "Phase 4: Verification and deployment"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.1: Prove and publish"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Multi-Pool Market-Combined Prediction",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Produce auditable live probabilities for standard HKJC single-race pools from market-combined runner strengths and show the complete transformation pipeline in the experiment dashboard."
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [x] Live inference returns ranked probabilities and fair odds for WIN, PLACE, QIN, QPL, TRI, TIERCE, FIRST4, and QUARTET.\n- [x] Fundamental and timestamped WIN-market probabilities are combined before pool expansion.\n- [x] First-time or otherwise unratable runners retain the public-market fallback.\n- [x] Dashboard users can compare fundamental, combined, and market metrics explicitly.\n- [x] Dashboard contains a responsive pipeline graph with every major data transformation and prediction output.\n- [x] Python tests, browser interactions, canvas rendering, and production deployment pass."
+          },
+          {
+            "heading": "Out Of Scope",
+            "excerpt": "- Authenticated wager submission changes.\n- Arbitrary pool-specific market blend weights without timestamped historical pool prices and outcomes.\n- Claims that result-page final odds were tradable before the race."
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Existing implementation: `MarketBlend` performs a fitted log-opinion pool over calibrated fundamental and market-implied runner probabilities.\n- Existing pool engine: fitted Benter second/third-place exponents expand runner strengths into ordered and unordered combination probabilities.\n- Data constraint: the archive has complete final WIN odds but incomplete timestamped historical exotic-pool prices, so pool-specific blend weights cannot yet be fitted without leakage or unsupported assumptions.\n- Selected approach: combine timestamp-valid WIN market information at runner level, then derive coherent pool probabilities and compare them with live pool prices downstream."
+          },
+          {
+            "heading": "Regression Guardrails",
+            "excerpt": "- Planned edit surface: `ima/inference.py`, `ima/pools.py`, `ima/experiments.py`, `scripts/predict_pools.py`, `tests/test_operations_inference.py`, `tests/test_modeling.py`, `tests/test_experiments.py`, `docs/model-results/dashboard-template.html`, `docs/MULTI_POOL_MARKET_PIPELINE_PLAN.md`, `public/**`, `README.md`.\n- Protected behaviors: race-normalized WIN probabilities, public fallback for unrated runners, fitted order exponents, chronological evaluation, scraper contracts, and Kelly limits.\n- Likely consumers: live prediction jobs, paper trading, experiment review, and Vercel dashboard users.\n- Damage radius: moderate.\n- Proof plan: focused pool tests, full unittest suite, compile/diff checks, generated artifact checks, desktop/mobile browser QA, production HTTP and JSON checks."
+          },
+          {
+            "heading": "Phase 1: Multi-pool inference",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 1.1: Expand blended runner strengths into pool combinations",
+            "excerpt": "- Commit: add ranked multi-pool live prediction contracts and inference.\n- Tests: pool coverage, probability coherence, combination cardinality, fair odds, and market fallback.\n- Success Criteria: one live race frame produces ranked outputs for every supported single-race pool.\n- Planned Touch Files:\n  - `ima/inference.py`\n  - `ima/pools.py`\n  - `scripts/predict_pools.py`\n  - `tests/test_operations_inference.py`\n  - `tests/test_modeling.py`\n- Checklist:\n  - [x] Define canonical supported pool names and aliases.\n  - [x] Reuse calibrated market-combined WIN probabilities as order strengths.\n  - [x] Emit coherent combination probabilities and fair odds."
+          },
+          {
+            "heading": "Phase 2: Market-combination visibility",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 2.1: Expose source-specific experiment metrics",
+            "excerpt": "- Commit: publish fundamental, market, and combined probability paths in dashboard data.\n- Tests: source selection and complete metric payload.\n- Success Criteria: dashboard can switch between model-only and market-combined performance without ambiguity.\n- Planned Touch Files:\n  - `ima/experiments.py`\n  - `tests/test_experiments.py`\n- Checklist:\n  - [x] Preserve existing fundamental and blended metrics.\n  - [x] Add explicit source metadata and timestamp limitations.\n  - [x] Keep market benchmark visible for every run."
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/PIPELINE_TRANSPARENCY_PLAN.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "fddb477a3ab8d5151ef96ce3a765f7cbeeee4fcfe053db5b31fd2fdb6ad9cebc",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Technical Pipeline Transparency Dashboard"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Out Of Scope"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Code-backed manifest"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Encode exact training and live transformations"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Interactive representation"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Replace the current pipeline layout"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Verification and deployment"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Generate, inspect, and publish"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Technical Pipeline Transparency Dashboard",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Replace the ambiguous pipeline diagram with a simple, technically complete, code-backed representation of historical training and live prediction transformations."
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [x] Training and live inference are shown as separate ordered pipelines.\n- [x] Every stage exposes exact inputs, operation, outputs, fit scope, and leakage boundary.\n- [x] The dashboard lists all 23 current model features and distinguishes collected-but-unused data.\n- [x] Stubbed or unavailable historical fields are disclosed explicitly.\n- [x] Market probability conversion, calibration, blend formula, fallback, pool expansion, and Kelly logic are represented exactly.\n- [x] Desktop and mobile Playwright QA verifies stage navigation, readable details, no overlap, and no horizontal page overflow.\n- [x] Full tests, commit, push, and Vercel production verification pass."
+          },
+          {
+            "heading": "Out Of Scope",
+            "excerpt": "- Changing the actual estimator feature set or retraining models.\n- Claiming collected veterinary or trackwork data affects the current baseline when it does not.\n- Changing wager execution limits or authenticated submission."
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Source of truth: `ima/data.py`, `ima/modeling.py`, `ima/inference.py`, `ima/pools.py`, `ima/strategy.py`, `ima/training.py`, `scrapper/contracts.py`, and `scrapper/pipeline.py`.\n- Selected pattern: a code-generated pipeline manifest plus an interactive stage explorer, rather than manually duplicated prose in HTML.\n- Visual structure: one short numbered overview, separate Training and Live tabs, and one detailed technical panel for the selected stage."
+          },
+          {
+            "heading": "Regression Guardrails",
+            "excerpt": "- Planned edit surface: `ima/pipeline_transparency.py`, `ima/experiments.py`, `tests/test_experiments.py`, `docs/model-results/dashboard-template.html`, `docs/PIPELINE_TRANSPARENCY_PLAN.md`, `public/index.html`, `public/results.json`.\n- Protected behaviors: model features, preprocessing, calibration, market blend, fallback, pool formulas, tests, result metrics, and dashboard controls.\n- Likely consumers: researchers, model reviewers, paper-trading operators, and dashboard users.\n- Damage radius: small for modeling behavior, moderate for dashboard presentation.\n- Proof plan: manifest contract tests, full Python suite, Playwright desktop/mobile interaction checks, screenshots, production HTTP/JSON verification."
+          },
+          {
+            "heading": "Phase 1: Code-backed manifest",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 1.1: Encode exact training and live transformations",
+            "excerpt": "- Commit: add a pipeline manifest generated from current feature constants and implementation contracts.\n- Tests: exact feature counts, stage ordering, collected-versus-used disclosure, and required technical fields.\n- Success Criteria: dashboard data cannot silently drift from the active 23-feature contract.\n- Planned Touch Files:\n  - `ima/pipeline_transparency.py`\n  - `ima/experiments.py`\n  - `tests/test_experiments.py`\n- Checklist:\n  - [x] Define training stages and live stages separately.\n  - [x] Export exact numeric and categorical feature names.\n  - [x] Export known stubbed fields and collected-but-unused groups."
+          },
+          {
+            "heading": "Phase 2: Interactive representation",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 2.1: Replace the current pipeline layout",
+            "excerpt": "- Commit: build a numbered overview and selectable technical stage explorer.\n- Tests: tab controls, stage controls, feature table, formula rendering, and leakage labels.\n- Success Criteria: each selected stage answers what enters, what happens, what exits, what is fitted, and what may leak.\n- Planned Touch Files:\n  - `docs/model-results/dashboard-template.html`\n  - `tests/test_experiments.py`\n- Checklist:\n  - [x] Separate Historical training and Live prediction views.\n  - [x] Add exact stage detail panel and transformation tables.\n  - [x] Show data actually used versus merely collected."
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/RICH_FEATURE_STUDY_PLAN.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "3da8123a7ca210783ad15116be262935f4333f5db20849c1d5c68d0234ea9daf",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Benter-Inspired Rich Feature Study"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Out Of Scope"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Feature contract and coverage"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Recover discarded official HKJC race metadata"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.2: Define the Benter and notebook feature contract"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Leakage-safe feature engineering"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Build point-in-time rich features"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Model comparison and importance analysis"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Compare models and rank variable contribution"
+          },
+          {
+            "level": 2,
+            "title": "Phase 4: Dashboard publication and verification"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.1: Publish transparent feature-study results"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Benter-Inspired Rich Feature Study",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Build and evaluate a leakage-safe rich horse-racing feature set from Benter factor families and repository notebooks, with correlation, significance, redundancy, and out-of-sample contribution rankings."
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [x] Preserve the current 23-feature baseline and evaluate the rich challenger on the identical chronological train, validation, and test races.\n- [x] Implement a versioned rich feature contract derived only from information available before each race.\n- [x] Cover every Benter factor family that the local archive can support and disclose unsupported or partial factors.\n- [x] Incorporate leakage-safe notebook ideas: recent form, speed, distance, weight, odds history, jockey/trainer history, and days since last race.\n- [x] Add auxiliary trackwork, barrier-trial, and sectional features with explicit availability indicators and coverage metrics.\n- [x] Produce pairwise correlation, redundancy flags, target association significance, mutual information, and held-out permutation importance.\n- [x] Rank individual variables and feature families by deterioration in race log loss when permuted.\n- ["
+          },
+          {
+            "heading": "Out Of Scope",
+            "excerpt": "- Treating Benter's unpublished proprietary factor definitions as known.\n- Using post-race comments, incidents, dividends, final outcomes, or future horse snapshots as pre-race mutable information.\n- Promoting the challenger to automated wagering without forward paper-trading evidence."
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Built-in options: `ima/data.py`, `ima/modeling.py`, the three feature notebooks, and normalized historical auxiliary tables.\n- Paper source: `research/1994-benter.pdf`, especially current condition, past performance, performance adjustments, situational factors, and preference factors.\n- Statistical methods: Spearman redundancy matrix, point-biserial association with false-discovery-rate correction, mutual information, and held-out race-log-loss permutation importance.\n- Selected pattern: preserve baseline constants; add a named rich feature schema and a separate challenger study before any production promotion."
+          },
+          {
+            "heading": "Regression Guardrails",
+            "excerpt": "- Planned edit surface: `scrapper/historical/results.py`, `ima/historical_sources.py`, `scripts/reparse_official_history.py`, `tests/test_historical.py`, `tests/test_historical_sources.py`, `ima/feature_sets.py`, `ima/rich_features.py`, `ima/feature_analysis.py`, `ima/modeling.py`, `scripts/run_feature_study.py`, `tests/test_rich_features.py`, `tests/test_feature_analysis.py`, `tests/test_modeling.py`, `tests/test_experiments.py`, `docs/model-results/dashboard-template.html`, `public/index.html`, `public/results.json`, `docs/data/HISTORICAL_COVERAGE.md`, `docs/RICH_FEATURE_STUDY_PLAN.md`, regenerated normalized historical outputs, and generated `artifacts/feature-study/*` reports.\n- Protected behaviors: baseline feature schema, chronological splitting, calibration, market blending, pool probabilities, first-timer fallback, experiment history, and authenticated execution safeguards.\n- Lik"
+          },
+          {
+            "heading": "Phase 1: Feature contract and coverage",
+            "excerpt": ""
+          },
+          {
+            "heading": "Subphase 1.1: Recover discarded official HKJC race metadata",
+            "excerpt": "- Commit: extend the official parser and normalization contract with race class, distance, prize, going, course, lengths behind, and running positions.\n- Tests: official fixture parsing, metadata normalization, immutable raw archive reparse, canonical source precedence, and field coverage gains.\n- Success Criteria: official HKJC rows retain the richer fields already present in archived source pages without changing raw files.\n- Planned Touch Files:\n  - `scrapper/historical/results.py`\n  - `ima/historical_sources.py`\n  - `scripts/reparse_official_history.py`\n  - `tests/test_historical.py`\n  - `tests/test_historical_sources.py`\n  - `docs/data/HISTORICAL_COVERAGE.md`\n- Checklist:\n  - [x] Parse official race metadata and runner lengths/running positions.\n  - [x] Reparse immutable official HTML and rebuild the canonical archive.\n  - [x] Verify official coverage and source precedence."
+          },
+          {
+            "heading": "Subphase 1.2: Define the Benter and notebook feature contract",
+            "excerpt": "- Commit: add named baseline and rich schemas plus factor-family provenance and support status.\n- Tests: exact feature uniqueness, family membership, baseline compatibility, and unsupported-factor disclosure.\n- Success Criteria: every rich variable has a definition, source, availability rule, and Benter/notebook provenance.\n- Planned Touch Files:\n  - `ima/feature_sets.py`\n  - `tests/test_rich_features.py`\n- Checklist:\n  - [x] Define rich numeric and categorical feature names.\n  - [x] Map features to Benter factor families and notebook origins.\n  - [x] Keep the baseline schema byte-for-byte compatible."
+          },
+          {
+            "heading": "Phase 2: Leakage-safe feature engineering",
+            "excerpt": ""
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/RUN_CENTRIC_DASHBOARD_REDESIGN_PLAN.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "173a85dff66fdc4e9fd26c9c44761ba695406aa6126f0ffe7844cc7b6fbc60c0",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Run-Centric Dashboard Redesign"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Out Of Scope"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "Dependency and Tooling Preflight"
+          },
+          {
+            "level": 2,
+            "title": "Audit Evidence"
+          },
+          {
+            "level": 2,
+            "title": "Proposed Information Architecture"
+          },
+          {
+            "level": 3,
+            "title": "Global Shell"
+          },
+          {
+            "level": 3,
+            "title": "Runs View"
+          },
+          {
+            "level": 3,
+            "title": "Selected Run Workspace"
+          },
+          {
+            "level": 3,
+            "title": "Pipeline View"
+          },
+          {
+            "level": 3,
+            "title": "Variables View"
+          },
+          {
+            "level": 3,
+            "title": "Live Simulation View"
+          },
+          {
+            "level": 3,
+            "title": "Visual Encoding Contract"
+          },
+          {
+            "level": 2,
+            "title": "Data Contract Changes"
+          },
+          {
+            "level": 2,
+            "title": "Target Architecture"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 0: MLflow Experiment Registry"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 0.1: Add local MLflow tracking integration"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Audit And Contracts"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Freeze current behavior and chart semantics"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.2: Normalize dashboard publication contract"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Run-Centric Information Architecture"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Build the global shell and single state model"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.2: Build all-run comparison and aggregate modes"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.3: Build selected-run workspace"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Plotly Migration"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Replace all custom charts with Plotly"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.2: Recompose Pipeline and Variables views"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.3: Design and validate live simulation audit view"
+          },
+          {
+            "level": 2,
+            "title": "Phase 4: Verification And Release"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.1: Responsive and semantic QA"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.2: Publish and verify preview"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Run-Centric Dashboard Redesign",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Replace the cluttered mixed-chart dashboard with a truthful run-centric analysis workspace while preserving pipeline transparency and variable contribution analysis."
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [ ] The default view is `All runs`, with one synchronized run table and comparison chart.\n- [ ] A user can select one run from the table or a chart point and every run-specific panel updates from that same run identity.\n- [ ] Comparison scope supports individual runs and aggregates by feature schema, model family, and execution batch.\n- [ ] Fundamental, market, and combined results are visually and textually distinct; the market benchmark is shown once, not duplicated as if it were one result per run.\n- [ ] The latest-notebook-only panel is removed. Notebook runs participate in the same selection and comparison workflow as all other runs.\n- [ ] Data pipeline and live prediction pipeline remain available as a dedicated top-level view.\n- [ ] Variable contribution, full ranking, family contribution, coverage, and correlation remain available as a dedicated top-level view.\n- [ ] Live simul"
+          },
+          {
+            "heading": "Out Of Scope",
+            "excerpt": "- Retraining models or changing historical datasets.\n- Changing model formulas, calibration, pool probability calculations, or wagering rules.\n- Implementing new simulator formulas directly in the production dashboard before the run-centric prototype and data contract are accepted.\n- Adding authenticated wagering.\n- Replacing the static Vercel deployment architecture unless implementation proves the current single-file approach unmaintainable."
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Built-in option inspected: retain the current static Vercel deployment and vanilla browser runtime, but separate data contract, state, views, and chart modules.\n- Off-the-shelf option selected: Plotly.js for every analytical chart because it is already used by the dashboard and supports scatter, bar, heatmap, hover, legends, selection, and responsive SVG rendering.\n- Rejected option: React/Next.js migration. The dashboard is a read-only static analytical artifact; adding application rendering, package/build infrastructure, and framework state does not solve the core truthfulness problem.\n- Rejected option: keep custom canvas charts. They lack consistent hover/legend behavior and duplicate layout, scale, resize, and interaction code already supplied by Plotly.\n- Architecture evidence: refreshed Megatect analysis identified five repo systems, one dependency cycle, `ima/experiments.py` as"
+          },
+          {
+            "heading": "Dependency and Tooling Preflight",
+            "excerpt": "- Python: use the repository `pyproject.toml` and standard `python3 -m unittest` test runner.\n- Browser proof: use Playwright through `python3 -m playwright install chromium` and `python3 -m playwright`; if the package is absent, add project-local Playwright tooling before browser QA.\n- Dashboard publication: keep the static Vercel artifact model and regenerate `public/index.html`, `public/results.json`, and `public/results.csv` only from checked-in scripts.\n- MLflow tracking: use SQLite-backed tracking URIs such as `sqlite:///path/to/mlflow.db`; MLflow 3 file-store tracking is avoided except for explicit migration/compatibility work.\n- External data: do not require live HKJC access for dashboard contract tests; use committed simulation artifacts and synthetic fixtures.\n- Credentials: authenticated wagering, login, MFA, and transaction submission remain out of scope."
+          },
+          {
+            "heading": "Audit Evidence",
+            "excerpt": "- The rendered dashboard is 17,378 px tall on desktop and 26,028 px on mobile.\n- The page exposes 26 sections, 12 tables, 10 second-level headings, 16 third-level headings, five selects, four custom canvases, and three Plotly charts.\n- `renderNotebookRichResults()` reads `DATA.notebook_full_history.run` directly and therefore cannot follow the selected run.\n- Dashboard state is split across `selected`, `source`, `family`, `schema`, `contractSchema`, `studySchema`, `correlationRun`, and `correlationFeature`; related panels can describe different scopes simultaneously.\n- `duration_seconds` is offered as a chart metric, but `drawBarChart()` reads it from `sourceMetrics(run)`, where it does not exist.\n- Market mode repeats the same global market benchmark for every run, visually implying run-level market observations that are not present.\n- The chronological Plotly chart connects points shar"
+          },
+          {
+            "heading": "Proposed Information Architecture",
+            "excerpt": ""
+          },
+          {
+            "heading": "Global Shell",
+            "excerpt": "- Top-level views: `Runs`, `Pipeline`, `Variables`, `Live simulation`.\n- Persist navigable state in URL query parameters: `view`, `run`, `scope`, `source`, `metric`, `schema`, `family`, and `execution`.\n- Use one global selected run. No panel may maintain a competing run selection."
+          },
+          {
+            "heading": "Runs View",
+            "excerpt": "- Default scope: `All runs`.\n- Primary controls: comparison scope, probability source, metric, feature schema, model family, execution batch, and search.\n- Primary chart: run comparison scatter. Default axes are race log loss and Top-1 accuracy; model family uses marker shape, schema uses a restrained color set, and the selected run receives an outline.\n- Secondary chart: execution history using actual execution timestamps. Do not connect separate batches. Optional lines may connect only points inside one explicit sweep batch ordered by `sequence`.\n- Primary table: compact run index with execution, run name, schema, family, selected metric, Top-1, Top-3, log loss, pseudo-R2, and selection action. Advanced metrics remain in run detail.\n- Aggregate modes: `By schema`, `By model family`, and `By execution batch`. Show count, median, interquartile range, best run, and evaluation-window compa"
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "docs/WEDNESDAY_RACE_READINESS_PLAN.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "9efd5239b1a9178b9442a8fa3aa9adf52c0c658dbfca1f6d55b611a373f20932",
+        "headings": [
+          {
+            "level": 1,
+            "title": "Wednesday Race Readiness"
+          },
+          {
+            "level": 2,
+            "title": "GOAL"
+          },
+          {
+            "level": 2,
+            "title": "Out of Scope"
+          },
+          {
+            "level": 2,
+            "title": "Acceptance Criteria"
+          },
+          {
+            "level": 2,
+            "title": "Initial Repo Audit Findings"
+          },
+          {
+            "level": 2,
+            "title": "Research"
+          },
+          {
+            "level": 2,
+            "title": "SOTA, Standards, And Best Practices"
+          },
+          {
+            "level": 2,
+            "title": "Dependency and Tooling Preflight"
+          },
+          {
+            "level": 2,
+            "title": "Deterministic Real-User Test"
+          },
+          {
+            "level": 2,
+            "title": "Fulfillment and Readback Proof"
+          },
+          {
+            "level": 2,
+            "title": "Armageddon Mode"
+          },
+          {
+            "level": 2,
+            "title": "Generality Guardrail"
+          },
+          {
+            "level": 2,
+            "title": "Ordered State and Dashboard"
+          },
+          {
+            "level": 2,
+            "title": "Regression Guardrails"
+          },
+          {
+            "level": 2,
+            "title": "Phase 1: Audit"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.1: Map Current Capabilities and Gaps"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 1.2: Prove Local Tooling Baseline"
+          },
+          {
+            "level": 2,
+            "title": "Phase 2: Readiness"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.1: Verify Official Meeting and Live Scrape Path"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 2.2: Select Champion Model and Validate Feature Compatibility"
+          },
+          {
+            "level": 2,
+            "title": "Phase 3: Terminal-First Estimation"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.1: Define the Minimal Race-Day Terminal Command"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.2: Generate Human-Operator Bet Candidates Without Hiding Abstentions"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 3.3: Record Human Operator Decisions Before Post Time"
+          },
+          {
+            "level": 2,
+            "title": "Phase 4: Settlement"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.1: Collect Official Results and Settle Ledger"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 4.2: Publish Race-Day Report for Review"
+          },
+          {
+            "level": 2,
+            "title": "Phase 5: Agentic Learning"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.1: Build the Agentic Experiment Contract"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.2: Run the First Bounded Agentic Search Campaign"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.3: Agent Evaluates and Chooses the Next Experiment"
+          },
+          {
+            "level": 3,
+            "title": "Subphase 5.4: Champion/Challenger Decision and Next Meeting Loop"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "Wednesday Race Readiness",
+            "excerpt": ""
+          },
+          {
+            "heading": "GOAL",
+            "excerpt": "- Prepare iMa for the next Wednesday Hong Kong race meeting, expected Wednesday 2026-09-23 Hong Kong time unless the official HKJC racecard says otherwise, so it can collect live data, produce human-operator betting recommendations, record pre-race decisions, settle official results, and iterate models in a controlled self-learning loop."
+          },
+          {
+            "heading": "Out of Scope",
+            "excerpt": "- Automated live wager submission.\n- A complicated dashboard or rich race-day UI.\n- Any race-day interface that requires browsing multiple screens, interpreting charts, or manually joining artifacts before seeing the estimate.\n- Storing HKJC credentials, browser profiles, screenshots with account data, or payment/session tokens in the repository.\n- Promoting a challenger model to champion without held-out evaluation against the current champion and market baseline.\n- Claiming a real betting edge from backtests alone."
+          },
+          {
+            "heading": "Acceptance Criteria",
+            "excerpt": "- [ ] Environment preflight passes with Python 3.11, project dependencies, Chrome or Chromium, and the test suite subset needed for live collection, modeling, pools, strategy, ledger, and operations.\n- [ ] The official next meeting is read back from HKJC through the scraper/browser path; race date, venue, race count, first post, and runner counts are written to an operations artifact.\n- [ ] A pinned champion model artifact is selected and its feature schema is compatible with freshly scraped Wednesday runners.\n- [ ] Pre-race snapshots preserve raw HKJC data, normalized runners, model-ready CSV, and all available pool prices for every race that can be collected.\n- [ ] Human-facing recommendations are generated with probability, fair odds, market odds, expected value, proposed stake, reason, risk cap, and \"do not bet\" rows when edge or data quality is insufficient.\n- [ ] Race-day operation"
+          },
+          {
+            "heading": "Initial Repo Audit Findings",
+            "excerpt": "- Existing live paths: `scrapper/cli.py`, `scrapper/pipeline.py`, `scrapper/browser_odds.py`, `scripts/smoke.py`, `scripts/simulate_tomorrow.py`, `scripts/predict_pools.py`, and `scripts/paper_trade.py`.\n- Existing learning paths: `scripts/finalize_meeting.py`, `ima/operations.py`, `ima/training.py`, `ima/registry.py`, `ima/mlflow_tracking.py`, and MLflow commands in `docs/OPERATIONS.md`.\n- Existing experiment paths: `scripts/run_experiments.py`, `scripts/run_benter_grid.py`, `scripts/run_feature_study.py`, `scripts/run_schema_feature_study.py`, `scripts/run_experiments.py`, `scripts/enrich_pool_metrics.py`, `scripts/export_mlflow_dashboard.py`, and `ima/experiments.py`.\n- Existing safety boundary: `ima/execution.py` has `PaperExecutor` and a fail-closed `HKJCWebExecutor`.\n- Existing domain logic: `ima/simulator.py`, `ima/strategy.py`, `ima/pools.py`, `ima/market.py`, `ima/inference.py`,"
+          },
+          {
+            "heading": "Research",
+            "excerpt": "- Built-in options:\n  - Reuse repo-native scrape, simulate, paper-trade, finalize, train, registry, and MLflow commands before adding new workflow code.\n  - Reuse the fail-closed execution boundary and paper ledger for human-operator bets.\n- Off-the-shelf options:\n  - Use scikit-learn/joblib pipelines already declared in `pyproject.toml` for champion/challenger artifacts.\n  - Use MLflow already documented for experiment tracking and model/run comparison.\n  - Use Playwright/Chromium already declared under dev dependencies for browser-backed HKJC collection checks.\n- Official / standards sources:\n  - Official HKJC racecard, odds, results, and dividend pages are the race-day source of truth.\n  - Local `docs/OPERATIONS.md` is the current operational standard for live collection, credentials, and meeting cycle.\n  - Local `README.md` is the current standard for benchmark interpretation and no-"
+          },
+          {
+            "heading": "SOTA, Standards, And Best Practices",
+            "excerpt": "- Current SOTA / prior art:\n  - Parimutuel horse-race betting systems should separate a fundamental probability model from market-implied probabilities, then wager only when calibrated probability beats price after takeout and risk limits.\n  - Benter-style practice favors rigorous feature history, market blending, calibration, bet sizing discipline, and continuous post-race feedback rather than blind model confidence.\n  - Modern model iteration should use time-aware validation, champion/challenger comparisons, and immutable pre-race snapshots to avoid leakage.\n  - Agentic model optimization should behave like a disciplined lab assistant, not an unconstrained optimizer: it proposes a bounded hypothesis, changes one coherent unit, runs a reproducible experiment, reads metrics, records the result, and chooses the next move from evidence.\n  - AutoML-style search is useful for hyperparameters"
+          },
+          {
+            "heading": "Dependency and Tooling Preflight",
+            "excerpt": "- Required verification tools:\n  - `.venv/bin/python`, Python 3.11, project editable install with dev dependencies, Chrome or Chromium, Playwright browser support, unittest, and optional MLflow.\n- Existing tooling found:\n  - `pyproject.toml` declares `ima-racing`, `ima-scrape`, and dev Playwright.\n  - `README.md` and `docs/OPERATIONS.md` document setup, live scrape, simulation, prediction, finalize, and training commands.\n- Install or repair commands:\n  - `python3.11 -m venv .venv`\n  - `.venv/bin/python -m pip install --upgrade pip`\n  - `.venv/bin/python -m pip install -e '.[dev]'`\n  - `.venv/bin/python -m playwright install chromium`\n- Browser/runtime binaries:\n  - Chrome or Chromium is required because direct HKJC GraphQL calls are documented as rejected with `WHITELIST_ERROR`.\n- Real blockers that would prevent setup:\n  - HKJC public site unavailable, egress not accepted by HKJC, brow"
+          },
+          {
+            "heading": "Deterministic Real-User Test",
+            "excerpt": "- Entry point:\n  - A single race-day terminal command from the repository root, for example `ima-raceday estimate`.\n- User workflow:\n  - Set up environment, run fixture-backed scrape, run unit tests, run live race smoke, run one estimate command, read the ranked terminal table, inspect the generated JSON artifact only when needed, and record one paper/operator decision through the ledger path.\n- Stable inputs or fixtures:\n  - `scrapper/tests/fixtures/race_snapshot.json` for fixture-backed scrape.\n  - Existing checked-in historical samples and test fixtures for strategy/model/ledger tests.\n- User-observable assertions:\n  - Commands exit zero.\n  - Terminal output contains race number/date/venue, model version, submission disabled, and a ranked horse table with win probability, fair odds, market odds, edge, and ratable/data-quality status.\n  - Generated artifacts contain race identifiers, r"
+          },
+          {
+            "heading": "Fulfillment and Readback Proof",
+            "excerpt": "- Requested final user-visible result:\n  - Terminal output plus `artifacts/race-day/2026-09-23/` containing official meeting readback, per-race snapshots, prediction JSON, human decision ledger, settlement report, and learning report.\n- Required write/mutation operation:\n  - Write pre-race snapshots before each race.\n  - Write prediction recommendations before post time.\n  - Append operator decisions to the paper/human ledger before post time.\n  - Write official results and settlement after declaration.\n  - Register challenger model artifacts only after validation.\n- Readback surface:\n  - JSON/CSV files under `artifacts/race-day/2026-09-23/`, `artifacts/predictions/`, `artifacts/simulations/`, ledger JSONL, model registry records, and MLflow/exported dashboard if enabled.\n- Expected content, rows, fields, counts, or behavior:\n  - Meeting artifact has official date, venue, and race count."
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "ima_racing.egg-info/dependency_links.txt",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+        "headings": [],
+        "selected_sections": [],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "ima_racing.egg-info/entry_points.txt",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "4d8d1987aa4cb8e27e537bd06d7df79174b58017089b1cd36bfd22d6fc57e070",
+        "headings": [],
+        "selected_sections": [],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "ima_racing.egg-info/requires.txt",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "fe2f78c416e77dade6d14cc0420f5d882efadfde7b92999e24c5ce6b6de136a0",
+        "headings": [],
+        "selected_sections": [],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "ima_racing.egg-info/SOURCES.txt",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "9db85a754ec3c46755da96cdadc32cbca350a9f95dcaf28af2faf28836d7cb3d",
+        "headings": [],
+        "selected_sections": [],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "ima_racing.egg-info/top_level.txt",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "2dfe590172e8937f00fce7381b78c958833cc23dda212559225b06940bdea1b5",
+        "headings": [],
+        "selected_sections": [],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "notebooks/README.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "62605ff5729daf1addb03373fe06041ab1beeaa09e438900b43fb73950478a32",
+        "headings": [
+          {
+            "level": 1,
+            "title": "iMa: Handicap Horse Racing Probability Estimation & Modeling"
+          },
+          {
+            "level": 2,
+            "title": "Overview"
+          },
+          {
+            "level": 2,
+            "title": "Objectives"
+          },
+          {
+            "level": 2,
+            "title": "Features"
+          },
+          {
+            "level": 2,
+            "title": "Installation"
+          },
+          {
+            "level": 1,
+            "title": "Clone the repository"
+          },
+          {
+            "level": 1,
+            "title": "Install dependencies"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "iMa: Handicap Horse Racing Probability Estimation & Modeling",
+            "excerpt": ""
+          },
+          {
+            "heading": "Overview",
+            "excerpt": "Welcome to **iMa**, a repository dedicated to exploring probability estimation and modeling techniques in **handicap horse racing**. This project documents various approaches, statistical models, and simulations used to assess the likelihood of different race outcomes. The repository serves as both a learning resource and a testing ground for refining predictive methods in horse racing.\n\n> **Note:** This work is based on the research of mathematician **Bill Benter** and his paper *Computer-Based Horse Race Handicapping and Wagering Systems: A Report* (William Benter, HK Betting Syndicate, Hong Kong)."
+          },
+          {
+            "heading": "Objectives",
+            "excerpt": "- \ud83d\udcca Develop and test models to estimate probabilities in **handicap horse racing**.\n- \ud83d\udd0d Analyze historical race data to uncover patterns and insights.\n- \ud83e\udd16 Compare different probability estimation techniques, including machine learning, Bayesian inference, and traditional statistical methods.\n- \ud83d\udee0 Provide a structured and reproducible framework for probability modeling in horse racing."
+          },
+          {
+            "heading": "Features",
+            "excerpt": "- \ud83d\udcdd **Jupyter Notebooks**: The repository primarily consists of Jupyter notebooks for easy experimentation and visualization.\n- \ud83d\udcc2 **Data Collection & Preprocessing**: Scripts and methodologies for gathering and cleaning race data.\n- \ud83c\udfb2 **Probability Estimation Models**:\n  - \ud83d\udcc8 Statistical models (e.g., Elo, Poisson, logistic regression).\n  - \ud83e\udd16 Machine learning approaches (e.g., random forests, neural networks, gradient boosting).\n  - \ud83d\udcca Bayesian inference and Markov models.\n- \ud83c\udfc7 **Handicap Adjustments**: Methods for incorporating weight penalties and race conditions into predictions.\n- \ud83c\udfc6 **Simulations & Backtesting**: Testing models against historical races to evaluate accuracy and reliability.\n- \ud83d\udcca **Visualization & Insights**: Graphs and tools for understanding race dynamics and prediction effectiveness."
+          },
+          {
+            "heading": "Installation",
+            "excerpt": "To use this repository, clone it and install the required dependencies:\n\n```sh"
+          },
+          {
+            "heading": "Clone the repository",
+            "excerpt": "git clone https://github.com/yourusername/iMa.git\ncd iMa"
+          },
+          {
+            "heading": "Install dependencies",
+            "excerpt": "pip install -r requirements.txt"
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      },
+      {
+        "path": "scrapper/README.md",
+        "kind": "other-doc",
+        "authority": "supporting",
+        "precedence": 20,
+        "content_hash": "c77c30657031281cb39c0c4457d6ca3da196745f3f50f4530fa897e6dc2fa4e1",
+        "headings": [
+          {
+            "level": 1,
+            "title": "iMa Live Race Scraper"
+          },
+          {
+            "level": 2,
+            "title": "Run"
+          },
+          {
+            "level": 2,
+            "title": "Model Readiness"
+          },
+          {
+            "level": 2,
+            "title": "Verify"
+          }
+        ],
+        "selected_sections": [
+          {
+            "heading": "iMa Live Race Scraper",
+            "excerpt": "This package fetches an HKJC race, maps WIN and PLACE odds to each declared runner, follows every active horse to its HKJC pages, and writes the exact feature columns used by the legacy `all_train_set.csv` notebook workflow."
+          },
+          {
+            "heading": "Run",
+            "excerpt": "```sh\npython3 -m scrapper.cli --race 1 --date 2026-07-25 --venue ST\n```\n\nThe default output directory is `scrapper/snapshots/`. Each poll writes:\n\n- An immutable raw GraphQL response.\n- A normalized runner snapshot.\n- Normalized horse profile, form, trackwork, veterinary, and movement records.\n- A model-compatible CSV.\n- A readiness report listing missing features and inactive runners.\n\nUse a recorded response when HKJC blocks the current network:\n\n```sh\npython3 -m scrapper.cli \\\n  --race 1 \\\n  --fixture scrapper/tests/fixtures/race_snapshot.json \\\n  --output /tmp/ima-snapshots\n```"
+          },
+          {
+            "heading": "Model Readiness",
+            "excerpt": "The live API directly supplies runner identity, draw, carried/body weight, rating, gear, jockey, trainer, and current odds. The scraper then reads each horse's form page to derive prior speed, results, odds, weights, experience, and cumulative finish statistics. Trackwork, veterinary, and movement records are preserved as structured enrichment for future models.\n\nCurrent horses do not overlap the repository's 1997-2005 numeric horse IDs. Do not fill missing history with zero. The generated CSV marks each row with `prediction_ready` and lists missing fields. A current historical-results provider and horse identity map are required before live rows can be passed safely to the existing model.\n\nAn optional identity map is a CSV with:\n\n```csv\nlive_horse_code,historical_horse_id\nH001,3917\n```"
+          },
+          {
+            "heading": "Verify",
+            "excerpt": "```sh\npython3 -m unittest discover -s scrapper/tests -v\n```"
+          }
+        ],
+        "status": "current",
+        "rationale": "documentation file"
+      }
+    ],
+    "conflicts": [],
+    "warnings": []
+  }
 }

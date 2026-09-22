@@ -1,0 +1,1267 @@
+{
+  "backing_services": [
+    {
+      "kind": "sqlite",
+      "source": ".env.example"
+    },
+    {
+      "kind": "sqlite",
+      "source": "docs/OPERATIONS.md"
+    }
+  ],
+  "capability_hints": [],
+  "config_sources": [
+    {
+      "kind": "config-file",
+      "source": "artifacts/feature-study/playwright.config.js"
+    },
+    {
+      "kind": "env-file",
+      "source": ".env.example"
+    }
+  ],
+  "deployment_descriptors": [
+    {
+      "kind": "file",
+      "source": "deploy/launchd/com.ima.retrain.plist"
+    },
+    {
+      "kind": "file",
+      "source": "deploy/systemd/ima-retrain.service"
+    },
+    {
+      "kind": "file",
+      "source": "deploy/systemd/ima-retrain.timer"
+    },
+    {
+      "kind": "file",
+      "source": "vercel.json"
+    }
+  ],
+  "env_keys": [
+    {
+      "class": "external-service",
+      "key": "DASHBOARD_URL",
+      "source": "artifacts/feature-study/dashboard-qa.spec.js"
+    },
+    {
+      "class": "external-service",
+      "key": "MLFLOW_TRACKING_URI",
+      "source": "ima/mlflow_tracking.py"
+    }
+  ],
+  "has_package_json": false,
+  "package_manager": "unknown",
+  "root": "/Users/milkingthesun/Projects/iMa",
+  "runtime_units": [
+    {
+      "id": "file:artifacts/agentic-learning/local-exec-smoke/trials/trial-0001/models/logit-c005-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/agentic-learning/local-exec-smoke/trials/trial-0001/models/logit-c005-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf15.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf15.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf31.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf31.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf15.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf15.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2three.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2three.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2zero.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2zero.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf63.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf63.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf15.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf15.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf31.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf31.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf63.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr010-leaf63.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-logit-c005-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-logit-c005-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-logit-c010-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-logit-c010-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-logit-c050-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-logit-c050-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-logit-c050-unweighted.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-logit-c050-unweighted.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-logit-c100-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-logit-c100-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/benter-rich-grid/models/benter-logit-c200-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/benter-rich-grid/models/benter-logit-c200-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr003-leaf15.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr003-leaf15.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr003-leaf31.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr003-leaf31.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr006-leaf15.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr006-leaf15.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr006-leaf31-l2three.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr006-leaf31-l2three.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr006-leaf31-l2zero.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr006-leaf31-l2zero.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr006-leaf31.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr006-leaf31.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr006-leaf63.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr006-leaf63.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr010-leaf15.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr010-leaf15.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr010-leaf31.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr010-leaf31.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/boost-lr010-leaf63.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/boost-lr010-leaf63.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/logit-c005-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/logit-c005-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/logit-c010-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/logit-c010-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/logit-c050-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/logit-c050-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/logit-c050-unweighted.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/logit-c050-unweighted.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/logit-c100-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/logit-c100-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/full-history/models/logit-c200-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/full-history/models/logit-c200-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/notebook-rich-v2-logit/models/notebook-logit-c050-balanced.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/notebook-rich-v2-logit/models/notebook-logit-c050-balanced.joblib"
+    },
+    {
+      "id": "file:artifacts/experiments/notebook-rich-v2/models/notebook-boost-lr006-leaf15.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/experiments/notebook-rich-v2/models/notebook-boost-lr006-leaf15.joblib"
+    },
+    {
+      "id": "file:artifacts/feature-study/selected-rich-model.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/feature-study/selected-rich-model.joblib"
+    },
+    {
+      "id": "file:artifacts/models/benchmark/boosted.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/models/benchmark/boosted.joblib"
+    },
+    {
+      "id": "file:artifacts/models/benchmark/logit.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/models/benchmark/logit.joblib"
+    },
+    {
+      "id": "file:artifacts/models/benter-benchmark/boosted.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/models/benter-benchmark/boosted.joblib"
+    },
+    {
+      "id": "file:artifacts/models/benter-benchmark/logit.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/models/benter-benchmark/logit.joblib"
+    },
+    {
+      "id": "file:artifacts/models/canonical-2005-2025/boosted.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/models/canonical-2005-2025/boosted.joblib"
+    },
+    {
+      "id": "file:artifacts/models/canonical-2005-2025/logit.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/models/canonical-2005-2025/logit.joblib"
+    },
+    {
+      "id": "file:artifacts/models/legacy-rerun/boosted.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/models/legacy-rerun/boosted.joblib"
+    },
+    {
+      "id": "file:artifacts/models/legacy-rerun/logit.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/models/legacy-rerun/logit.joblib"
+    },
+    {
+      "id": "file:artifacts/smoke/notebook-rich-auxiliary/auxiliary.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/smoke/notebook-rich-auxiliary/auxiliary.joblib"
+    },
+    {
+      "id": "file:artifacts/smoke/notebook-rich-winner/winner.joblib",
+      "kind": "runtime-file",
+      "source": "artifacts/smoke/notebook-rich-winner/winner.joblib"
+    },
+    {
+      "id": "file:notebooks/logreg_poly.joblib",
+      "kind": "runtime-file",
+      "source": "notebooks/logreg_poly.joblib"
+    },
+    {
+      "id": "file:notebooks/nn.joblib",
+      "kind": "runtime-file",
+      "source": "notebooks/nn.joblib"
+    }
+  ],
+  "schema_version": 1,
+  "state_surfaces": [
+    {
+      "kind": "state-file",
+      "source": "data/historical/hkjc-2005-2025/checkpoint.sqlite"
+    },
+    {
+      "kind": "state-file",
+      "source": "data/historical/hkjc-boundary/checkpoint.sqlite"
+    },
+    {
+      "kind": "state-file",
+      "source": "docs/prototypes/run-centric-pages/02-runs-by-schema.png"
+    },
+    {
+      "kind": "state-file",
+      "source": "scripts/run_schema_feature_study.py"
+    }
+  ],
+  "telemetry_signals": [
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/agentic-learning/local-exec-smoke/trials/trial-0001/results.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/agentic-learning/openrouter-live-smoke/campaign.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/agentic-learning/openrouter-live-smoke/dry-run.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/agentic-learning/openrouter-live-smoke/openrouter-planner.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/experiments/benter-rich-grid/results.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/experiments/full-history/results.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/experiments/notebook-rich-v2-logit/results.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/experiments/notebook-rich-v2/results.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/models/canonical-2005-2025/report.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "artifacts/simulations/next-available/2026-07-27.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2008-06-22/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2009-06-28/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2010-06-27/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2010-11-06/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2011-11-13/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2012-11-10/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-02-17/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-03-02/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-03-06/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-03-17/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-05-18/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-06-08/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-06-23/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-07-07/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-09-17/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-10-01/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-11-03/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-12-01/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-12-26/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2013-12-29/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2014-04-09/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2014-04-13/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2014-05-10/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2014-05-28/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2014-06-28/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2014-10-29/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2014-11-30/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-01-01/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-01-10/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-01-18/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-03-08/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-03-25/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-05-16/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-06-07/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-07-01/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-09-16/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-10-04/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-10-25/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2015-11-11/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2016-01-09/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2016-09-11/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2019-11-17/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2019-12-08/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2019-12-29/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-01-05/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-01-11/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-02-02/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-02-16/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-03-08/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-03-11/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-04-08/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-04-12/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-05-06/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-05-20/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-05-31/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-06-14/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-06-21/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-07-08/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-09-27/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-10-24/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-11-04/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-11-11/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-12-02/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2020-12-20/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-01-20/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-02-17/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-02-24/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-03-24/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-04-21/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-05-19/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-05-30/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-06-23/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-07-14/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-09-08/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-09-26/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-10-01/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-10-17/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-10-27/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-10-31/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-11-17/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-11-24/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-11-28/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-12-05/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-12-27/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2021-12-29/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-01-01/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-01-12/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-01-19/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-01-23/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-02-12/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-02-16/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-02-20/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-03-06/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-03-09/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-03-16/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-03-20/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-03-27/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-04-10/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-04-13/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-04-24/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-05-07/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-05-11/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-05-22/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-05-25/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-05-29/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-06-01/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-06-08/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-06-25/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-07-16/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-09-18/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-09-25/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-09-28/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-10-16/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-10-30/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-11-12/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-11-27/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-12-11/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2022-12-14/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-01-15/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-01-21/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-01-29/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-02-05/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-02-08/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-02-15/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-02-26/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-03-01/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-03-26/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-04-02/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-04-06/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-04-15/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-04-23/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-05-21/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-05-31/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-06-07/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-06-10/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-06-18/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-06-25/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-06-28/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-07-01/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-07-09/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-07-16/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-09-10/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-09-17/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-10-01/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-10-25/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-11-05/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-11-08/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-11-15/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-11-26/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-12-03/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-12-10/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-12-13/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2023-12-17/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-01-01/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-01-07/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-01-21/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-01-24/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-02-04/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-02-07/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-02-15/HV.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-02-25/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-03-16/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-03-24/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-04-03/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-04-20/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-04-28/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-05-29/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-06-08/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-06-15/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-07-14/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-09-22/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-10-13/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-11-03/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-12-08/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2024-12-15/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2025-03-09/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2025-03-15/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2025-04-20/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2025-05-10/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2025-05-25/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2025-06-22/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2025-07-05/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/hkjc-2005-2025/normalized/2025-07-13/ST.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2012_P218.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2012_P219.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2019_D024.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2019_D204.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2019_D496.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2020_E159.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2020_E422.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2021_G042.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2021_G057.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/horse-profiles/normalized/HK_2021_G143.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "data/historical/third-party/mexwell/live_odds.csv"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "docs/OPERATIONS.md"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "docs/prototypes/run-centric-pages/12-pipeline-live.png"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "docs/prototypes/run-centric-pages/17-live-simulation.png"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "docs/prototypes/run-centric-pages/21-mobile-live.png"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/authenticated_execution.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/auxiliary.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/execution.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/experiments.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/inference.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/mlflow_tracking.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/openrouter_orchestrator.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/optimizer.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/pipeline_transparency.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/simulator.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "ima/training.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "public/results.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "pyproject.toml"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scrapper/__init__.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scrapper/browser_pools.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scrapper/cli.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scrapper/contracts.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scrapper/hkjc.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scrapper/horse_pages.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scrapper/tests/fixtures/race_snapshot.json"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scripts/enrich_pool_metrics.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scripts/paper_trade.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scripts/predict_pools.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scripts/simulate_tomorrow.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "scripts/smoke.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "tests/test_experiments.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "tests/test_ledger_registry.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "tests/test_mlflow_tracking.py"
+    },
+    {
+      "kind": "health-or-telemetry-signal",
+      "source": "tests/test_pools.py"
+    }
+  ]
+}

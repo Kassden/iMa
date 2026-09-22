@@ -1,8 +1,13 @@
 digraph architecture {
   rankdir="LR";
   "scrapper/__init__.py";
+  "scrapper/browser_odds.py";
+  "scrapper/browser_pools.py";
   "scrapper/cli.py";
   "scrapper/contracts.py";
+  "scrapper/historical/__init__.py";
+  "scrapper/historical/bulk.py";
+  "scrapper/historical/results.py";
   "scrapper/history.py";
   "scrapper/hkjc.py";
   "scrapper/horse_pages.py";
@@ -10,12 +15,18 @@ digraph architecture {
   "scrapper/tests/__init__.py";
   "scrapper/tests/test_scrapper.py";
   "scrapper/__init__.py" -> "scrapper/pipeline.py";
+  "scrapper/browser_odds.py" -> "scrapper/browser_pools.py";
+  "scrapper/browser_pools.py" -> "scrapper/browser_odds.py";
   "scrapper/cli.py" -> "scrapper/history.py";
   "scrapper/cli.py" -> "scrapper/pipeline.py";
+  "scrapper/historical/bulk.py" -> "scrapper/historical/results.py";
+  "scrapper/historical/results.py" -> "scrapper/horse_pages.py";
+  "scrapper/pipeline.py" -> "scrapper/browser_odds.py";
   "scrapper/pipeline.py" -> "scrapper/contracts.py";
   "scrapper/pipeline.py" -> "scrapper/history.py";
   "scrapper/pipeline.py" -> "scrapper/hkjc.py";
   "scrapper/pipeline.py" -> "scrapper/horse_pages.py";
+  "scrapper/tests/test_scrapper.py" -> "scrapper/browser_odds.py";
   "scrapper/tests/test_scrapper.py" -> "scrapper/contracts.py";
   "scrapper/tests/test_scrapper.py" -> "scrapper/history.py";
   "scrapper/tests/test_scrapper.py" -> "scrapper/horse_pages.py";

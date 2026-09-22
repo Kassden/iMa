@@ -1,4 +1,14 @@
 digraph architecture {
   rankdir="LR";
+  "artifacts";
+  "ima";
   "scrapper";
+  "scripts";
+  "tests";
+  "ima" -> "scrapper";
+  "scripts" -> "ima";
+  "scripts" -> "scrapper";
+  "tests" -> "ima";
+  "tests" -> "scrapper";
+  "tests" -> "scripts";
 }

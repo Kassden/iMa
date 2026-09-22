@@ -1,0 +1,34 @@
+{
+  "finding_counts": {
+    "critical": 0,
+    "high": 0,
+    "low": 0,
+    "moderate": 1
+  },
+  "findings": [
+    {
+      "capability": "unknown",
+      "category": "operational.migration_runtime_gap",
+      "confidence": "medium",
+      "evidence": "state/schema files exist but no migration command or deploy descriptor was detected",
+      "id": "operational.migration_runtime_gap:5a170810a1c7",
+      "owner_hint": "",
+      "recommended_batch": "",
+      "runtime_unit": "",
+      "severity": "moderate",
+      "state_surface": "",
+      "verification_command": "identify migration command and rollback posture"
+    }
+  ],
+  "risk_points": 2,
+  "risk_tier": "low",
+  "schema_version": 1,
+  "summary": {
+    "backing_services": 2,
+    "deployment_descriptors": 4,
+    "env_keys": 2,
+    "runtime_units": 48,
+    "state_surfaces": 4,
+    "telemetry_signals": 237
+  }
+}

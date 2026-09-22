@@ -1,0 +1,26 @@
+digraph architecture {
+  rankdir="LR";
+  "scripts/__init__.py";
+  "scripts/backfill_horse_profiles.py";
+  "scripts/build_historical.py";
+  "scripts/bulk_history.py";
+  "scripts/enrich_pool_metrics.py";
+  "scripts/export_mlflow_dashboard.py";
+  "scripts/finalize_meeting.py";
+  "scripts/import_results_to_mlflow.py";
+  "scripts/optimize.py";
+  "scripts/paper_trade.py";
+  "scripts/predict_pools.py";
+  "scripts/publish_latest_dashboard.py";
+  "scripts/reparse_official_history.py";
+  "scripts/report_horse_age.py";
+  "scripts/run_benter_grid.py";
+  "scripts/run_experiments.py";
+  "scripts/run_feature_study.py";
+  "scripts/run_schema_feature_study.py";
+  "scripts/scrape_history.py";
+  "scripts/simulate_tomorrow.py";
+  "scripts/smoke.py";
+  "scripts/train.py";
+  "scripts/run_schema_feature_study.py" -> "scripts/run_feature_study.py";
+}

@@ -1,0 +1,65 @@
+flowchart LR
+  ima___init___py["ima/__init__.py"]
+  ima_authenticated_execution_py["ima/authenticated_execution.py"]
+  ima_auxiliary_py["ima/auxiliary.py"]
+  ima_data_py["ima/data.py"]
+  ima_domain_py["ima/domain.py"]
+  ima_execution_py["ima/execution.py"]
+  ima_experiments_py["ima/experiments.py"]
+  ima_feature_analysis_py["ima/feature_analysis.py"]
+  ima_feature_sets_py["ima/feature_sets.py"]
+  ima_historical_sources_py["ima/historical_sources.py"]
+  ima_inference_py["ima/inference.py"]
+  ima_ledger_py["ima/ledger.py"]
+  ima_market_py["ima/market.py"]
+  ima_mlflow_tracking_py["ima/mlflow_tracking.py"]
+  ima_modeling_py["ima/modeling.py"]
+  ima_openrouter_orchestrator_py["ima/openrouter_orchestrator.py"]
+  ima_operations_py["ima/operations.py"]
+  ima_optimizer_py["ima/optimizer.py"]
+  ima_pipeline_transparency_py["ima/pipeline_transparency.py"]
+  ima_pools_py["ima/pools.py"]
+  ima_registry_py["ima/registry.py"]
+  ima_rich_features_py["ima/rich_features.py"]
+  ima_simulator_py["ima/simulator.py"]
+  ima_strategy_py["ima/strategy.py"]
+  ima_training_py["ima/training.py"]
+  ima_authenticated_execution_py --> ima_domain_py
+  ima_auxiliary_py --> ima_data_py
+  ima_auxiliary_py --> ima_feature_sets_py
+  ima_execution_py --> ima_domain_py
+  ima_experiments_py --> ima_data_py
+  ima_experiments_py --> ima_feature_sets_py
+  ima_experiments_py --> ima_mlflow_tracking_py
+  ima_experiments_py --> ima_modeling_py
+  ima_experiments_py --> ima_pipeline_transparency_py
+  ima_experiments_py --> ima_pools_py
+  ima_feature_analysis_py --> ima_feature_sets_py
+  ima_feature_analysis_py --> ima_modeling_py
+  ima_feature_sets_py --> ima_data_py
+  ima_inference_py --> ima_data_py
+  ima_inference_py --> ima_feature_sets_py
+  ima_inference_py --> ima_modeling_py
+  ima_inference_py --> ima_pools_py
+  ima_ledger_py --> ima_domain_py
+  ima_modeling_py --> ima_data_py
+  ima_modeling_py --> ima_feature_sets_py
+  ima_openrouter_orchestrator_py --> ima_experiments_py
+  ima_operations_py --> ima_registry_py
+  ima_operations_py --> ima_training_py
+  ima_optimizer_py --> ima_data_py
+  ima_optimizer_py --> ima_experiments_py
+  ima_optimizer_py --> ima_openrouter_orchestrator_py
+  ima_pipeline_transparency_py --> ima_data_py
+  ima_pipeline_transparency_py --> ima_feature_sets_py
+  ima_rich_features_py --> ima_data_py
+  ima_rich_features_py --> ima_feature_sets_py
+  ima_simulator_py --> ima_auxiliary_py
+  ima_simulator_py --> ima_domain_py
+  ima_simulator_py --> ima_inference_py
+  ima_simulator_py --> ima_pools_py
+  ima_simulator_py --> ima_strategy_py
+  ima_strategy_py --> ima_domain_py
+  ima_training_py --> ima_data_py
+  ima_training_py --> ima_modeling_py
+  ima_training_py --> ima_pools_py

@@ -1,7 +1,12 @@
 flowchart LR
   scrapper___init___py["scrapper/__init__.py"]
+  scrapper_browser_odds_py["scrapper/browser_odds.py"]
+  scrapper_browser_pools_py["scrapper/browser_pools.py"]
   scrapper_cli_py["scrapper/cli.py"]
   scrapper_contracts_py["scrapper/contracts.py"]
+  scrapper_historical___init___py["scrapper/historical/__init__.py"]
+  scrapper_historical_bulk_py["scrapper/historical/bulk.py"]
+  scrapper_historical_results_py["scrapper/historical/results.py"]
   scrapper_history_py["scrapper/history.py"]
   scrapper_hkjc_py["scrapper/hkjc.py"]
   scrapper_horse_pages_py["scrapper/horse_pages.py"]
@@ -9,12 +14,18 @@ flowchart LR
   scrapper_tests___init___py["scrapper/tests/__init__.py"]
   scrapper_tests_test_scrapper_py["scrapper/tests/test_scrapper.py"]
   scrapper___init___py --> scrapper_pipeline_py
+  scrapper_browser_odds_py --> scrapper_browser_pools_py
+  scrapper_browser_pools_py --> scrapper_browser_odds_py
   scrapper_cli_py --> scrapper_history_py
   scrapper_cli_py --> scrapper_pipeline_py
+  scrapper_historical_bulk_py --> scrapper_historical_results_py
+  scrapper_historical_results_py --> scrapper_horse_pages_py
+  scrapper_pipeline_py --> scrapper_browser_odds_py
   scrapper_pipeline_py --> scrapper_contracts_py
   scrapper_pipeline_py --> scrapper_history_py
   scrapper_pipeline_py --> scrapper_hkjc_py
   scrapper_pipeline_py --> scrapper_horse_pages_py
+  scrapper_tests_test_scrapper_py --> scrapper_browser_odds_py
   scrapper_tests_test_scrapper_py --> scrapper_contracts_py
   scrapper_tests_test_scrapper_py --> scrapper_history_py
   scrapper_tests_test_scrapper_py --> scrapper_horse_pages_py

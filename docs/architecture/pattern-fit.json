@@ -1,32 +1,497 @@
 {
+  "schema_version": 2,
+  "advisory": "Pattern fit is advisory and must be confirmed against product, ownership, operational, and runtime evidence.",
   "patterns": {
     "modular-monolith": {
       "fit": "fits",
-      "reason": "Default until distribution pressure is proven."
+      "reason": "Conservative default until distribution pressure is proven.",
+      "confidence": 0.84,
+      "evidence": [
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-10-27/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-11-13/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-12-04/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-01-08/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-04-30/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-11-02/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-12-10/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-12-23/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2006_H174.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2007_J164.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2009_L228.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2011_N105.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2013_S152.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2015_V167.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2018_C165.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2019_D460.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2020_E348.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2021_G135.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2022_H806.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2023_J207.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/horse-profiles/normalized/HK_2023_J227.json",
+          "type": "config"
+        },
+        {
+          "detail": "redis",
+          "path": "docs/data/source-registry.json",
+          "type": "config"
+        },
+        {
+          "detail": "sqlalchemy",
+          "path": "pyproject.toml",
+          "type": "manifest"
+        },
+        {
+          "detail": "vercel",
+          "path": "vercel.json",
+          "type": "config"
+        }
+      ],
+      "counter_evidence": [],
+      "missing_evidence": [],
+      "advisory": "Pattern fit is advisory and must be confirmed against product, ownership, operational, and runtime evidence."
     },
     "layered": {
-      "fit": "maybe",
-      "reason": "Fits request/response apps with clear delivery/application/domain/persistence flow."
+      "fit": "needs-evidence",
+      "reason": "Fits request/response apps with clear delivery/application/domain/persistence flow.",
+      "confidence": 0.45,
+      "evidence": [],
+      "counter_evidence": [],
+      "missing_evidence": [
+        "request/response entry points"
+      ],
+      "advisory": "Pattern fit is advisory and must be confirmed against product, ownership, operational, and runtime evidence."
     },
     "clean-architecture": {
-      "fit": "maybe",
-      "reason": "Useful when policy should be testable apart from frameworks, database, or web."
+      "fit": "fits",
+      "reason": "Useful when policy should be testable apart from frameworks, database, or web.",
+      "confidence": 0.84,
+      "evidence": [
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-10-27/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-11-13/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-12-04/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-01-08/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-04-30/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-11-02/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-12-10/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-12-23/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2006_H174.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2007_J164.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2009_L228.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2011_N105.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2013_S152.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2015_V167.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2018_C165.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2019_D460.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2020_E348.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2021_G135.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2022_H806.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2023_J207.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/horse-profiles/normalized/HK_2023_J227.json",
+          "type": "config"
+        },
+        {
+          "detail": "redis",
+          "path": "docs/data/source-registry.json",
+          "type": "config"
+        },
+        {
+          "detail": "sqlalchemy",
+          "path": "pyproject.toml",
+          "type": "manifest"
+        },
+        {
+          "detail": "vercel",
+          "path": "vercel.json",
+          "type": "config"
+        }
+      ],
+      "counter_evidence": [],
+      "missing_evidence": [],
+      "advisory": "Pattern fit is advisory and must be confirmed against product, ownership, operational, and runtime evidence."
     },
     "event-driven": {
       "fit": "fits",
-      "reason": "Fits async workflows, fan-out, ingestion, notifications, and integrations."
+      "reason": "Requires real async workflow, queue, fan-out, ingestion, notification, or worker evidence.",
+      "confidence": 0.88,
+      "evidence": [
+        {
+          "path": "artifacts/agentic-learning/local-exec-smoke/trials/trial-0001/models/logit-c005-balanced.joblib",
+          "type": "worker"
+        },
+        {
+          "path": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf15.joblib",
+          "type": "worker"
+        },
+        {
+          "path": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr003-leaf31.joblib",
+          "type": "worker"
+        },
+        {
+          "path": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf15.joblib",
+          "type": "worker"
+        },
+        {
+          "path": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2three.joblib",
+          "type": "worker"
+        },
+        {
+          "path": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31-l2zero.joblib",
+          "type": "worker"
+        },
+        {
+          "path": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf31.joblib",
+          "type": "worker"
+        },
+        {
+          "path": "artifacts/experiments/benter-rich-grid/models/benter-boost-lr006-leaf63.joblib",
+          "type": "worker"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-10-27/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-11-13/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2024-12-04/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-01-08/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-04-30/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-11-02/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-12-10/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/hkjc-2005-2025/normalized/2025-12-23/HV.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2006_H174.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2007_J164.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2009_L228.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2011_N105.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2013_S152.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2015_V167.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2018_C165.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2019_D460.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2020_E348.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2021_G135.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2022_H806.json",
+          "type": "config"
+        },
+        {
+          "detail": "aws",
+          "path": "data/historical/horse-profiles/normalized/HK_2023_J207.json",
+          "type": "config"
+        },
+        {
+          "detail": "azure",
+          "path": "data/historical/horse-profiles/normalized/HK_2023_J227.json",
+          "type": "config"
+        },
+        {
+          "detail": "redis",
+          "path": "docs/data/source-registry.json",
+          "type": "config"
+        },
+        {
+          "detail": "sqlalchemy",
+          "path": "pyproject.toml",
+          "type": "manifest"
+        },
+        {
+          "detail": "vercel",
+          "path": "vercel.json",
+          "type": "config"
+        }
+      ],
+      "counter_evidence": [
+        {
+          "detail": "openai",
+          "path": "scripts/optimize.py",
+          "type": "keyword"
+        },
+        {
+          "detail": "openai",
+          "path": "tests/test_optimizer.py",
+          "type": "keyword"
+        }
+      ],
+      "missing_evidence": [],
+      "advisory": "Pattern fit is advisory and must be confirmed against product, ownership, operational, and runtime evidence."
     },
     "microkernel": {
-      "fit": "maybe",
-      "reason": "Use only if the product has a stable core plus plugin/extensions shape."
+      "fit": "needs-evidence",
+      "reason": "Use only if the product has a stable core plus plugin/extensions shape.",
+      "confidence": 0.45,
+      "evidence": [],
+      "counter_evidence": [],
+      "missing_evidence": [
+        "plugin registry or extension API evidence"
+      ],
+      "advisory": "Pattern fit is advisory and must be confirmed against product, ownership, operational, and runtime evidence."
     },
     "microservices": {
       "fit": "avoid-for-now",
-      "reason": "Needs scaling, isolation, ownership, security, or release-cadence evidence."
+      "reason": "Needs scaling, isolation, ownership, security, or release-cadence evidence.",
+      "confidence": 0.19,
+      "evidence": [],
+      "counter_evidence": [
+        {
+          "detail": "openai",
+          "path": "scripts/optimize.py",
+          "type": "keyword"
+        },
+        {
+          "detail": "openai",
+          "path": "tests/test_optimizer.py",
+          "type": "keyword"
+        }
+      ],
+      "missing_evidence": [
+        "independent deployment evidence",
+        "team ownership boundaries",
+        "operational scaling pressure"
+      ],
+      "advisory": "Pattern fit is advisory and must be confirmed against product, ownership, operational, and runtime evidence."
     },
     "space-based": {
       "fit": "avoid-for-now",
-      "reason": "Only for extreme throughput/concurrency where central persistence is the bottleneck."
+      "reason": "Only for extreme throughput/concurrency where central persistence is the bottleneck.",
+      "confidence": 0.4,
+      "evidence": [],
+      "counter_evidence": [],
+      "missing_evidence": [
+        "throughput pressure",
+        "in-memory data grid evidence"
+      ],
+      "advisory": "Pattern fit is advisory and must be confirmed against product, ownership, operational, and runtime evidence."
     }
   }
 }
