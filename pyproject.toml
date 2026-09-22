@@ -30,6 +30,7 @@ dependencies = [
 [project.scripts]
 ima-scrape = "scrapper.cli:main"
 ima-train = "scripts.train:main"
+ima-optimize = "scripts.optimize:main"
 
 [project.optional-dependencies]
 dev = [
