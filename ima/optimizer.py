@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .experiments import ExperimentSpec, default_experiment_specs
+from .experiments import ExperimentSpec, experiment_specs
 from .openrouter_orchestrator import OpenRouterConfig, choose_proposals, submit_proposal_batch
 
 
@@ -55,31 +55,40 @@ class MetricGates:
 class CampaignConfig:
     campaign_dir: Path
     policy: str = "local"
-    max_trials: int = 1
+    max_trials: int | None = 1
     proposal_batch_size: int = 1
-    max_concurrent_trials: int = 1
+    max_concurrent_trials: int | str = 1
     timeout_minutes: int | None = None
     service_tier: str | None = None
     openrouter_batch: bool = False
     model: str = "openrouter/local-policy"
+    spec_profile: str = "default"
     champion_run_id: str | None = None
     gates: MetricGates = field(default_factory=MetricGates)
 
     def validate(self) -> None:
-        if self.max_trials <= 0:
-            raise ValueError("max_trials must be positive")
+        if self.max_trials is not None and self.max_trials <= 0:
+            raise ValueError("max_trials must be positive or None for unlimited")
         if self.proposal_batch_size <= 0:
             raise ValueError("proposal_batch_size must be positive")
-        if self.max_concurrent_trials <= 0:
+        if isinstance(self.max_concurrent_trials, str):
+            if self.max_concurrent_trials != "auto":
+                raise ValueError("max_concurrent_trials must be positive or 'auto'")
+        elif self.max_concurrent_trials <= 0:
             raise ValueError("max_concurrent_trials must be positive")
-        if self.proposal_batch_size > self.max_trials:
+        if self.max_trials is not None and self.proposal_batch_size > self.max_trials:
             raise ValueError("proposal_batch_size cannot exceed max_trials")
-        if self.max_concurrent_trials > self.max_trials:
+        if (
+            self.max_trials is not None
+            and isinstance(self.max_concurrent_trials, int)
+            and self.max_concurrent_trials > self.max_trials
+        ):
             raise ValueError("max_concurrent_trials cannot exceed max_trials")
         if self.service_tier and self.service_tier != "flex":
             raise ValueError("only OpenRouter service_tier='flex' is supported")
         if self.openrouter_batch and self.policy == "local":
             raise ValueError("openrouter batch mode requires a remote OpenRouter policy")
+        experiment_specs(self.spec_profile)
 
     def serializable(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -175,11 +184,20 @@ def completed_run_ids(campaign_dir: Path) -> set[str]:
     }
 
 
+def remaining_trial_budget(config: CampaignConfig) -> int | None:
+    if config.max_trials is None:
+        return None
+    return max(0, config.max_trials - len(completed_run_ids(config.campaign_dir)))
+
+
 def local_proposals(config: CampaignConfig) -> list[ExperimentProposal]:
     config.validate()
     done = completed_run_ids(config.campaign_dir)
+    remaining = remaining_trial_budget(config)
+    if remaining == 0:
+        return []
     proposals: list[ExperimentProposal] = []
-    for spec in default_experiment_specs():
+    for spec in experiment_specs(config.spec_profile):
         if spec.run_id in done:
             continue
         proposals.append(
@@ -190,14 +208,18 @@ def local_proposals(config: CampaignConfig) -> list[ExperimentProposal]:
                 spec=spec,
             )
         )
-        if len(proposals) >= min(config.proposal_batch_size, config.max_trials - len(done)):
+        limit = config.proposal_batch_size if remaining is None else min(config.proposal_batch_size, remaining)
+        if len(proposals) >= limit:
             break
     return proposals
 
 
 def available_specs(config: CampaignConfig) -> list[ExperimentSpec]:
     done = completed_run_ids(config.campaign_dir)
-    return [spec for spec in default_experiment_specs() if spec.run_id not in done]
+    remaining = remaining_trial_budget(config)
+    if remaining == 0:
+        return []
+    return [spec for spec in experiment_specs(config.spec_profile) if spec.run_id not in done]
 
 
 def _proposals_from_remote_payload(
@@ -227,13 +249,16 @@ def _proposals_from_remote_payload(
 
 def openrouter_proposals(config: CampaignConfig) -> tuple[list[ExperimentProposal], dict[str, Any]]:
     config.validate()
+    remaining = remaining_trial_budget(config)
+    if remaining == 0:
+        return [], {"proposal_payload": {"proposals": []}}
     remote_config = OpenRouterConfig.from_env(
         model=config.model if config.model != "openrouter/local-policy" else None,
         service_tier=config.service_tier,
     )
     result = choose_proposals(
         available_specs(config),
-        min(config.proposal_batch_size, config.max_trials - len(completed_run_ids(config.campaign_dir))),
+        config.proposal_batch_size if remaining is None else min(config.proposal_batch_size, remaining),
         remote_config,
     )
     proposals = _proposals_from_remote_payload(config, result["proposal_payload"])
@@ -393,11 +418,12 @@ def execute_proposals(
     validate_proposal_batch(proposals)
     payloads = [proposal.serializable() for proposal in proposals]
     results: list[dict[str, Any]] = []
-    if config.max_concurrent_trials == 1 or len(payloads) <= 1:
+    concurrency = resolved_concurrency(config, len(payloads))
+    if concurrency == 1 or len(payloads) <= 1:
         for payload in payloads:
             results.append(_run_trial_worker(payload, str(config.campaign_dir), str(template_path)))
     else:
-        with ProcessPoolExecutor(max_workers=config.max_concurrent_trials) as pool:
+        with ProcessPoolExecutor(max_workers=concurrency) as pool:
             futures = {
                 pool.submit(_run_trial_worker, payload, str(config.campaign_dir), str(template_path)): payload
                 for payload in payloads
@@ -412,6 +438,20 @@ def execute_proposals(
     append_jsonl(config.campaign_dir / "decisions.jsonl", asdict(decision))
     write_report(config.campaign_dir, trial_results, decision)
     return trial_results
+
+
+def resolved_concurrency(config: CampaignConfig, available_trials: int | None = None) -> int:
+    if isinstance(config.max_concurrent_trials, int):
+        value = config.max_concurrent_trials
+    else:
+        cpu_count = os.cpu_count() or 1
+        value = max(1, min(32, cpu_count - 2 if cpu_count > 4 else cpu_count))
+    value = min(value, config.proposal_batch_size)
+    if config.max_trials is not None:
+        value = min(value, config.max_trials)
+    if available_trials is not None:
+        value = min(value, max(1, available_trials))
+    return max(1, value)
 
 
 def write_report(campaign_dir: Path, results: list[TrialResult], decision: AgentDecision) -> Path:
@@ -448,6 +488,7 @@ def write_report(campaign_dir: Path, results: list[TrialResult], decision: Agent
 
 def dry_run(config: CampaignConfig) -> dict[str, Any]:
     write_campaign(config)
+    remaining = remaining_trial_budget(config)
     if config.policy == "openrouter" and config.openrouter_batch:
         remote_config = OpenRouterConfig.from_env(
             model=config.model if config.model != "openrouter/local-policy" else None,
@@ -455,7 +496,7 @@ def dry_run(config: CampaignConfig) -> dict[str, Any]:
         )
         batch = submit_proposal_batch(
             available_specs(config),
-            min(config.proposal_batch_size, config.max_trials - len(completed_run_ids(config.campaign_dir))),
+            config.proposal_batch_size if remaining is None else min(config.proposal_batch_size, remaining),
             remote_config,
         )
         (config.campaign_dir / "openrouter-batch.json").write_text(
@@ -481,6 +522,8 @@ def dry_run(config: CampaignConfig) -> dict[str, Any]:
         "campaign": config.serializable(),
         "proposals": [proposal.serializable() for proposal in proposals],
         "completed_run_ids": sorted(completed_run_ids(config.campaign_dir)),
+        "remaining_trials": "unlimited" if remaining is None else remaining,
+        "resolved_concurrency": resolved_concurrency(config, len(proposals)) if proposals else 0,
     }
     (config.campaign_dir / "dry-run.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True),
@@ -495,24 +538,48 @@ def run_campaign(config: CampaignConfig, dry: bool = False) -> dict[str, Any]:
         return dry_run(config)
     if config.policy == "openrouter" and config.openrouter_batch:
         return dry_run(config)
-    if config.policy == "openrouter":
-        proposals, planner_result = openrouter_proposals(config)
-        (config.campaign_dir / "openrouter-planner.json").write_text(
-            json.dumps(planner_result, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-    else:
-        proposals = local_proposals(config)
-    if not proposals:
-        decision = AgentDecision("stop", "No remaining local proposals.", "none")
-        append_jsonl(config.campaign_dir / "decisions.jsonl", asdict(decision))
-        write_report(config.campaign_dir, [], decision)
-        return {"mode": "complete", "decision": asdict(decision)}
-    results = execute_proposals(config, proposals)
+    deadline = None
+    if config.timeout_minutes is not None:
+        deadline = datetime.now(timezone.utc).timestamp() + (config.timeout_minutes * 60)
+    all_results: list[TrialResult] = []
+    cycles = 0
+    while config.max_trials is None or len(completed_run_ids(config.campaign_dir)) < config.max_trials:
+        if deadline is not None and datetime.now(timezone.utc).timestamp() >= deadline:
+            decision = AgentDecision("continue", "Campaign time budget reached.", "resume_later")
+            append_jsonl(config.campaign_dir / "decisions.jsonl", asdict(decision))
+            write_report(config.campaign_dir, all_results, decision)
+            return {
+                "mode": "time_budget_reached",
+                "results": [asdict(result) for result in all_results],
+                "campaign_dir": str(config.campaign_dir),
+                "cycles": cycles,
+            }
+        if config.policy == "openrouter":
+            proposals, planner_result = openrouter_proposals(config)
+            (config.campaign_dir / f"openrouter-planner-{cycles + 1:04d}.json").write_text(
+                json.dumps(planner_result, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+        else:
+            proposals = local_proposals(config)
+        if not proposals:
+            decision = AgentDecision("stop", "No remaining proposals in the selected spec profile.", "none")
+            append_jsonl(config.campaign_dir / "decisions.jsonl", asdict(decision))
+            write_report(config.campaign_dir, all_results, decision)
+            return {
+                "mode": "complete",
+                "decision": asdict(decision),
+                "results": [asdict(result) for result in all_results],
+                "campaign_dir": str(config.campaign_dir),
+                "cycles": cycles,
+            }
+        all_results.extend(execute_proposals(config, proposals))
+        cycles += 1
     return {
         "mode": "executed",
-        "results": [asdict(result) for result in results],
+        "results": [asdict(result) for result in all_results],
         "campaign_dir": str(config.campaign_dir),
+        "cycles": cycles,
     }
 
 

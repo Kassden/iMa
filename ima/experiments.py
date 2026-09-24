@@ -28,6 +28,10 @@ class ExperimentSpec:
     parameters: dict
 
 
+def _format_grid_value(value: float) -> str:
+    return f"{value:g}".replace(".", "p").replace("-", "m")
+
+
 def default_experiment_specs() -> list[ExperimentSpec]:
     return [
         ExperimentSpec("logit-c005-balanced", "logit", {"C": 0.05, "class_weight": "balanced"}),
@@ -53,6 +57,78 @@ def default_experiment_specs() -> list[ExperimentSpec]:
             {"learning_rate": 0.06, "max_leaf_nodes": 31, "l2_regularization": 3.0},
         ),
     ]
+
+
+def long_experiment_specs() -> list[ExperimentSpec]:
+    """Deterministic high-volume catalogue for unattended optimizer campaigns."""
+    specs = list(default_experiment_specs())
+    seen = {spec.run_id for spec in specs}
+
+    c_values = [
+        0.003, 0.004, 0.005, 0.006, 0.008,
+        0.01, 0.012, 0.015, 0.018, 0.02, 0.025, 0.03, 0.04, 0.05, 0.06, 0.08,
+        0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30, 0.40, 0.50, 0.60, 0.80,
+        1.0, 1.2, 1.5, 1.8, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0,
+        10.0, 12.0, 15.0, 18.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0,
+    ]
+    tolerances = [1e-4, 3e-4, 1e-3, 3e-3, 1e-2]
+    for c_value in c_values:
+        for class_weight in ("balanced", None):
+            weight_label = "balanced" if class_weight else "unweighted"
+            for solver in ("lbfgs", "liblinear"):
+                for fit_intercept in (True, False):
+                    for tolerance in tolerances:
+                        run_id = (
+                            f"logit-long-c{_format_grid_value(c_value)}-{weight_label}-"
+                            f"{solver}-{'intercept' if fit_intercept else 'nointercept'}-"
+                            f"tol{_format_grid_value(tolerance)}"
+                        )
+                        if run_id in seen:
+                            continue
+                        seen.add(run_id)
+                        specs.append(ExperimentSpec(
+                            run_id,
+                            "logit",
+                            {
+                                "C": c_value,
+                                "class_weight": class_weight,
+                                "solver": solver,
+                                "fit_intercept": fit_intercept,
+                                "tol": tolerance,
+                                "max_iter": 1200,
+                            },
+                        ))
+
+    for learning_rate in (0.015, 0.02, 0.03, 0.045, 0.06, 0.08, 0.10, 0.12):
+        for max_iter in (80, 120, 180, 260):
+            for leaf_nodes in (7, 15, 31, 63):
+                for l2 in (0.0, 0.3, 1.0, 3.0, 10.0):
+                    run_id = (
+                        f"boost-long-lr{_format_grid_value(learning_rate)}-"
+                        f"iter{max_iter}-leaf{leaf_nodes}-l2{_format_grid_value(l2)}"
+                    )
+                    if run_id in seen:
+                        continue
+                    seen.add(run_id)
+                    specs.append(ExperimentSpec(
+                        run_id,
+                        "boosted",
+                        {
+                            "learning_rate": learning_rate,
+                            "max_iter": max_iter,
+                            "max_leaf_nodes": leaf_nodes,
+                            "l2_regularization": l2,
+                        },
+                    ))
+    return specs
+
+
+def experiment_specs(profile: str = "default") -> list[ExperimentSpec]:
+    if profile == "default":
+        return default_experiment_specs()
+    if profile == "long":
+        return long_experiment_specs()
+    raise ValueError(f"Unknown experiment spec profile: {profile}")
 
 
 def _run_one(

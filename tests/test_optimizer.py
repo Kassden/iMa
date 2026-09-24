@@ -17,6 +17,7 @@ from ima.optimizer import (
     dry_run,
     local_proposals,
     openrouter_proposals,
+    resolved_concurrency,
     validate_proposal_batch,
     voting_rank,
 )
@@ -37,6 +38,13 @@ class OptimizerTests(unittest.TestCase):
                 proposal_batch_size=2,
                 max_concurrent_trials=2,
                 service_tier="flex",
+            ).validate()
+            CampaignConfig(
+                Path(directory),
+                max_trials=2,
+                proposal_batch_size=2,
+                max_concurrent_trials="auto",
+                spec_profile="long",
             ).validate()
 
     def test_proposal_rejects_forbidden_leakage_terms(self):
@@ -68,6 +76,43 @@ class OptimizerTests(unittest.TestCase):
             proposals = local_proposals(config)
             self.assertNotEqual("logit-c005-balanced", proposals[0].spec.run_id)
             self.assertIn("logit-c005-balanced", completed_run_ids(root))
+
+    def test_local_policy_stops_at_max_completed_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "trials.jsonl").write_text(
+                json.dumps({"run_id": "logit-c005-balanced", "status": "completed"}) + "\n",
+                encoding="utf-8",
+            )
+            config = CampaignConfig(root, max_trials=1, proposal_batch_size=1)
+            self.assertEqual([], local_proposals(config))
+
+    def test_local_policy_accepts_unlimited_campaign_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = CampaignConfig(
+                Path(directory),
+                max_trials=None,
+                proposal_batch_size=40,
+                max_concurrent_trials="auto",
+                spec_profile="long",
+            )
+            proposals = local_proposals(config)
+            self.assertEqual(40, len(proposals))
+            self.assertGreaterEqual(resolved_concurrency(config, len(proposals)), 1)
+
+    def test_long_profile_provides_unattended_experiment_catalogue(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = CampaignConfig(
+                Path(directory),
+                max_trials=1000,
+                proposal_batch_size=32,
+                max_concurrent_trials="auto",
+                spec_profile="long",
+            )
+            proposals = local_proposals(config)
+            self.assertEqual(32, len(proposals))
+            self.assertGreaterEqual(resolved_concurrency(config, len(proposals)), 1)
+            self.assertTrue(any("long" in proposal.spec.run_id for proposal in proposals))
 
     def test_dry_run_writes_campaign_and_proposals(self):
         with tempfile.TemporaryDirectory() as directory:
