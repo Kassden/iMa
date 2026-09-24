@@ -15,6 +15,7 @@ from typing import Any
 
 
 DEFAULT_EXPERIMENT_NAME = "ima-racing"
+DEFAULT_REGISTERED_MODEL_NAME = "ima-racing-candidates"
 
 
 class MLflowUnavailableError(RuntimeError):
@@ -26,16 +27,36 @@ class MLflowConfig:
     tracking_uri: str | None = None
     experiment_name: str = DEFAULT_EXPERIMENT_NAME
     enabled: bool = False
+    register_models: bool = True
+    registered_model_name: str = DEFAULT_REGISTERED_MODEL_NAME
 
     @classmethod
     def from_values(
         cls,
         tracking_uri: str | None = None,
         experiment_name: str | None = None,
+        register_models: bool | None = None,
+        registered_model_name: str | None = None,
     ) -> "MLflowConfig":
         uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI")
         name = experiment_name or os.environ.get("IMA_MLFLOW_EXPERIMENT") or DEFAULT_EXPERIMENT_NAME
-        return cls(tracking_uri=uri, experiment_name=name, enabled=bool(uri))
+        register = register_models
+        if register is None:
+            register = os.environ.get("IMA_MLFLOW_REGISTER_MODELS", "1").lower() not in {
+                "0", "false", "no", "off",
+            }
+        model_name = (
+            registered_model_name
+            or os.environ.get("IMA_MLFLOW_REGISTERED_MODEL")
+            or DEFAULT_REGISTERED_MODEL_NAME
+        )
+        return cls(
+            tracking_uri=uri,
+            experiment_name=name,
+            enabled=bool(uri),
+            register_models=register,
+            registered_model_name=model_name,
+        )
 
 
 def _mlflow():
@@ -78,6 +99,48 @@ def run_parameters(run: dict[str, Any]) -> dict[str, str | int | float | bool]:
     return params
 
 
+def _model_artifact_source(artifact_uri: str, model_path: Path) -> str:
+    return f"{artifact_uri.rstrip('/')}/models/{model_path.name}"
+
+
+def _register_model_version(
+    mlflow,
+    run: dict[str, Any],
+    model_path: Path,
+    config: MLflowConfig,
+    run_id: str,
+    artifact_uri: str,
+) -> None:
+    if not config.register_models or not model_path.is_file():
+        return
+    client = mlflow.tracking.MlflowClient()
+    name = config.registered_model_name
+    try:
+        client.get_registered_model(name)
+    except Exception:
+        try:
+            client.create_registered_model(name)
+        except Exception:
+            client.get_registered_model(name)
+    version = client.create_model_version(
+        name=name,
+        source=_model_artifact_source(artifact_uri, model_path),
+        run_id=run_id,
+    )
+    run["mlflow_registered_model_name"] = name
+    run["mlflow_model_version"] = str(version.version)
+    tags = {
+        "ima.run_id": str(run.get("run_id", "")),
+        "ima.run_key": str(run.get("run_key") or run.get("run_id", "")),
+        "ima.kind": str(run.get("kind", "")),
+        "ima.feature_schema": str(run.get("feature_schema", "baseline-v1")),
+        "ima.race_log_loss": str(run.get("test_blended", {}).get("race_log_loss", "")),
+        "ima.top_pick_win_rate": str(run.get("test_blended", {}).get("top_pick_win_rate", "")),
+    }
+    for key, value in tags.items():
+        client.set_model_version_tag(name, version.version, key, value)
+
+
 def log_experiment_run(
     run: dict[str, Any],
     dataset: dict[str, Any],
@@ -115,12 +178,23 @@ def log_experiment_run(
             "pool_metrics": run.get("pool_metrics", {}),
         }
         mlflow.log_metrics(flatten_numeric_metrics(metric_payload))
-        mlflow.log_dict(run, "run.json")
         mlflow.log_dict({"dataset": dataset, "market_test": market_test}, "context.json")
         if model_path.is_file():
             mlflow.log_artifact(str(model_path), artifact_path="models")
+            try:
+                _register_model_version(
+                    mlflow,
+                    run,
+                    model_path,
+                    config,
+                    active.info.run_id,
+                    active.info.artifact_uri,
+                )
+            except Exception as exc:  # pragma: no cover - depends on MLflow server behavior.
+                run["mlflow_model_registry_error"] = str(exc)
         run["mlflow_run_id"] = active.info.run_id
         run["mlflow_experiment_id"] = active.info.experiment_id
+        mlflow.log_dict(run, "run.json")
         return active.info.run_id
 
 

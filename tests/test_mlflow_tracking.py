@@ -1,6 +1,15 @@
 import unittest
 
-from ima.mlflow_tracking import MLflowConfig, flatten_numeric_metrics, run_parameters
+from pathlib import Path
+from unittest import mock
+
+from ima.mlflow_tracking import (
+    DEFAULT_REGISTERED_MODEL_NAME,
+    MLflowConfig,
+    _model_artifact_source,
+    flatten_numeric_metrics,
+    run_parameters,
+)
 
 
 class MLflowTrackingTests(unittest.TestCase):
@@ -8,6 +17,23 @@ class MLflowTrackingTests(unittest.TestCase):
         config = MLflowConfig.from_values(tracking_uri=None, experiment_name="demo")
         self.assertFalse(config.enabled)
         self.assertEqual("demo", config.experiment_name)
+        self.assertTrue(config.register_models)
+        self.assertEqual(DEFAULT_REGISTERED_MODEL_NAME, config.registered_model_name)
+
+    def test_config_can_disable_model_registration_from_env(self):
+        with mock.patch.dict("os.environ", {"IMA_MLFLOW_REGISTER_MODELS": "false"}):
+            config = MLflowConfig.from_values(tracking_uri="http://mlflow")
+        self.assertTrue(config.enabled)
+        self.assertFalse(config.register_models)
+
+    def test_model_artifact_source_points_to_logged_joblib(self):
+        self.assertEqual(
+            "file:///tmp/mlruns/1/abc/artifacts/models/demo.joblib",
+            _model_artifact_source(
+                "file:///tmp/mlruns/1/abc/artifacts/",
+                Path("demo.joblib"),
+            ),
+        )
 
     def test_flattens_nested_numeric_metrics(self):
         metrics = flatten_numeric_metrics({
@@ -36,4 +62,3 @@ class MLflowTrackingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
