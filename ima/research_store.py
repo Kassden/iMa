@@ -143,7 +143,8 @@ class ResearchLedger:
     def terminal_results(self) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT attempt_id, signature, status, payload_json, result_json
+                """SELECT attempt_id, signature, status, payload_json, result_json,
+                          remote_id, uploaded_at
                    FROM attempts WHERE status IN ('completed', 'failed', 'pruned')
                    ORDER BY updated_at, attempt_id"""
             ).fetchall()
@@ -153,6 +154,8 @@ class ResearchLedger:
             "status": row["status"],
             "payload": json.loads(row["payload_json"]),
             "result": json.loads(row["result_json"] or "{}"),
+            "remote_id": row["remote_id"],
+            "uploaded_at": row["uploaded_at"],
         } for row in rows]
 
     def recover_running(self) -> int:
@@ -168,7 +171,18 @@ class ResearchLedger:
     def snapshot(self) -> dict[str, int]:
         with self._connect() as conn:
             rows = conn.execute("SELECT status, COUNT(*) count FROM attempts GROUP BY status").fetchall()
-        return {row["status"]: int(row["count"]) for row in rows}
+            pending_tracking = conn.execute(
+                """SELECT COUNT(*) count FROM attempts
+                   WHERE status = 'completed' AND uploaded_at IS NULL"""
+            ).fetchone()["count"]
+            pending_tells = conn.execute(
+                """SELECT COUNT(*) count FROM attempts
+                   WHERE status IN ('completed', 'failed', 'pruned') AND told_at IS NULL"""
+            ).fetchone()["count"]
+        snapshot = {row["status"]: int(row["count"]) for row in rows}
+        snapshot["pending_tracking"] = int(pending_tracking)
+        snapshot["pending_tells"] = int(pending_tells)
+        return snapshot
 
     def _init(self) -> None:
         with self._connect() as conn:

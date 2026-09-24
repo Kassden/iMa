@@ -1,4 +1,5 @@
 import unittest
+import tempfile
 
 from pathlib import Path
 from unittest import mock
@@ -9,8 +10,18 @@ from ima.mlflow_tracking import (
     _model_artifact_source,
     flatten_numeric_metrics,
     log_research_package,
+    log_research_package_version,
     run_parameters,
 )
+from ima.research_model_package import ResearchModelPackage
+from ima.research_specs import PipelineRecipe
+import numpy as np
+import pandas as pd
+
+
+class DummyProbabilityModel:
+    def predict_proba(self, frame):
+        return np.full(len(frame), 0.5)
 
 
 class MLflowTrackingTests(unittest.TestCase):
@@ -62,6 +73,52 @@ class MLflowTrackingTests(unittest.TestCase):
 
     def test_research_package_logging_is_noop_when_disabled(self):
         self.assertIsNone(log_research_package(Path("."), MLflowConfig(enabled=False)))
+
+    def test_research_package_version_is_idempotent_and_loadable(self):
+        import mlflow
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = ResearchModelPackage(
+                DummyProbabilityModel(),
+                PipelineRecipe(),
+                protocol_id="protocol-1",
+                code_revision="abc123",
+            )
+            package_dir = package.save(root / "package")
+            config = MLflowConfig(
+                tracking_uri=f"sqlite:///{root / 'mlflow.db'}",
+                experiment_name="agentic-test",
+                enabled=True,
+                register_models=True,
+                registered_model_name="agentic-candidates",
+            )
+            result = {
+                "target_kind": "win_probability",
+                "recipe_hash": package.recipe.recipe_hash(),
+                "objective_name": "development_race_log_loss",
+                "objective_value": 1.0,
+                "lineage": {
+                    "protocol_id": "protocol-1",
+                    "dataset_hash": "dataset-1",
+                    "code_revision": "abc123",
+                    "environment_hash": "environment-1",
+                },
+            }
+            first = log_research_package_version(
+                package_dir, config, attempt_id="attempt-1", result=result
+            )
+            second = log_research_package_version(
+                package_dir, config, attempt_id="attempt-1", result=result
+            )
+            self.assertEqual(first, second)
+            self.assertIn("model_version", first)
+            loaded = mlflow.pyfunc.load_model(first["registered_model_uri"])
+            frame = pd.DataFrame({
+                "race_id": ["R1", "R1", "R2", "R2"],
+                "field_size": [2, 2, 2, 2],
+            })
+            np.testing.assert_allclose(loaded.predict(frame), np.full(4, 0.5))
 
 
 if __name__ == "__main__":

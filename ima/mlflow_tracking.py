@@ -230,6 +230,89 @@ def log_research_package(
         return active.info.run_id
 
 
+def log_research_package_version(
+    package_dir: Path,
+    config: MLflowConfig,
+    *,
+    attempt_id: str,
+    result: dict[str, Any],
+) -> dict[str, str] | None:
+    """Idempotently log and register a loadable target-aware research package."""
+    if not config.enabled:
+        return None
+    mlflow = _mlflow()
+    if config.tracking_uri:
+        mlflow.set_tracking_uri(config.tracking_uri)
+    experiment = mlflow.set_experiment(config.experiment_name)
+    client = mlflow.tracking.MlflowClient()
+    target_kind = str(result.get("target_kind", "win_probability"))
+    model_name = f"{config.registered_model_name}-{target_kind.replace('_', '-')}"
+    existing = client.search_runs(
+        [experiment.experiment_id],
+        filter_string=f"tags.`ima.attempt_id` = '{attempt_id}'",
+        max_results=2,
+    )
+    if len(existing) > 1:
+        raise RuntimeError(f"Duplicate MLflow runs for attempt {attempt_id}")
+    if existing:
+        return _research_model_linkage(client, model_name, existing[0].info.run_id)
+
+    class ResearchPyFuncModel(mlflow.pyfunc.PythonModel):
+        def load_context(self, context) -> None:
+            from ima.research_model_package import load_research_package
+            self.package = load_research_package(Path(context.artifacts["package"]))
+
+        def predict(self, context, model_input, params=None):
+            if self.package.recipe.target.kind == "win_probability":
+                return self.package.predict_proba(model_input)
+            return self.package.predict(model_input)
+
+    tags = {
+        "ima.attempt_id": attempt_id,
+        "ima.recipe_hash": str(result.get("recipe_hash", "")),
+        "ima.target_kind": target_kind,
+        "ima.protocol_id": str(result.get("lineage", {}).get("protocol_id", "")),
+        "ima.dataset_hash": str(result.get("lineage", {}).get("dataset_hash", "")),
+        "ima.code_revision": str(result.get("lineage", {}).get("code_revision", "")),
+        "ima.environment_hash": str(result.get("lineage", {}).get("environment_hash", "")),
+    }
+    with mlflow.start_run(run_name=attempt_id, tags=tags) as active:
+        mlflow.log_params({
+            "attempt_id": attempt_id,
+            "recipe_hash": str(result.get("recipe_hash", "")),
+            "target_kind": target_kind,
+            "objective_name": str(result.get("objective_name", "")),
+        })
+        if result.get("objective_value") is not None:
+            mlflow.log_metric("objective", float(result["objective_value"]))
+        mlflow.log_dict(result, "result.json")
+        mlflow.pyfunc.log_model(
+            name="model",
+            python_model=ResearchPyFuncModel(),
+            artifacts={"package": str(package_dir)},
+            registered_model_name=model_name if config.register_models else None,
+        )
+        run_id = active.info.run_id
+    linkage = _research_model_linkage(client, model_name, run_id)
+    if config.register_models and "model_version" not in linkage:
+        raise RuntimeError(f"MLflow did not register a model version for {attempt_id}")
+    return linkage
+
+
+def _research_model_linkage(client, model_name: str, run_id: str) -> dict[str, str]:
+    versions = list(client.search_model_versions(f"run_id = '{run_id}'"))
+    matching = [version for version in versions if version.name == model_name]
+    linkage = {
+        "run_id": run_id,
+        "model_name": model_name,
+        "model_uri": f"runs:/{run_id}/model",
+    }
+    if matching:
+        linkage["model_version"] = str(matching[0].version)
+        linkage["registered_model_uri"] = f"models:/{model_name}/{matching[0].version}"
+    return linkage
+
+
 def import_runs_from_results(
     results_path: Path,
     tracking_uri: str,

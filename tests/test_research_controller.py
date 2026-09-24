@@ -13,9 +13,21 @@ from ima.research_controller import (
     request_campaign_stop,
     run_research_campaign,
 )
+from ima.research_resources import ResourceSnapshot
+from ima.research_store import ResearchLedger
 
 
 class ResearchControllerTests(unittest.TestCase):
+    def setUp(self):
+        healthy = ResourceSnapshot(10.0, 10.0, 100.0, 128.0, 100.0, 28)
+        self.resource_patch = mock.patch(
+            "ima.research_controller.observe_resources", return_value=healthy
+        )
+        self.resource_patch.start()
+
+    def tearDown(self):
+        self.resource_patch.stop()
+
     def fixture(self, root: Path) -> tuple[Path, Path]:
         frame = pd.read_csv("tests/fixtures/research_races.csv")
         frame["horse_rating"] = 60 + frame["horse_no"]
@@ -189,6 +201,39 @@ class ResearchControllerTests(unittest.TestCase):
                 (config.campaign_dir / "planner" / "cycle-0001.json").read_text(encoding="utf-8")
             )
             self.assertEqual("provider/test-model", planner["requested_model"])
+
+    def test_zero_resource_slots_pause_before_search_reservation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            no_disk = ResourceSnapshot(10.0, 10.0, 100.0, 128.0, 1.0, 28)
+            with mock.patch("ima.research_controller.observe_resources", return_value=no_disk):
+                payload = run_research_campaign(
+                    self.config(campaign, dataset, protocol, max_trials=3)
+                )
+            self.assertEqual("paused_admission", payload["mode"])
+            self.assertEqual(0, payload["search"]["trials"])
+            self.assertEqual(0, payload["resources"]["admission_slots"])
+
+    def test_completed_trial_gets_durable_mlflow_linkage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            config = self.config(campaign, dataset, protocol, max_trials=1)
+            config = CampaignConfig(**{
+                **config.__dict__,
+                "mlflow_tracking_uri": f"sqlite:///{root / 'mlflow.db'}",
+                "max_concurrent_trials": 1,
+            })
+            payload = run_research_campaign(config)
+            self.assertEqual(1, payload["ledger"]["completed"])
+            self.assertEqual(0, payload["ledger"]["pending_tracking"])
+            terminal = ResearchLedger(campaign / "ledger.sqlite").terminal_results()
+            linkage = json.loads(terminal[0]["remote_id"])
+            self.assertIn("run_id", linkage)
+            self.assertIn("model_version", linkage)
 
 
 if __name__ == "__main__":

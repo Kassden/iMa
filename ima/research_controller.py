@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .openrouter_orchestrator import OpenRouterConfig, OpenRouterError, choose_research_proposals
+from .mlflow_tracking import MLflowConfig, log_research_package_version
 from .research_executor import RecipeExecutionRequest, execute_recipe
 from .research_resources import admission_slots, observe_resources, resource_report
 from .research_search import RecipeSearchController, RecipeSuggestion
@@ -40,21 +41,36 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
             )
         ledger.recover_running()
         _reconcile_tells(ledger, search)
+        tracking_errors = _reconcile_tracking(config, ledger)
         cycles = 0
         new_results: list[dict[str, Any]] = []
         while config.max_trials is None or _success_count(ledger) < config.max_trials:
             if (campaign_dir / "STOP").exists():
-                return _finish_payload(campaign_dir, ledger, search, cycles, new_results, "stopped")
+                return _finish_payload(
+                    campaign_dir, ledger, search, cycles, new_results, "stopped",
+                    tracking_errors,
+                )
             remaining = None if config.max_trials is None else config.max_trials - _success_count(ledger)
             batch_size = config.proposal_batch_size if remaining is None else min(
                 config.proposal_batch_size, remaining
             )
+            slots, resources = _slots(config, campaign_dir, batch_size)
+            if slots == 0:
+                payload = _finish_payload(
+                    campaign_dir, ledger, search, cycles, new_results, "paused_admission",
+                    tracking_errors,
+                )
+                payload["resources"] = resources
+                _write_json_atomic(campaign_dir / "status.json", payload)
+                return payload
             suggestions, decision = _next_suggestions(
                 config, campaign_dir, ledger, search, batch_size, cycles
             )
             if not suggestions:
-                return _finish_payload(campaign_dir, ledger, search, cycles, new_results, "paused")
-            slots, resources = _slots(config, campaign_dir, len(suggestions))
+                return _finish_payload(
+                    campaign_dir, ledger, search, cycles, new_results, "paused",
+                    tracking_errors,
+                )
             _write_json_atomic(campaign_dir / "status.json", {
                 "status": "training" if slots else "paused_admission",
                 "updated_at": utc_now(),
@@ -64,10 +80,6 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 "resources": resources,
                 "latest_decision": decision,
             })
-            if slots == 0:
-                return _finish_payload(
-                    campaign_dir, ledger, search, cycles, new_results, "paused_admission"
-                )
             requests: list[RecipeExecutionRequest] = []
             for suggestion in suggestions[:batch_size]:
                 signature = _execution_signature(
@@ -99,6 +111,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 ))
             if not requests:
                 _reconcile_tells(ledger, search)
+                tracking_errors.extend(_reconcile_tracking(config, ledger))
                 cycles += 1
                 continue
             completed = _execute_requests(requests, slots)
@@ -108,8 +121,12 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 _append_jsonl(campaign_dir / "trials.jsonl", row)
                 new_results.append(row)
                 _reconcile_tells(ledger, search)
+                tracking_errors.extend(_reconcile_tracking(config, ledger))
             cycles += 1
-        return _finish_payload(campaign_dir, ledger, search, cycles, new_results, "complete")
+        return _finish_payload(
+            campaign_dir, ledger, search, cycles, new_results, "complete",
+            tracking_errors,
+        )
 
 
 def campaign_status(campaign_dir: Path) -> dict[str, Any]:
@@ -338,13 +355,40 @@ def _reconcile_tells(ledger: ResearchLedger, search: RecipeSearchController) -> 
         ledger.mark_told(effect["attempt_id"])
 
 
+def _reconcile_tracking(config: Any, ledger: ResearchLedger) -> list[str]:
+    if not config.mlflow_tracking_uri:
+        return []
+    errors: list[str] = []
+    tracking = MLflowConfig.from_values(
+        tracking_uri=config.mlflow_tracking_uri,
+        experiment_name="ima-agentic-v2",
+        register_models=True,
+        registered_model_name="ima-agentic-candidates",
+    )
+    for item in ledger.pending_outbox():
+        result = item["result"]
+        package = result.get("artifacts", {}).get("package")
+        if not package:
+            continue
+        try:
+            linkage = log_research_package_version(
+                Path(package), tracking,
+                attempt_id=item["attempt_id"],
+                result=result,
+            )
+            if linkage is not None:
+                ledger.mark_uploaded(item["attempt_id"], json.dumps(linkage, sort_keys=True))
+        except Exception as exc:  # tracking retries on the next controller pass.
+            errors.append(f"{item['attempt_id']}: {type(exc).__name__}: {exc}")
+    return errors
+
+
 def _slots(config: Any, campaign_dir: Path, requested: int) -> tuple[int, dict[str, Any]]:
+    snapshot = observe_resources(str(campaign_dir))
+    ceiling = requested
     if isinstance(config.max_concurrent_trials, int):
-        snapshot = observe_resources(str(campaign_dir))
-        slots = min(config.max_concurrent_trials, requested)
-    else:
-        snapshot = observe_resources(str(campaign_dir))
-        slots = admission_slots(snapshot, requested=requested)
+        ceiling = min(ceiling, config.max_concurrent_trials)
+    slots = admission_slots(snapshot, requested=ceiling)
     return max(0, slots), resource_report(snapshot, max(0, slots))
 
 
@@ -411,6 +455,7 @@ def _finish_payload(
     cycles: int,
     results: list[dict[str, Any]],
     mode: str,
+    tracking_errors: list[str] | None = None,
 ) -> dict[str, Any]:
     payload = {
         "mode": mode,
@@ -421,6 +466,8 @@ def _finish_payload(
         "search": search.snapshot(),
         "updated_at": utc_now(),
     }
+    if tracking_errors:
+        payload["tracking_errors"] = sorted(set(tracking_errors))
     _write_json_atomic(campaign_dir / "status.json", payload)
     return payload
 
