@@ -292,7 +292,7 @@ class OptimizerTests(unittest.TestCase):
 
     def test_openrouter_batch_dry_run_persists_submission(self):
         def fake_post(url, payload, config):
-            self.assertIn("/beta/batches", url)
+            self.assertIn("/v1/batches", url)
             self.assertEqual("/v1/chat/completions", payload["endpoint"])
             self.assertEqual("flex", payload["requests"][0]["body"]["service_tier"])
             return {"id": "batch_123", "status": "validating"}
