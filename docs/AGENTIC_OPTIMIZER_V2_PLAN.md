@@ -3,7 +3,7 @@
 ## GOAL
 Build a terminal-operated research loop that uses completed evidence to choose features, transforms, training windows, model families and hyperparameters; runs experiments autonomously as imaopt; and records reproducible decisions, metrics and model versions in MLflow.
 
-Status: implementation NOT STARTED. This plan is the deliverable of the research request. Research date: 2026-09-24. Reviewed code: f6b560f138b780b9506f9924c65beed31fcb845b.
+Status: PARTIALLY IMPLEMENTED; end-to-end acceptance NOT MET. The 2026-09-25 audit found disconnected proposal/training execution and no automatic feedback. Follow [Agentic Optimizer Feedback Repair](AGENTIC_OPTIMIZER_FEEDBACK_REPAIR_PLAN.md) for the corrective execution sequence; the acceptance criteria below remain binding. Original research date: 2026-09-24. Original reviewed code: f6b560f138b780b9506f9924c65beed31fcb845b.
 
 ## Acceptance Criteria
 - [ ] Two consecutive agent cycles consume completed results and generate valid new recipes outside the legacy catalogue; recorded replay proves cycle two responds to cycle one.
