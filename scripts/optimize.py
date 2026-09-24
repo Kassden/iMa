@@ -22,7 +22,7 @@ def parser() -> argparse.ArgumentParser:
     sub = root.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="Run or dry-run an optimizer campaign")
     run.add_argument("--campaign", type=Path, required=True)
-    run.add_argument("--policy", choices=("local", "openrouter"), default="local")
+    run.add_argument("--policy", choices=("local", "openrouter", "agentic"), default="local")
     run.add_argument(
         "--max-trials",
         type=_parse_max_trials,
@@ -79,13 +79,22 @@ def _render(payload: dict) -> str:
             "",
         ]
         for proposal in proposals:
-            spec = proposal["spec"]
-            lines.extend([
-                f"- {proposal['trial_id']} {spec['run_id']}",
-                f"  hypothesis: {proposal['hypothesis']}",
-                f"  surface: {proposal['changed_surface']}",
-                f"  parameters: {json.dumps(spec['parameters'], sort_keys=True)}",
-            ])
+            if "spec" in proposal:
+                spec = proposal["spec"]
+                lines.extend([
+                    f"- {proposal['trial_id']} {spec['run_id']}",
+                    f"  hypothesis: {proposal['hypothesis']}",
+                    f"  surface: {proposal['changed_surface']}",
+                    f"  parameters: {json.dumps(spec['parameters'], sort_keys=True)}",
+                ])
+            else:
+                recipe = proposal["recipe"]
+                lines.extend([
+                    f"- {proposal['trial_id']} {proposal['recipe_hash']}",
+                    f"  hypothesis: {proposal['hypothesis']}",
+                    f"  axes: {', '.join(proposal['changed_axes'])}",
+                    f"  recipe: {recipe['feature_schema']} / {recipe['model']['kind']}",
+                ])
         lines.append("")
         lines.append("Wrote: dry-run.json")
         return "\n".join(lines)

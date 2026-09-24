@@ -80,6 +80,8 @@ class CampaignConfig:
     gates: MetricGates = field(default_factory=MetricGates)
 
     def validate(self) -> None:
+        if self.policy not in {"local", "openrouter", "agentic"}:
+            raise ValueError("policy must be local, openrouter, or agentic")
         if self.max_trials is not None and self.max_trials <= 0:
             raise ValueError("max_trials must be positive or None for unlimited")
         if self.proposal_batch_size <= 0:
@@ -99,7 +101,7 @@ class CampaignConfig:
             raise ValueError("max_concurrent_trials cannot exceed max_trials")
         if self.service_tier and self.service_tier != "flex":
             raise ValueError("only OpenRouter service_tier='flex' is supported")
-        if self.openrouter_batch and self.policy == "local":
+        if self.openrouter_batch and self.policy in {"local", "agentic"}:
             raise ValueError("openrouter batch mode requires a remote OpenRouter policy")
         if self.spec_profile not in SPEC_PROFILES:
             raise ValueError(f"Unknown experiment spec profile: {self.spec_profile}")
@@ -651,6 +653,22 @@ def write_report(campaign_dir: Path, results: list[TrialResult], decision: Agent
 def dry_run(config: CampaignConfig) -> dict[str, Any]:
     write_campaign(config)
     remaining = remaining_trial_budget(config)
+    if config.policy == "agentic":
+        count = config.proposal_batch_size if remaining is None else min(config.proposal_batch_size, remaining)
+        proposals = research_recipe_proposals(config.campaign_dir, count)
+        payload = {
+            "mode": "dry_run",
+            "campaign": config.serializable(),
+            "proposals": proposals,
+            "completed_run_ids": sorted(completed_run_ids(config.campaign_dir)),
+            "remaining_trials": "unlimited" if remaining is None else remaining,
+            "resolved_concurrency": 0,
+        }
+        (config.campaign_dir / "dry-run.json").write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        return payload
     if config.policy == "openrouter" and config.openrouter_batch:
         remote_config = OpenRouterConfig.from_env(
             model=config.model if config.model != "openrouter/local-policy" else None,
@@ -697,6 +715,8 @@ def dry_run(config: CampaignConfig) -> dict[str, Any]:
 def run_campaign(config: CampaignConfig, dry: bool = False) -> dict[str, Any]:
     write_campaign(config)
     if dry:
+        return dry_run(config)
+    if config.policy == "agentic":
         return dry_run(config)
     if config.policy == "openrouter" and config.openrouter_batch:
         return dry_run(config)
