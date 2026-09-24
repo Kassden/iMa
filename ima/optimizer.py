@@ -328,6 +328,7 @@ def _run_trial_worker(
 ) -> dict[str, Any]:
     from .data import build_full_history_dataset
     from .experiments import run_experiments
+    from .mlflow_tracking import MLflowConfig
 
     spec_payload = proposal_payload["spec"]
     proposal = ExperimentProposal(
@@ -358,6 +359,7 @@ def _run_trial_worker(
             output_dir,
             Path(template_path),
             specs=[proposal.spec],
+            mlflow_config=MLflowConfig.from_values(),
         )
         run = summary["runs"][0]
         return asdict(TrialResult(

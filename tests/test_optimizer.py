@@ -12,6 +12,7 @@ from ima.openrouter_orchestrator import _proposal_payload_from_response
 from ima.optimizer import (
     CampaignConfig,
     ExperimentProposal,
+    _run_trial_worker,
     completed_run_ids,
     dry_run,
     local_proposals,
@@ -77,6 +78,39 @@ class OptimizerTests(unittest.TestCase):
             self.assertTrue((root / "campaign.json").exists())
             written = json.loads((root / "dry-run.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["proposals"][0]["trial_id"], written["proposals"][0]["trial_id"])
+
+    def test_trial_worker_uses_mlflow_environment_config(self):
+        captured = {}
+
+        def fake_run_experiments(frame, output_dir, template_path, specs, mlflow_config=None):
+            captured["mlflow_config"] = mlflow_config
+            return {
+                "runs": [{
+                    "run_id": specs[0].run_id,
+                    "test_blended": {"race_log_loss": 2.0},
+                    "test_fundamental": {"race_log_loss": 2.1},
+                    "incremental_pseudo_r2": 0.01,
+                }]
+            }
+
+        proposal = ExperimentProposal(
+            "trial-0001",
+            "Check env tracking config.",
+            "hyperparameters",
+            ExperimentSpec("demo-logit", "logit", {"C": 1.0}),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.dict(os.environ, {"MLFLOW_TRACKING_URI": "http://mlflow.local:5000"}):
+                with mock.patch("ima.data.build_full_history_dataset", return_value=object()):
+                    with mock.patch("ima.experiments.run_experiments", fake_run_experiments):
+                        result = _run_trial_worker(
+                            proposal.serializable(),
+                            directory,
+                            "docs/model-results/dashboard-template.html",
+                        )
+        self.assertEqual("completed", result["status"])
+        self.assertTrue(captured["mlflow_config"].enabled)
+        self.assertEqual("http://mlflow.local:5000", captured["mlflow_config"].tracking_uri)
 
     def test_voting_ranker_combines_multiple_metrics(self):
         winner, votes = voting_rank([
