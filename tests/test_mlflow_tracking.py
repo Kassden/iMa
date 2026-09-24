@@ -8,6 +8,7 @@ from ima.mlflow_tracking import (
     MLflowConfig,
     _model_artifact_source,
     flatten_numeric_metrics,
+    log_research_package,
     run_parameters,
 )
 
@@ -58,6 +59,9 @@ class MLflowTrackingTests(unittest.TestCase):
         self.assertEqual("benter-rich-v1", params["feature_schema"])
         self.assertEqual(0.03, params["param.learning_rate"])
         self.assertEqual("None", params["param.class_weight"])
+
+    def test_research_package_logging_is_noop_when_disabled(self):
+        self.assertIsNone(log_research_package(Path("."), MLflowConfig(enabled=False)))
 
 
 if __name__ == "__main__":
