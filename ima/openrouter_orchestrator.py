@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .experiments import ExperimentSpec
+from .research_specs import ResearchProposal, validate_research_proposal_batch
 
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api"
@@ -149,6 +150,102 @@ def choose_proposals(
     return {
         "raw_response": response,
         "proposal_payload": parsed,
+        "service_tier": response.get("service_tier"),
+    }
+
+
+def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: int) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are the iMa research optimizer planner. Return strict JSON only. "
+                "Propose registered PipelineRecipe v2 objects. Do not request raw runner rows, "
+                "labels, credentials, promotion, final odds or live betting."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "task": "propose_agentic_research_recipes",
+                    "proposal_count": proposal_count,
+                    "allowed_changed_axes": [
+                        "hyperparameters",
+                        "feature_schema",
+                        "feature_family",
+                        "transform",
+                        "dataset_window",
+                        "model_family",
+                        "calibration",
+                        "market_blend",
+                        "target",
+                    ],
+                    "registered_recipe_schema": {
+                        "schema_version": 2,
+                        "target.kind": [
+                            "win_probability",
+                            "ranking_strength",
+                            "placing_top_k",
+                            "adjusted_finish_time_or_speed",
+                            "market_odds_forecast",
+                        ],
+                        "feature_schema": ["baseline-v1", "benter-rich-v1", "notebook-rich-v2"],
+                        "train_window": ["all_history", "trailing_3_years"],
+                        "model.kind": [
+                            "logit",
+                            "boosted",
+                            "pairwise_ranker",
+                            "hist_gradient_regressor",
+                            "ridge_regressor",
+                        ],
+                    },
+                    "evidence_bundle": evidence_bundle,
+                    "output_schema": {
+                        "proposals": [{
+                            "proposal_id": "stable id",
+                            "parent_trial_ids": ["actual trial ids from evidence"],
+                            "evidence_ids": ["evidence_bundle.evidence_id"],
+                            "hypothesis": "short falsifiable reason",
+                            "changed_axes": ["one or more allowed axes"],
+                            "recipe": "PipelineRecipe v2 object",
+                            "expected_observation": "what should improve",
+                            "falsification_rule": "what result rejects the idea",
+                            "max_trials": 1,
+                        }]
+                    },
+                },
+                sort_keys=True,
+            ),
+        },
+    ]
+
+
+def research_proposals_from_response(response: dict[str, Any]) -> list[ResearchProposal]:
+    payload = _proposal_payload_from_response(response)
+    proposals = [ResearchProposal.model_validate(row) for row in payload["proposals"]]
+    validate_research_proposal_batch(proposals)
+    return proposals
+
+
+def choose_research_proposals(
+    evidence_bundle: dict[str, Any],
+    proposal_count: int,
+    config: OpenRouterConfig,
+) -> dict[str, Any]:
+    payload = {
+        "model": config.model,
+        "messages": agentic_planner_messages(evidence_bundle, proposal_count),
+        "temperature": 0,
+        "max_tokens": 2400,
+        "response_format": {"type": "json_object"},
+        "service_tier": config.service_tier,
+    }
+    response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
+    proposals = research_proposals_from_response(response)
+    return {
+        "raw_response": response,
+        "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
         "service_tier": response.get("service_tier"),
     }
 

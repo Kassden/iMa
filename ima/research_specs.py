@@ -23,6 +23,22 @@ class RecipeValidationError(ValueError):
     """Raised when a recipe is invalid for the registered pipeline capabilities."""
 
 
+FORBIDDEN_RESEARCH_TERMS = {
+    "final_odds",
+    "dividend",
+    "dividends",
+    "result",
+    "results",
+    "target_win",
+    "target_probability",
+    "holdout",
+    "live_execution",
+    "promotion",
+    "promote",
+    "hkjc_credentials",
+}
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -107,6 +123,42 @@ class PipelineRecipe(StrictModel):
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+class ResearchProposal(StrictModel):
+    proposal_id: str
+    parent_trial_ids: tuple[str, ...] = ()
+    evidence_ids: tuple[str, ...] = ()
+    hypothesis: str
+    changed_axes: tuple[
+        Literal[
+            "hyperparameters",
+            "feature_schema",
+            "feature_family",
+            "transform",
+            "dataset_window",
+            "model_family",
+            "calibration",
+            "market_blend",
+            "target",
+        ],
+        ...,
+    ]
+    recipe: PipelineRecipe
+    expected_observation: str
+    falsification_rule: str
+    max_trials: int = 1
+    max_wall_seconds: int = 1200
+
+    @model_validator(mode="after")
+    def _validate_safe_text(self) -> "ResearchProposal":
+        payload = json.dumps(self.model_dump(mode="json"), sort_keys=True).lower()
+        matches = sorted(term for term in FORBIDDEN_RESEARCH_TERMS if term in payload)
+        if matches:
+            raise ValueError(f"Research proposal contains forbidden terms: {matches}")
+        if self.max_trials < 1:
+            raise ValueError("max_trials must be positive")
+        return self
+
+
 def validate_recipe(recipe: PipelineRecipe) -> None:
     try:
         contract = target_contract(recipe.target.kind, recipe.target.parameters)
@@ -151,3 +203,16 @@ def _validate_model_target(model_kind: str, task: str, target_kind: str) -> None
         raise RecipeValidationError(f"{target_kind} requires a ranker model")
     if task == "regressor" and model_kind not in regressors:
         raise RecipeValidationError(f"{target_kind} requires a regressor model")
+
+
+def validate_research_proposal_batch(proposals: list[ResearchProposal]) -> None:
+    proposal_ids: set[str] = set()
+    recipe_hashes: set[str] = set()
+    for proposal in proposals:
+        if proposal.proposal_id in proposal_ids:
+            raise RecipeValidationError(f"duplicate proposal_id: {proposal.proposal_id}")
+        recipe_hash = proposal.recipe.recipe_hash()
+        if recipe_hash in recipe_hashes:
+            raise RecipeValidationError(f"duplicate recipe hash: {recipe_hash}")
+        proposal_ids.add(proposal.proposal_id)
+        recipe_hashes.add(recipe_hash)

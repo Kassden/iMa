@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any
 
 
 DEFAULT_PRIMARY_METRIC = "test_blended.race_log_loss"
+EVIDENCE_BUNDLE_VERSION = "evidence-bundle-v1"
 
 
 @dataclass(frozen=True)
@@ -184,6 +186,70 @@ def summarize_campaign(
             "This summary is read-only and does not verify model loadability.",
         ],
     }
+
+
+def evidence_bundle_from_summary(summary: dict[str, Any], *, last_trials: int = 32) -> dict[str, Any]:
+    selected = summary.get("selected_trials", {})
+    trials = [
+        _allowed_trial(value)
+        for value in selected.values()
+        if isinstance(value, dict) and value.get("run_id")
+    ]
+    bundle = {
+        "schema_version": EVIDENCE_BUNDLE_VERSION,
+        "evidence_id": _evidence_id(summary),
+        "primary_metric": summary.get("primary_metric", {}),
+        "counts": {
+            "trial_rows": summary.get("trial_rows", 0),
+            "completed_trials": summary.get("completed_trials", 0),
+            "decision_rows": summary.get("decision_rows", 0),
+        },
+        "coverage": {
+            "families": summary.get("families", {}),
+            "schemas": summary.get("schemas", {}),
+            "fundamental_weight": summary.get("fundamental_weight", {}),
+        },
+        "selected_trials": trials[:last_trials],
+        "latest_decision": summary.get("latest_decision", {}),
+        "notes": [
+            "Development evidence only; no holdout metrics are exported.",
+            "Planner may propose registered recipes only.",
+        ],
+    }
+    _assert_no_raw_rows(bundle)
+    return bundle
+
+
+def evidence_bundle_from_campaign(
+    campaign_dir: Path,
+    primary_metric: str = DEFAULT_PRIMARY_METRIC,
+) -> dict[str, Any]:
+    return evidence_bundle_from_summary(summarize_campaign(campaign_dir, primary_metric))
+
+
+def _allowed_trial(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "trial_id": row.get("trial_id"),
+        "run_id": row.get("run_id"),
+        "kind": row.get("kind"),
+        "feature_schema": row.get("feature_schema"),
+        "primary_metric": row.get("primary_metric"),
+        "fundamental_log_loss": metric_value(row, "test_fundamental.race_log_loss"),
+        "top_pick_win_rate": metric_value(row, "test_blended.top_pick_win_rate"),
+    }
+
+
+def _evidence_id(summary: dict[str, Any]) -> str:
+    payload = json.dumps(summary, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _assert_no_raw_rows(bundle: dict[str, Any]) -> None:
+    payload = json.dumps(bundle, sort_keys=True).lower()
+    forbidden = ("target_win", "target_probability", "finish_time", "horse_id")
+    matches = [term for term in forbidden if term in payload]
+    if matches:
+        raise ValueError(f"Evidence bundle contains forbidden raw fields: {matches}")
 
 
 def mlflow_sample_readback(
