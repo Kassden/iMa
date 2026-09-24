@@ -18,8 +18,8 @@ from scripts.cortex_optimizer_worker import (
 
 class CortexOptimizerWorkerTests(unittest.TestCase):
     def test_safe_remote_root_accepts_imaopt_child(self):
-        root = require_safe_remote_root(Path("/home/imaopt/iMa"))
-        self.assertEqual(Path("/home/imaopt/iMa"), root)
+        root = require_safe_remote_root(Path("/home/imaopt/research-v2"))
+        self.assertEqual(Path("/home/imaopt/research-v2"), root)
 
     def test_safe_remote_root_rejects_protected_paths(self):
         for path in ["/", "/home", "/home/imaopt", "/srv/apps/cortex", "/tmp", "/home/cortex/iMa"]:
@@ -35,13 +35,13 @@ class CortexOptimizerWorkerTests(unittest.TestCase):
         self.assertIn("--exclude .venv*/", rendered)
         self.assertIn("--exclude artifacts/", rendered)
         self.assertIn("--exclude .env.local", rendered)
-        self.assertTrue(command[-1].endswith("root@100.95.24.121:/home/imaopt/iMa/"))
+        self.assertTrue(command[-1].endswith("root@100.95.24.121:/home/imaopt/research-v2/"))
 
     def test_sync_chowns_remote_root_for_worker(self):
         command = remote_chown_command(RemoteTarget())
         rendered = " ".join(command)
         self.assertIn("root@100.95.24.121", rendered)
-        self.assertIn("chown -R imaopt:imaopt /home/imaopt/iMa", rendered)
+        self.assertIn("chown -R imaopt:imaopt /home/imaopt/research-v2", rendered)
 
     def test_worker_shell_wraps_when_ssh_user_differs(self):
         command = worker_shell_command(RemoteTarget(), "set -eu; cd /home/imaopt/iMa; whoami")
@@ -59,7 +59,7 @@ class CortexOptimizerWorkerTests(unittest.TestCase):
         command = remote_install_command(RemoteTarget(), python_bin="python3.12")
         rendered = " ".join(command)
         self.assertIn("python3.12 -m venv .venv", rendered)
-        self.assertIn("cd /home/imaopt/iMa", rendered)
+        self.assertIn("cd /home/imaopt/research-v2", rendered)
         self.assertIn("pip install -e .", rendered)
         self.assertIn("sudo -u imaopt -H env HOME=/home/imaopt bash -lc", rendered)
 
@@ -88,6 +88,16 @@ class CortexOptimizerWorkerTests(unittest.TestCase):
         self.assertIn("--policy local", rendered)
         self.assertIn("--dry-run", rendered)
 
+    def test_optimizer_command_can_use_agentic_policy(self):
+        command = remote_optimizer_command(
+            RemoteTarget(),
+            "artifacts/agentic-learning/cortex-agentic-smoke",
+            policy="agentic",
+            dry_run=True,
+        )
+        rendered = " ".join(command)
+        self.assertIn("--policy agentic", rendered)
+
     def test_optimizer_command_can_use_alternate_venv(self):
         command = remote_optimizer_command(
             RemoteTarget(),
@@ -107,7 +117,7 @@ class CortexOptimizerWorkerTests(unittest.TestCase):
         rendered = admin_commands()
         self.assertIn("useradd --create-home --shell /bin/bash imaopt", rendered)
         self.assertIn("/home/imaopt/.ssh/authorized_keys", rendered)
-        self.assertIn("/home/imaopt/iMa", rendered)
+        self.assertIn("/home/imaopt/research-v2", rendered)
         self.assertNotIn("/srv/apps/cortex", rendered)
 
 
