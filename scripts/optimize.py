@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from ima.optimizer import CampaignConfig, run_campaign
+from ima.research_controller import campaign_status, request_campaign_stop
 
 
 _CONFIG_KEYS = {
@@ -58,6 +59,10 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--protocol-path", type=Path)
     run.add_argument("--mlflow-tracking-uri")
     run.add_argument("--dry-run", action="store_true")
+    status = sub.add_parser("status", help="Read durable campaign status")
+    status.add_argument("--campaign", type=Path, required=True)
+    stop = sub.add_parser("stop", help="Request graceful campaign stop")
+    stop.add_argument("--campaign", type=Path, required=True)
     return root
 
 
@@ -108,6 +113,13 @@ def main() -> int:
         payload = run_campaign(config, dry=args.dry_run)
         print(_render(payload))
         return 0
+    if args.command == "status":
+        print(json.dumps(campaign_status(args.campaign), indent=2, sort_keys=True))
+        return 0
+    if args.command == "stop":
+        marker = request_campaign_stop(args.campaign)
+        print(f"Stop requested: {marker}")
+        return 0
     raise AssertionError(f"Unhandled command: {args.command}")
 
 
@@ -155,17 +167,19 @@ def _render(payload: dict) -> str:
         lines.append("")
         lines.append("Wrote: dry-run.json")
         return "\n".join(lines)
-    if payload.get("mode") == "executed":
+    if payload.get("mode") in {"executed", "complete", "stopped", "paused", "paused_admission"}:
         lines = [
             f"Campaign: {payload['campaign_dir']}",
-            "Mode: executed",
+            f"Mode: {payload['mode']}",
             f"Cycles: {payload.get('cycles', 1)}",
             "",
         ]
         for result in payload["results"]:
-            lines.append(f"- {result['trial_id']} {result['run_id']}: {result['status']}")
+            trial_id = result.get("attempt_id", result.get("trial_id", "<unknown>"))
+            run_id = result.get("recipe_hash", result.get("run_id", "<unknown>"))
+            lines.append(f"- {trial_id} {run_id}: {result['status']}")
         lines.append("")
-        lines.append("Wrote: trials.jsonl, decisions.jsonl, report.md")
+        lines.append("Wrote: ledger.sqlite, trials.jsonl, decisions.jsonl, status.json")
         return "\n".join(lines)
     if payload.get("mode") == "time_budget_reached":
         return "\n".join([

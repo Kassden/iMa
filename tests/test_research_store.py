@@ -34,6 +34,21 @@ class ResearchStoreTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "different result"):
                 ledger.complete_attempt(attempt.attempt_id, {"metric": 3.0})
 
+    def test_running_recovery_and_tell_acknowledgement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = ResearchLedger(Path(directory) / "ledger.sqlite")
+            attempt = ledger.reserve_attempt("abc123", {"trial_number": 7})
+            ledger.mark_running(attempt.attempt_id)
+            self.assertEqual(1, ledger.recover_running())
+            ledger.mark_running(attempt.attempt_id)
+            ledger.complete_attempt(
+                attempt.attempt_id,
+                {"status": "completed", "objective_value": 1.2},
+            )
+            self.assertEqual(1, len(ledger.pending_tells()))
+            ledger.mark_told(attempt.attempt_id)
+            self.assertEqual([], ledger.pending_tells())
+
 
 if __name__ == "__main__":
     unittest.main()

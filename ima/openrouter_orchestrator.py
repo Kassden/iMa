@@ -26,10 +26,16 @@ class OpenRouterConfig:
     model: str
     service_tier: str = "flex"
     timeout_seconds: int = 60
+    max_output_tokens: int = 2400
     base_url: str = OPENROUTER_BASE_URL
 
     @classmethod
-    def from_env(cls, model: str | None = None, service_tier: str | None = None) -> "OpenRouterConfig":
+    def from_env(
+        cls,
+        model: str | None = None,
+        service_tier: str | None = None,
+        max_output_tokens: int = 2400,
+    ) -> "OpenRouterConfig":
         api_key = os.environ.get("OPENROUTER_API_KEY")
         if not api_key:
             raise OpenRouterError("OPENROUTER_API_KEY is required for policy='openrouter'")
@@ -40,6 +46,7 @@ class OpenRouterConfig:
             api_key=api_key,
             model=chosen_model,
             service_tier=service_tier or os.environ.get("IMA_OPTIMIZER_SERVICE_TIER") or "flex",
+            max_output_tokens=max_output_tokens,
         )
 
 
@@ -254,7 +261,7 @@ def choose_research_proposals(
         "model": config.model,
         "messages": agentic_planner_messages(evidence_bundle, proposal_count),
         "temperature": 0,
-        "max_tokens": 2400,
+        "max_tokens": config.max_output_tokens,
         "response_format": {"type": "json_object"},
         "service_tier": config.service_tier,
     }

@@ -104,6 +104,33 @@ class RecipeSearchController:
             raise RuntimeError(f"Only produced {len(suggestions)} unique recipes from {attempts} attempts")
         return suggestions
 
+    def reserve_recipe(
+        self,
+        recipe: PipelineRecipe,
+        hypothesis: str,
+        changed_axes: tuple[str, ...],
+    ) -> RecipeSuggestion:
+        """Attach a validated planner recipe to an Optuna trial for ask/tell."""
+        if self.study is None:
+            raise RuntimeError("Optuna is required for executable research campaigns")
+        recipe_hash = recipe.recipe_hash()
+        if recipe_hash in self._known_recipe_hashes():
+            raise ValueError(f"Recipe already reserved: {recipe_hash}")
+        trial = self.study.ask()
+        trial.set_user_attr("recipe", recipe.canonical_payload())
+        trial.set_user_attr("recipe_hash", recipe_hash)
+        trial.set_user_attr("hypothesis", hypothesis)
+        trial.set_user_attr("changed_axes", list(changed_axes))
+        trial.set_user_attr("search_space_version", self.search_space_version)
+        trial.set_user_attr("source", "planner")
+        return RecipeSuggestion(
+            trial_id=f"recipe-trial-{trial.number:06d}",
+            trial_number=trial.number,
+            recipe=recipe,
+            hypothesis=hypothesis,
+            changed_axes=changed_axes,
+        )
+
     def tell(self, trial_number: int, value: float, metrics: dict[str, Any] | None = None) -> None:
         if self.study is None:
             return
@@ -111,6 +138,18 @@ class RecipeSearchController:
             trial = self.study.trials[trial_number]
             self.study._storage.set_trial_user_attr(trial._trial_id, "metrics", metrics)
         self.study.tell(trial_number, float(value))
+
+    def tell_failed(self, trial_number: int) -> None:
+        if self.study is None:
+            raise RuntimeError("Optuna is required for executable research campaigns")
+        trial = self.study.trials[trial_number]
+        if trial.state == TrialState.RUNNING:
+            self.study.tell(trial_number, state=TrialState.FAIL)
+
+    def trial_state(self, trial_number: int) -> str:
+        if self.study is None:
+            raise RuntimeError("Optuna is required for executable research campaigns")
+        return self.study.trials[trial_number].state.name.lower()
 
     def snapshot(self) -> dict[str, Any]:
         if self.study is None:

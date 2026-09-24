@@ -746,9 +746,8 @@ def run_campaign(config: CampaignConfig, dry: bool = False) -> dict[str, Any]:
     if dry:
         return dry_run(config)
     if config.policy == "agentic":
-        raise RuntimeError(
-            "Agentic execution requires the feedback controller; preview with --dry-run."
-        )
+        from .research_controller import run_research_campaign
+        return run_research_campaign(config)
     if config.policy == "openrouter" and config.openrouter_batch:
         return dry_run(config)
     deadline = None
