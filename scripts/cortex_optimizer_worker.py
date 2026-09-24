@@ -280,7 +280,7 @@ def parser() -> argparse.ArgumentParser:
             item.add_argument("--proposal-batch-size", type=int, default=1)
             item.add_argument("--max-concurrent-trials", default="1")
             item.add_argument("--timeout-minutes", type=int)
-            item.add_argument("--spec-profile", choices=("default", "long"), default="default")
+            item.add_argument("--spec-profile", choices=("default", "long", "adaptive"), default="default")
         if name == "pull":
             item.add_argument("--campaign-name", default="cortex-smoke")
             item.add_argument("--local-pull-root", type=Path, default=DEFAULT_LOCAL_PULL_ROOT)

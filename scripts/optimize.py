@@ -39,7 +39,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--service-tier", choices=("flex",), help="OpenRouter service tier")
     run.add_argument("--openrouter-batch", action="store_true")
     run.add_argument("--model", help="Remote planner model, e.g. openai/gpt-5.6-luna")
-    run.add_argument("--spec-profile", choices=("default", "long"), default="default")
+    run.add_argument("--spec-profile", choices=("default", "long", "adaptive"), default="default")
     run.add_argument("--dry-run", action="store_true")
     return root
 
