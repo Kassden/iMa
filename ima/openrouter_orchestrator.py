@@ -64,6 +64,23 @@ def _post_json(url: str, payload: dict[str, Any], config: OpenRouterConfig) -> d
         raise OpenRouterError(f"OpenRouter request failed: {exc.reason}") from exc
 
 
+def _get_json(url: str, config: OpenRouterConfig) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {config.api_key}"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=config.timeout_seconds) as response:
+            body = response.read().decode("utf-8")
+            return json.loads(body)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise OpenRouterError(f"OpenRouter HTTP {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise OpenRouterError(f"OpenRouter request failed: {exc.reason}") from exc
+
+
 def planner_messages(available_specs: list[ExperimentSpec], proposal_count: int) -> list[dict[str, str]]:
     specs = [
         {
@@ -268,4 +285,17 @@ def submit_proposal_batch(
         "model": config.model,
         "requests": [{"custom_id": custom_id, "body": request_body}],
     }
-    return _post_json(f"{config.base_url}/beta/batches", payload, config)
+    return _post_json(f"{config.base_url}/v1/batches", payload, config)
+
+
+TERMINAL_BATCH_STATUSES = {"completed", "failed", "expired", "cancelled"}
+
+
+def get_batch(batch_id: str, config: OpenRouterConfig) -> dict[str, Any]:
+    if not batch_id:
+        raise OpenRouterError("batch_id is required")
+    return _get_json(f"{config.base_url}/v1/batches/{batch_id}", config)
+
+
+def batch_is_terminal(batch: dict[str, Any]) -> bool:
+    return str(batch.get("status")) in TERMINAL_BATCH_STATUSES
