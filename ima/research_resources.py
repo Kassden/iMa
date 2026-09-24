@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass
 
-import psutil
+try:
+    import psutil  # type: ignore
+except Exception:  # pragma: no cover - exercised on minimal remote canaries.
+    psutil = None
 
 
 GIB = 1024 ** 3
@@ -34,14 +38,23 @@ class AdmissionPolicy:
 def observe_resources(path: str = ".") -> ResourceSnapshot:
     cpu_count = os.cpu_count() or 1
     load1, _, _ = os.getloadavg() if hasattr(os, "getloadavg") else (0.0, 0.0, 0.0)
-    memory = psutil.virtual_memory()
-    disk = psutil.disk_usage(path)
+    if psutil is not None:
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage(path)
+        cpu_percent = float(psutil.cpu_percent(interval=0.0))
+        available = float(memory.available / GIB)
+        total = float(memory.total / GIB)
+        free = float(disk.free / GIB)
+    else:
+        available, total = _memory_from_proc()
+        free = float(shutil.disk_usage(path).free / GIB)
+        cpu_percent = 0.0
     return ResourceSnapshot(
-        cpu_percent=float(psutil.cpu_percent(interval=0.0)),
+        cpu_percent=cpu_percent,
         load_percent=float(load1 / cpu_count * 100.0),
-        memory_available_gib=float(memory.available / GIB),
-        memory_total_gib=float(memory.total / GIB),
-        disk_free_gib=float(disk.free / GIB),
+        memory_available_gib=available,
+        memory_total_gib=total,
+        disk_free_gib=free,
         cpu_count=int(cpu_count),
     )
 
@@ -78,3 +91,17 @@ def resource_report(snapshot: ResourceSnapshot, slots: int) -> dict[str, float |
         "cpu_count": snapshot.cpu_count,
         "admission_slots": slots,
     }
+
+
+def _memory_from_proc() -> tuple[float, float]:
+    values: dict[str, float] = {}
+    try:
+        for line in open("/proc/meminfo", encoding="utf-8"):
+            key, raw = line.split(":", 1)
+            if key in {"MemTotal", "MemAvailable"}:
+                values[key] = float(raw.strip().split()[0]) * 1024 / GIB
+    except OSError:
+        pass
+    total = values.get("MemTotal", 0.0)
+    available = values.get("MemAvailable", total)
+    return available, total

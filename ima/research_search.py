@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-import optuna
-from optuna.samplers import TPESampler
-from optuna.storages import JournalStorage
-from optuna.storages.journal import JournalFileBackend
-from optuna.trial import TrialState
+try:
+    import optuna
+    from optuna.samplers import TPESampler
+    from optuna.storages import JournalStorage
+    from optuna.storages.journal import JournalFileBackend
+    from optuna.trial import TrialState
+except Exception:  # pragma: no cover - minimal remote canary without research deps.
+    optuna = None
+    TPESampler = None
+    JournalStorage = None
+    JournalFileBackend = None
+    TrialState = None
 
 from .feature_sets import feature_families_for_schema
 from .research_specs import PipelineRecipe
@@ -52,18 +60,22 @@ class RecipeSearchController:
         self.search_space_version = search_space_version
         self.search_dir = self.campaign_dir / "search"
         self.search_dir.mkdir(parents=True, exist_ok=True)
-        storage = JournalStorage(JournalFileBackend(str(self.search_dir / "optuna-journal.log")))
-        self.study = optuna.create_study(
-            study_name=study_name,
-            storage=storage,
-            sampler=TPESampler(seed=seed, constant_liar=True),
-            direction="minimize",
-            load_if_exists=True,
-        )
+        self.study = None
+        if optuna is not None:
+            storage = JournalStorage(JournalFileBackend(str(self.search_dir / "optuna-journal.log")))
+            self.study = optuna.create_study(
+                study_name=study_name,
+                storage=storage,
+                sampler=TPESampler(seed=seed, constant_liar=True),
+                direction="minimize",
+                load_if_exists=True,
+            )
 
     def ask(self, count: int) -> list[RecipeSuggestion]:
         if count <= 0:
             raise ValueError("count must be positive")
+        if self.study is None:
+            return self._fallback_ask(count)
         suggestions: list[RecipeSuggestion] = []
         seen = self._known_recipe_hashes()
         attempts = 0
@@ -93,12 +105,25 @@ class RecipeSearchController:
         return suggestions
 
     def tell(self, trial_number: int, value: float, metrics: dict[str, Any] | None = None) -> None:
+        if self.study is None:
+            return
         if metrics is not None:
             trial = self.study.trials[trial_number]
             self.study._storage.set_trial_user_attr(trial._trial_id, "metrics", metrics)
         self.study.tell(trial_number, float(value))
 
     def snapshot(self) -> dict[str, Any]:
+        if self.study is None:
+            rows = self._fallback_rows()
+            return {
+                "study_name": self.study_name,
+                "search_space_version": self.search_space_version,
+                "trials": len(rows),
+                "completed": 0,
+                "running": len(rows),
+                "pruned": 0,
+                "recipe_hashes": sorted(row["recipe_hash"] for row in rows),
+            }
         trials = self.study.get_trials(deepcopy=False)
         return {
             "study_name": self.study_name,
@@ -115,13 +140,15 @@ class RecipeSearchController:
         }
 
     def _known_recipe_hashes(self) -> set[str]:
+        if self.study is None:
+            return {row["recipe_hash"] for row in self._fallback_rows()}
         return {
             str(trial.user_attrs["recipe_hash"])
             for trial in self.study.get_trials(deepcopy=False)
             if "recipe_hash" in trial.user_attrs and trial.state != TrialState.PRUNED
         }
 
-    def _recipe_for_trial(self, trial: optuna.Trial) -> tuple[PipelineRecipe, str, tuple[str, ...]]:
+    def _recipe_for_trial(self, trial) -> tuple[PipelineRecipe, str, tuple[str, ...]]:
         seeds = _seed_recipes()
         if trial.number < len(seeds):
             recipe, hypothesis, changed_axes = seeds[trial.number]
@@ -190,6 +217,38 @@ class RecipeSearchController:
             f"Optuna {self.search_space_version} explores {', '.join(changed_axes)}.",
             changed_axes,
         )
+
+    def _fallback_ask(self, count: int) -> list[RecipeSuggestion]:
+        rows = self._fallback_rows()
+        seen = {row["recipe_hash"] for row in rows}
+        suggestions: list[RecipeSuggestion] = []
+        for index, (recipe, hypothesis, changed_axes) in enumerate(_seed_recipes()):
+            recipe_hash = recipe.recipe_hash()
+            if recipe_hash in seen:
+                continue
+            suggestion = RecipeSuggestion(
+                trial_id=f"recipe-trial-{len(rows) + len(suggestions):06d}",
+                trial_number=len(rows) + len(suggestions),
+                recipe=recipe,
+                hypothesis=hypothesis,
+                changed_axes=changed_axes,
+            )
+            suggestions.append(suggestion)
+            if len(suggestions) >= count:
+                break
+        if len(suggestions) < count:
+            raise RuntimeError("Fallback recipe search exhausted seeded recipes")
+        path = self.search_dir / "fallback-recipes.jsonl"
+        with path.open("a", encoding="utf-8") as handle:
+            for suggestion in suggestions:
+                handle.write(json.dumps(suggestion.serializable(), sort_keys=True) + "\n")
+        return suggestions
+
+    def _fallback_rows(self) -> list[dict[str, Any]]:
+        path = self.search_dir / "fallback-recipes.jsonl"
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def _seed_recipes() -> tuple[tuple[PipelineRecipe, str, tuple[str, ...]], ...]:
