@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -77,6 +78,13 @@ class CampaignConfig:
     model: str = "openrouter/local-policy"
     spec_profile: str = "default"
     champion_run_id: str | None = None
+    planner_mode: str = "local"
+    max_total_cost_usd: float | None = None
+    max_output_tokens: int = 4000
+    replan_every_terminal_trials: int = 32
+    dataset_path: Path | None = None
+    protocol_path: Path | None = None
+    mlflow_tracking_uri: str | None = None
     gates: MetricGates = field(default_factory=MetricGates)
 
     def validate(self) -> None:
@@ -105,10 +113,25 @@ class CampaignConfig:
             raise ValueError("openrouter batch mode requires a remote OpenRouter policy")
         if self.spec_profile not in SPEC_PROFILES:
             raise ValueError(f"Unknown experiment spec profile: {self.spec_profile}")
+        if self.planner_mode not in {"local", "fixture", "openrouter"}:
+            raise ValueError("planner_mode must be local, fixture, or openrouter")
+        if self.max_total_cost_usd is not None and self.max_total_cost_usd <= 0:
+            raise ValueError("max_total_cost_usd must be positive when configured")
+        if self.max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be positive")
+        if self.replan_every_terminal_trials <= 0:
+            raise ValueError("replan_every_terminal_trials must be positive")
+        if self.policy == "agentic" and self.planner_mode == "openrouter":
+            if self.model == "openrouter/local-policy":
+                raise ValueError("agentic OpenRouter planning requires an explicit model")
+            if self.max_total_cost_usd is None:
+                raise ValueError("agentic OpenRouter planning requires max_total_cost_usd")
 
     def serializable(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["campaign_dir"] = str(self.campaign_dir)
+        payload["dataset_path"] = str(self.dataset_path) if self.dataset_path else None
+        payload["protocol_path"] = str(self.protocol_path) if self.protocol_path else None
         return payload
 
 
@@ -380,6 +403,12 @@ def available_specs(config: CampaignConfig) -> list[ExperimentSpec]:
 def research_recipe_proposals(campaign_dir: Path, count: int = 1) -> list[dict[str, Any]]:
     """Return persisted v2 recipe suggestions without touching legacy execution."""
     return [proposal.serializable() for proposal in RecipeSearchController(campaign_dir).ask(count)]
+
+
+def preview_research_recipe_proposals(count: int = 1) -> list[dict[str, Any]]:
+    """Preview recipes without consuming the campaign's persistent study."""
+    with tempfile.TemporaryDirectory(prefix="ima-recipe-preview-") as directory:
+        return research_recipe_proposals(Path(directory), count)
 
 
 def _proposals_from_remote_payload(
@@ -655,7 +684,7 @@ def dry_run(config: CampaignConfig) -> dict[str, Any]:
     remaining = remaining_trial_budget(config)
     if config.policy == "agentic":
         count = config.proposal_batch_size if remaining is None else min(config.proposal_batch_size, remaining)
-        proposals = research_recipe_proposals(config.campaign_dir, count)
+        proposals = preview_research_recipe_proposals(count)
         payload = {
             "mode": "dry_run",
             "campaign": config.serializable(),
@@ -717,7 +746,9 @@ def run_campaign(config: CampaignConfig, dry: bool = False) -> dict[str, Any]:
     if dry:
         return dry_run(config)
     if config.policy == "agentic":
-        return dry_run(config)
+        raise RuntimeError(
+            "Agentic execution requires the feedback controller; preview with --dry-run."
+        )
     if config.policy == "openrouter" and config.openrouter_batch:
         return dry_run(config)
     deadline = None

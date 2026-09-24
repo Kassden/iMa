@@ -202,6 +202,7 @@ def remote_optimizer_command(
     spec_profile: str = "default",
     policy: str = "local",
     venv_dir: str = DEFAULT_VENV_DIR,
+    config_path: str | None = None,
     dry_run: bool = False,
 ) -> list[str]:
     remote_root = require_safe_remote_root(target.remote_root, target.user)
@@ -226,6 +227,11 @@ def remote_optimizer_command(
     ]
     if timeout_minutes is not None:
         args.extend(["--timeout-minutes", str(timeout_minutes)])
+    if config_path is not None:
+        safe_config = Path(config_path)
+        if safe_config.is_absolute() or ".." in safe_config.parts:
+            raise ValueError("config path must be relative to the isolated remote root")
+        args.extend(["--config", shlex.quote(config_path)])
     if dry_run:
         args.append("--dry-run")
     inner = f"set -eu; cd {root}; {' '.join(args)}"
@@ -286,6 +292,7 @@ def parser() -> argparse.ArgumentParser:
             item.add_argument("--timeout-minutes", type=int)
             item.add_argument("--spec-profile", choices=("default", "long", "adaptive"), default="default")
             item.add_argument("--policy", choices=("local", "agentic"), default="local")
+            item.add_argument("--config")
         if name == "pull":
             item.add_argument("--campaign-name", default="cortex-smoke")
             item.add_argument("--local-pull-root", type=Path, default=DEFAULT_LOCAL_PULL_ROOT)
@@ -345,6 +352,7 @@ def main() -> int:
                 spec_profile=args.spec_profile,
                 policy=args.policy,
                 venv_dir=args.venv_dir,
+                config_path=args.config,
                 dry_run=True,
             ),
             args.dry_run_command,
@@ -361,6 +369,7 @@ def main() -> int:
                 spec_profile=args.spec_profile,
                 policy=args.policy,
                 venv_dir=args.venv_dir,
+                config_path=args.config,
             ),
             args.dry_run_command,
         )

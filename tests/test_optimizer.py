@@ -21,9 +21,25 @@ from ima.optimizer import (
     validate_proposal_batch,
     voting_rank,
 )
+from scripts.optimize import _load_config
 
 
 class OptimizerTests(unittest.TestCase):
+    def test_optimizer_config_is_strict_and_keeps_unlimited(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "optimizer.json"
+            path.write_text(json.dumps({
+                "schema_version": 1,
+                "policy": "agentic",
+                "max_trials": None,
+                "planner_mode": "fixture",
+            }), encoding="utf-8")
+            values = _load_config(path)
+            self.assertIsNone(values["max_trials"])
+            path.write_text(json.dumps({"schema_version": 1, "mystery": True}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unknown optimizer config keys"):
+                _load_config(path)
+
     def test_campaign_config_validates_budget_and_openrouter_batch(self):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
@@ -171,6 +187,32 @@ class OptimizerTests(unittest.TestCase):
             self.assertTrue((root / "campaign.json").exists())
             written = json.loads((root / "dry-run.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["proposals"][0]["trial_id"], written["proposals"][0]["trial_id"])
+
+    def test_agentic_dry_run_does_not_advance_persistent_study(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(
+                root,
+                policy="agentic",
+                max_trials=2,
+                proposal_batch_size=2,
+            )
+            first = dry_run(config)
+            second = dry_run(config)
+            self.assertEqual(first["proposals"], second["proposals"])
+            self.assertFalse((root / "search").exists())
+
+    def test_agentic_openrouter_requires_model_and_spend_cap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "explicit model"):
+                CampaignConfig(
+                    Path(directory), policy="agentic", planner_mode="openrouter"
+                ).validate()
+            with self.assertRaisesRegex(ValueError, "max_total_cost_usd"):
+                CampaignConfig(
+                    Path(directory), policy="agentic", planner_mode="openrouter",
+                    model="provider/model",
+                ).validate()
 
     def test_trial_worker_uses_mlflow_environment_config(self):
         captured = {}

@@ -98,6 +98,22 @@ class CortexOptimizerWorkerTests(unittest.TestCase):
         rendered = " ".join(command)
         self.assertIn("--policy agentic", rendered)
 
+    def test_optimizer_command_forwards_relative_config(self):
+        command = remote_optimizer_command(
+            RemoteTarget(),
+            "artifacts/agentic-learning/cortex-agentic-smoke",
+            policy="agentic",
+            config_path="config/cortex-agentic.json",
+            dry_run=True,
+        )
+        self.assertIn("--config config/cortex-agentic.json", " ".join(command))
+        with self.assertRaisesRegex(ValueError, "relative"):
+            remote_optimizer_command(
+                RemoteTarget(),
+                "artifacts/agentic-learning/cortex-agentic-smoke",
+                config_path="../secret.json",
+            )
+
     def test_optimizer_command_can_use_alternate_venv(self):
         command = remote_optimizer_command(
             RemoteTarget(),
