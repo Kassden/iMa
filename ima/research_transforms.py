@@ -19,6 +19,57 @@ class TransformSpec:
     parameters: dict[str, Any]
 
 
+@dataclass
+class FittedResearchTransforms:
+    """Serializable, train-fitted transform state for one recipe fold."""
+
+    specs: tuple[TransformSpec, ...]
+    clip_bounds: dict[str, tuple[float, float]]
+
+    @classmethod
+    def fit(
+        cls,
+        train: pd.DataFrame,
+        specs: tuple[TransformSpec, ...],
+    ) -> "FittedResearchTransforms":
+        bounds: dict[str, tuple[float, float]] = {}
+        for spec in specs:
+            validate_transform_spec(spec)
+            columns = tuple(spec.parameters.get("columns", ()))
+            missing = [column for column in columns if column not in train]
+            if missing:
+                raise TransformError(f"transform columns missing from train: {missing}")
+            empty = [
+                column for column in columns
+                if pd.to_numeric(train[column], errors="coerce").notna().sum() == 0
+            ]
+            if empty:
+                raise TransformError(f"transform columns have no training observations: {empty}")
+            if spec.kind != "clip_numeric_quantiles":
+                continue
+            lower = float(spec.parameters.get("lower", 0.01))
+            upper = float(spec.parameters.get("upper", 0.99))
+            for column in tuple(spec.parameters["columns"]):
+                values = pd.to_numeric(train[column], errors="coerce")
+                bounds[column] = (float(values.quantile(lower)), float(values.quantile(upper)))
+        return cls(specs=specs, clip_bounds=bounds)
+
+    def transform(self, frame: pd.DataFrame) -> pd.DataFrame:
+        output = frame.copy()
+        for spec in self.specs:
+            if spec.kind == "clip_numeric_quantiles":
+                for column in tuple(spec.parameters["columns"]):
+                    if column not in output:
+                        raise TransformError(f"clip columns missing from frame: {[column]}")
+                    lo, hi = self.clip_bounds[column]
+                    output[column] = pd.to_numeric(output[column], errors="coerce").clip(lo, hi)
+            elif spec.kind == "race_relative_rank":
+                output = _apply_race_relative_rank([output], spec)[0]
+            else:  # pragma: no cover - specs are validated during fit.
+                raise TransformError(f"Unknown transform kind: {spec.kind}")
+        return output
+
+
 REGISTERED_TRANSFORMS = {
     "clip_numeric_quantiles",
     "race_relative_rank",
@@ -48,16 +99,8 @@ def apply_research_transforms(
     specs: tuple[TransformSpec, ...],
 ) -> tuple[pd.DataFrame, ...]:
     """Fit registered transforms on train and apply them to train plus frames."""
-    outputs = [train.copy(), *(frame.copy() for frame in frames)]
-    for spec in specs:
-        validate_transform_spec(spec)
-        if spec.kind == "clip_numeric_quantiles":
-            outputs = _apply_clip(outputs, spec)
-        elif spec.kind == "race_relative_rank":
-            outputs = _apply_race_relative_rank(outputs, spec)
-        else:  # pragma: no cover - guarded by validate_transform_spec.
-            raise TransformError(f"Unknown transform kind: {spec.kind}")
-    return tuple(outputs)
+    fitted = FittedResearchTransforms.fit(train, specs)
+    return tuple(fitted.transform(frame) for frame in (train, *frames))
 
 
 def _apply_clip(frames: list[pd.DataFrame], spec: TransformSpec) -> list[pd.DataFrame]:

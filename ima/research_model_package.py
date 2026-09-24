@@ -22,6 +22,8 @@ class ResearchPackageManifest:
     protocol_id: str
     code_revision: str
     model_kind: str
+    target_kind: str
+    prediction_method: str
     created_by: str = "ima-research-v2"
 
 
@@ -48,14 +50,30 @@ class ResearchModelPackage:
             protocol_id=self.protocol_id,
             code_revision=self.code_revision,
             model_kind=self.recipe.model.kind,
+            target_kind=self.recipe.target.kind,
+            prediction_method=(
+                "predict_proba" if self.recipe.target.kind == "win_probability" else "predict"
+            ),
         )
 
     def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.recipe.target.kind != "win_probability":
+            raise TypeError("predict_proba is only valid for win_probability packages")
         if not hasattr(self.model, "predict_proba"):
             raise TypeError("Packaged model does not expose predict_proba")
         probabilities = np.asarray(self.model.predict_proba(frame), dtype=float)
         _validate_complete_races(frame, probabilities)
         return probabilities
+
+    def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.recipe.target.kind == "win_probability":
+            return self.predict_proba(frame)
+        if not hasattr(self.model, "predict"):
+            raise TypeError("Packaged model does not expose predict")
+        predictions = np.asarray(self.model.predict(frame), dtype=float)
+        if len(frame) != len(predictions) or not np.isfinite(predictions).all():
+            raise ValueError("Packaged predictions must be finite and match input rows")
+        return predictions
 
     def save(self, path: Path) -> Path:
         path.mkdir(parents=True, exist_ok=True)

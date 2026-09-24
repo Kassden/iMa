@@ -12,9 +12,9 @@ from scipy.stats import spearmanr
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .feature_sets import FeatureSchema
 from .modeling import normalize_by_race, race_log_loss
@@ -94,27 +94,79 @@ class ResearchRegressor:
         label_column: str,
     ) -> "ResearchRegressor":
         numeric = list(feature_schema.numeric)
+        categorical = list(feature_schema.categorical)
         preprocessor = ColumnTransformer([
             ("numeric", Pipeline([
                 ("impute", SimpleImputer(strategy="median", add_indicator=True)),
                 ("scale", StandardScaler()),
             ]), numeric),
+            ("categorical", Pipeline([
+                ("impute", SimpleImputer(strategy="most_frequent")),
+                ("encode", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+            ]), categorical),
         ], remainder="drop")
         params = dict(self.parameters or {})
         if self.kind == "ridge_regressor":
             estimator: Any = Ridge(**({"alpha": 1.0} | params))
         elif self.kind == "hist_gradient_regressor":
             estimator = HistGradientBoostingRegressor(**({"random_state": 42} | params))
+        elif self.kind == "pairwise_ranker":
+            estimator = HistGradientBoostingRegressor(**({"random_state": 42} | params))
         else:
             raise ValueError(f"Unknown research regressor: {self.kind}")
         self.pipeline = Pipeline([("features", preprocessor), ("model", estimator)])
-        self.pipeline.fit(frame[numeric], frame[label_column])
+        self.pipeline.fit(frame[list(feature_schema.features)], frame[label_column])
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
         if self.pipeline is None:
             raise RuntimeError("Regressor has not been fitted")
         return np.asarray(self.pipeline.predict(frame), dtype=float)
+
+
+@dataclass
+class ResearchClassifier:
+    kind: str = "logit"
+    parameters: dict[str, Any] | None = None
+    pipeline: Pipeline | None = None
+    feature_schema: FeatureSchema | None = None
+
+    def fit(
+        self,
+        frame: pd.DataFrame,
+        feature_schema: FeatureSchema,
+        label_column: str,
+    ) -> "ResearchClassifier":
+        self.feature_schema = feature_schema
+        preprocessor = ColumnTransformer([
+            ("numeric", Pipeline([
+                ("impute", SimpleImputer(strategy="median", add_indicator=True)),
+                ("scale", StandardScaler()),
+            ]), list(feature_schema.numeric)),
+            ("categorical", Pipeline([
+                ("impute", SimpleImputer(strategy="most_frequent")),
+                ("encode", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+            ]), list(feature_schema.categorical)),
+        ], remainder="drop")
+        params = dict(self.parameters or {})
+        if self.kind == "logit":
+            estimator: Any = LogisticRegression(**({"max_iter": 1000, "C": 0.5} | params))
+        elif self.kind == "boosted":
+            from sklearn.ensemble import HistGradientBoostingClassifier
+            estimator = HistGradientBoostingClassifier(**({"random_state": 42} | params))
+        else:
+            raise ValueError(f"Unknown research classifier: {self.kind}")
+        self.pipeline = Pipeline([("features", preprocessor), ("model", estimator)])
+        self.pipeline.fit(frame[list(feature_schema.features)], frame[label_column])
+        return self
+
+    def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.pipeline is None or self.feature_schema is None:
+            raise RuntimeError("Classifier has not been fitted")
+        return np.asarray(
+            self.pipeline.predict_proba(frame[list(self.feature_schema.features)])[:, 1],
+            dtype=float,
+        )
 
 
 def secondary_target_diagnostics(

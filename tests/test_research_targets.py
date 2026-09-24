@@ -41,7 +41,7 @@ class ResearchTargetTests(unittest.TestCase):
             self.frame,
             target_contract("adjusted_finish_time_or_speed", {"min_coverage": 1.0}),
         )
-        self.assertIn("target_adjusted_speed", speed)
+        self.assertIn("target_speed", speed)
         broken = self.frame.copy()
         broken.loc[:4, "finish_time"] = None
         with self.assertRaisesRegex(TargetContractError, "coverage"):
@@ -50,11 +50,17 @@ class ResearchTargetTests(unittest.TestCase):
                 target_contract("adjusted_finish_time_or_speed", {"min_coverage": 0.9}),
             )
 
-    def test_market_odds_forecast_target_uses_market_probability(self):
-        market = apply_target_contract(self.frame, target_contract("market_odds_forecast"))
+    def test_market_odds_forecast_requires_timestamped_future_snapshot(self):
+        with self.assertRaisesRegex(TargetContractError, "odds_snapshot_at"):
+            apply_target_contract(self.frame, target_contract("market_odds_forecast"))
+        frame = self.frame.copy()
+        frame["odds_snapshot_at"] = "2020-01-01T00:00:00Z"
+        frame["forecast_at"] = "2020-01-01T01:00:00Z"
+        frame["future_market_probability"] = frame["market_probability"]
+        market = apply_target_contract(frame, target_contract("market_odds_forecast"))
         self.assertEqual(
-            market["market_probability"].tolist(),
-            market["target_market_probability"].tolist(),
+            market["future_market_probability"].tolist(),
+            market["target_future_market_probability"].tolist(),
         )
 
     def test_label_columns_cannot_be_features(self):

@@ -56,12 +56,12 @@ def target_contract(kind: str, parameters: dict[str, Any] | None = None) -> Targ
         return TargetContract(
             kind,
             params,
-            "target_adjusted_speed",
+            "target_speed",
             "regression_and_rank",
             "regressor",
-            ("finish_time must be normalized before cross-race comparison",),
+            ("target is physical speed; condition adjustment is train-fitted by the executor",),
         )
-    return TargetContract(kind, params, "target_market_probability", "odds_forecast", "regressor")
+    return TargetContract(kind, params, "target_future_market_probability", "odds_forecast", "regressor")
 
 
 def apply_target_contract(frame: pd.DataFrame, contract: TargetContract) -> pd.DataFrame:
@@ -95,21 +95,27 @@ def apply_target_contract(frame: pd.DataFrame, contract: TargetContract) -> pd.D
         _require_columns(work, ("race_id", "finish_time", "distance"))
         finish = pd.to_numeric(work["finish_time"], errors="coerce")
         distance = pd.to_numeric(work["distance"], errors="coerce")
-        valid = finish.notna() & distance.gt(0)
+        valid = finish.gt(0) & distance.gt(0)
         coverage = float(valid.mean()) if len(valid) else 0.0
         min_coverage = float(contract.parameters.get("min_coverage", 0.8))
         if coverage < min_coverage:
             raise TargetContractError(
                 f"finish-time coverage {coverage:.3f} below required {min_coverage:.3f}"
             )
-        speed = distance / finish
-        race_median = speed.groupby(work["race_id"]).transform("median")
-        work["target_adjusted_speed"] = speed / race_median
+        work["target_speed"] = distance / finish
         return work
     if contract.kind == "market_odds_forecast":
-        _require_columns(work, ("race_id", "market_probability"))
-        _require_race_probability_totals(work, "market_probability")
-        work["target_market_probability"] = work["market_probability"]
+        _require_columns(work, (
+            "race_id", "odds_snapshot_at", "forecast_at", "future_market_probability",
+        ))
+        snapshot = pd.to_datetime(work["odds_snapshot_at"], errors="coerce", utc=True)
+        forecast = pd.to_datetime(work["forecast_at"], errors="coerce", utc=True)
+        if snapshot.isna().any() or forecast.isna().any() or not snapshot.lt(forecast).all():
+            raise TargetContractError(
+                "market_odds_forecast requires timestamped snapshots strictly before forecast_at"
+            )
+        _require_race_probability_totals(work, "future_market_probability")
+        work["target_future_market_probability"] = work["future_market_probability"]
         return work
     raise TargetContractError(f"Unsupported target kind: {contract.kind}")
 
