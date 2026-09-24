@@ -50,6 +50,17 @@ class ResearchSearchTests(unittest.TestCase):
         self.assertIn("recipe", proposals[0])
         self.assertIn("recipe_hash", proposals[0])
 
+    def test_fallback_search_persists_seed_recipes_without_optuna_study(self):
+        with tempfile.TemporaryDirectory() as directory:
+            controller = RecipeSearchController(Path(directory))
+            controller.study = None
+            suggestions = controller.ask(2)
+            reloaded = RecipeSearchController(Path(directory))
+            reloaded.study = None
+            snapshot = reloaded.snapshot()
+        self.assertEqual(2, len(suggestions))
+        self.assertGreaterEqual(snapshot["trials"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
