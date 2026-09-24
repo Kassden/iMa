@@ -23,6 +23,7 @@ for _thread_env in (
 
 from .experiments import ExperimentSpec, experiment_specs
 from .openrouter_orchestrator import OpenRouterConfig, choose_proposals, submit_proposal_batch
+from .research_search import RecipeSearchController
 
 
 ALLOWED_CHANGED_SURFACES = {
@@ -371,6 +372,11 @@ def available_specs(config: CampaignConfig) -> list[ExperimentSpec]:
     if remaining == 0:
         return []
     return [spec for spec in specs_for_config(config) if spec.run_id not in done]
+
+
+def research_recipe_proposals(campaign_dir: Path, count: int = 1) -> list[dict[str, Any]]:
+    """Return persisted v2 recipe suggestions without touching legacy execution."""
+    return [proposal.serializable() for proposal in RecipeSearchController(campaign_dir).ask(count)]
 
 
 def _proposals_from_remote_payload(
