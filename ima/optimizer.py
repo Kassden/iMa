@@ -23,6 +23,7 @@ for _thread_env in (
 
 from .experiments import ExperimentSpec, experiment_specs
 from .openrouter_orchestrator import OpenRouterConfig, choose_proposals, submit_proposal_batch
+from .research_resources import admission_slots, observe_resources
 from .research_search import RecipeSearchController
 
 
@@ -603,6 +604,10 @@ def resolved_concurrency(config: CampaignConfig, available_trials: int | None = 
     else:
         cpu_count = os.cpu_count() or 1
         value = max(1, min(32, cpu_count - 2 if cpu_count > 4 else cpu_count))
+        try:
+            value = max(1, admission_slots(observe_resources(str(config.campaign_dir)), requested=value))
+        except Exception:
+            pass
     value = min(value, config.proposal_batch_size)
     if config.max_trials is not None:
         value = min(value, config.max_trials)
