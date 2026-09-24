@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from ima.experiments import ExperimentSpec
+from ima.experiments import ExperimentSpec, experiment_specs
 from ima import openrouter_orchestrator
 from ima.openrouter_orchestrator import OpenRouterConfig, OpenRouterError
 from ima.openrouter_orchestrator import _proposal_payload_from_response
@@ -113,6 +113,54 @@ class OptimizerTests(unittest.TestCase):
             self.assertEqual(32, len(proposals))
             self.assertGreaterEqual(resolved_concurrency(config, len(proposals)), 1)
             self.assertTrue(any("long" in proposal.spec.run_id for proposal in proposals))
+
+    def test_adaptive_profile_drains_long_profile_first(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = CampaignConfig(
+                Path(directory),
+                max_trials=None,
+                proposal_batch_size=4,
+                spec_profile="adaptive",
+            )
+            proposals = local_proposals(config)
+            self.assertEqual(
+                [spec.run_id for spec in experiment_specs("long")[:4]],
+                [proposal.spec.run_id for proposal in proposals],
+            )
+
+    def test_adaptive_profile_generates_deterministic_specs_after_long_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rows = []
+            for spec in experiment_specs("long"):
+                rows.append({
+                    "run_id": spec.run_id,
+                    "status": "completed",
+                    "metrics": {
+                        "run_id": spec.run_id,
+                        "kind": spec.kind,
+                        "parameters": spec.parameters,
+                        "test_blended": {"race_log_loss": 2.2, "top_pick_win_rate": 0.2},
+                        "test_fundamental": {"race_log_loss": 2.4},
+                    },
+                })
+            rows[4]["metrics"]["test_blended"]["race_log_loss"] = 2.0
+            rows[4]["metrics"]["test_fundamental"]["race_log_loss"] = 2.1
+            (root / "trials.jsonl").write_text(
+                "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+            config = CampaignConfig(
+                root,
+                max_trials=None,
+                proposal_batch_size=5,
+                spec_profile="adaptive",
+            )
+            first = local_proposals(config)
+            second = local_proposals(config)
+            self.assertEqual([proposal.spec.run_id for proposal in first], [proposal.spec.run_id for proposal in second])
+            self.assertTrue(all(proposal.spec.run_id.startswith("adaptive-g0001-") for proposal in first))
+            self.assertTrue(any(proposal.spec.parameters.get("C") != 2.0 for proposal in first))
 
     def test_dry_run_writes_campaign_and_proposals(self):
         with tempfile.TemporaryDirectory() as directory:

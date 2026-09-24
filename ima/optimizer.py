@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -47,6 +48,7 @@ FORBIDDEN_TERMS = {
     "promote",
     "hkjc_credentials",
 }
+SPEC_PROFILES = {"default", "long", "adaptive"}
 
 
 def utc_now() -> str:
@@ -97,7 +99,8 @@ class CampaignConfig:
             raise ValueError("only OpenRouter service_tier='flex' is supported")
         if self.openrouter_batch and self.policy == "local":
             raise ValueError("openrouter batch mode requires a remote OpenRouter policy")
-        experiment_specs(self.spec_profile)
+        if self.spec_profile not in SPEC_PROFILES:
+            raise ValueError(f"Unknown experiment spec profile: {self.spec_profile}")
 
     def serializable(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -193,6 +196,145 @@ def completed_run_ids(campaign_dir: Path) -> set[str]:
     }
 
 
+def _completed_trial_rows(campaign_dir: Path) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in read_jsonl(campaign_dir / "trials.jsonl")
+        if row.get("status") == "completed" and isinstance(row.get("metrics"), dict)
+    ]
+
+
+def _parameter_signature(kind: str, parameters: dict[str, Any]) -> str:
+    payload = json.dumps(
+        {"kind": kind, "parameters": parameters},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _adaptive_generation(done: set[str]) -> int:
+    prefix = "adaptive-g"
+    generations = []
+    for run_id in done:
+        if not run_id.startswith(prefix):
+            continue
+        try:
+            generations.append(int(run_id[len(prefix):len(prefix) + 4]))
+        except ValueError:
+            continue
+    return (max(generations) + 1) if generations else 1
+
+
+def _trial_sort_key(row: dict[str, Any]) -> tuple[float, float, float, str]:
+    metrics = row.get("metrics", {})
+    blended = _metric(metrics, "test_blended.race_log_loss")
+    fundamental = _metric(metrics, "test_fundamental.race_log_loss")
+    top_pick = _metric(metrics, "test_blended.top_pick_win_rate")
+    return (
+        blended if blended is not None else float("inf"),
+        fundamental if fundamental is not None else float("inf"),
+        -(top_pick if top_pick is not None else 0.0),
+        str(row.get("run_id", "")),
+    )
+
+
+def _add_spec_if_new(
+    specs: list[ExperimentSpec],
+    seen_signatures: set[str],
+    generation: int,
+    kind: str,
+    parameters: dict[str, Any],
+) -> None:
+    signature = _parameter_signature(kind, parameters)
+    if signature in seen_signatures:
+        return
+    seen_signatures.add(signature)
+    specs.append(ExperimentSpec(
+        f"adaptive-g{generation:04d}-{kind}-{signature}",
+        kind,
+        parameters,
+    ))
+
+
+def adaptive_experiment_specs(campaign_dir: Path, max_specs: int = 512) -> list[ExperimentSpec]:
+    """Build a deterministic next catalogue from completed campaign history.
+
+    The profile first drains the hand-authored long grid. Once that baseline
+    catalogue is completed, it generates new neighborhoods around the best
+    completed configurations by metric ordering.
+    """
+    base = experiment_specs("long")
+    rows = _completed_trial_rows(campaign_dir)
+    if not rows:
+        return base
+    done = completed_run_ids(campaign_dir)
+    if not {spec.run_id for spec in base}.issubset(done):
+        return base
+
+    existing_signatures = {
+        _parameter_signature(
+            str(row.get("metrics", {}).get("kind", "")),
+            row.get("metrics", {}).get("parameters", {}),
+        )
+        for row in rows
+    }
+    generation = _adaptive_generation(done)
+    generated: list[ExperimentSpec] = []
+    for row in sorted(rows, key=_trial_sort_key)[:24]:
+        metrics = row.get("metrics", {})
+        kind = str(metrics.get("kind", row.get("run_id", "")))
+        parameters = dict(metrics.get("parameters") or {})
+        if kind == "logit":
+            c_value = float(parameters.get("C", 1.0))
+            for multiplier in (0.4, 0.6, 0.8, 0.9, 1.1, 1.25, 1.6, 2.2):
+                candidate = dict(parameters)
+                candidate["C"] = max(1e-5, round(c_value * multiplier, 8))
+                _add_spec_if_new(generated, existing_signatures, generation, kind, candidate)
+            for key in ("class_weight", "fit_intercept"):
+                if key in parameters:
+                    candidate = dict(parameters)
+                    if key == "class_weight":
+                        candidate[key] = None if candidate[key] == "balanced" else "balanced"
+                    else:
+                        candidate[key] = not bool(candidate[key])
+                    _add_spec_if_new(generated, existing_signatures, generation, kind, candidate)
+            for tolerance in (3e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2):
+                candidate = dict(parameters)
+                candidate["tol"] = tolerance
+                _add_spec_if_new(generated, existing_signatures, generation, kind, candidate)
+        elif kind == "boosted":
+            learning_rate = float(parameters.get("learning_rate", 0.06))
+            max_iter = int(parameters.get("max_iter", 180))
+            leaf_nodes = int(parameters.get("max_leaf_nodes", 31))
+            l2_value = float(parameters.get("l2_regularization", 1.0))
+            for lr_multiplier in (0.5, 0.75, 0.9, 1.1, 1.35, 1.75):
+                candidate = dict(parameters)
+                candidate["learning_rate"] = max(0.001, round(learning_rate * lr_multiplier, 8))
+                _add_spec_if_new(generated, existing_signatures, generation, kind, candidate)
+            for iter_delta in (-80, -40, 40, 80, 140):
+                candidate = dict(parameters)
+                candidate["max_iter"] = max(40, max_iter + iter_delta)
+                _add_spec_if_new(generated, existing_signatures, generation, kind, candidate)
+            for leaf in sorted({7, 15, 31, 63, max(3, leaf_nodes // 2), leaf_nodes * 2}):
+                candidate = dict(parameters)
+                candidate["max_leaf_nodes"] = leaf
+                _add_spec_if_new(generated, existing_signatures, generation, kind, candidate)
+            for l2_multiplier in (0.0, 0.25, 0.5, 1.5, 3.0, 6.0):
+                candidate = dict(parameters)
+                candidate["l2_regularization"] = round(l2_value * l2_multiplier, 8)
+                _add_spec_if_new(generated, existing_signatures, generation, kind, candidate)
+        if len(generated) >= max_specs:
+            break
+    return [*base, *generated[:max_specs]]
+
+
+def specs_for_config(config: CampaignConfig) -> list[ExperimentSpec]:
+    if config.spec_profile == "adaptive":
+        return adaptive_experiment_specs(config.campaign_dir)
+    return experiment_specs(config.spec_profile)
+
+
 def remaining_trial_budget(config: CampaignConfig) -> int | None:
     if config.max_trials is None:
         return None
@@ -206,7 +348,7 @@ def local_proposals(config: CampaignConfig) -> list[ExperimentProposal]:
     if remaining == 0:
         return []
     proposals: list[ExperimentProposal] = []
-    for spec in experiment_specs(config.spec_profile):
+    for spec in specs_for_config(config):
         if spec.run_id in done:
             continue
         proposals.append(
@@ -228,7 +370,7 @@ def available_specs(config: CampaignConfig) -> list[ExperimentSpec]:
     remaining = remaining_trial_budget(config)
     if remaining == 0:
         return []
-    return [spec for spec in experiment_specs(config.spec_profile) if spec.run_id not in done]
+    return [spec for spec in specs_for_config(config) if spec.run_id not in done]
 
 
 def _proposals_from_remote_payload(
