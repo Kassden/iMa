@@ -198,6 +198,38 @@ def log_experiment_run(
         return active.info.run_id
 
 
+def log_research_package(
+    package_dir: Path,
+    config: MLflowConfig,
+    *,
+    run_name: str = "research-package",
+    tags: dict[str, str] | None = None,
+) -> str | None:
+    if not config.enabled:
+        return None
+    mlflow = _mlflow()
+    if config.tracking_uri:
+        mlflow.set_tracking_uri(config.tracking_uri)
+    mlflow.set_experiment(config.experiment_name)
+    manifest_path = package_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    with mlflow.start_run(run_name=run_name) as active:
+        mlflow.set_tags({
+            "ima.package_id": str(manifest.get("package_id", "")),
+            "ima.recipe_hash": str(manifest.get("recipe_hash", "")),
+            "ima.protocol_id": str(manifest.get("protocol_id", "")),
+            **(tags or {}),
+        })
+        mlflow.log_params({
+            "package_id": str(manifest.get("package_id", "")),
+            "recipe_hash": str(manifest.get("recipe_hash", "")),
+            "protocol_id": str(manifest.get("protocol_id", "")),
+            "model_kind": str(manifest.get("model_kind", "")),
+        })
+        mlflow.log_artifacts(str(package_dir), artifact_path="research_package")
+        return active.info.run_id
+
+
 def import_runs_from_results(
     results_path: Path,
     tracking_uri: str,
