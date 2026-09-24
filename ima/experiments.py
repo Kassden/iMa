@@ -20,6 +20,7 @@ from .mlflow_tracking import MLflowConfig, log_experiment_run
 from .pipeline_transparency import pipeline_manifest
 from .pools import SUPPORTED_POOLS, evaluate_top_pool_selections, fit_order_exponents
 from .research_evaluation import make_protocol_manifest
+from .research_specs import PipelineRecipe, experiment_spec_from_recipe
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,11 @@ def experiment_specs(profile: str = "default") -> list[ExperimentSpec]:
 def research_protocol_summary(frame: pd.DataFrame, **kwargs) -> dict:
     """Return a protected-evaluation manifest without changing legacy runs."""
     return make_protocol_manifest(frame, **kwargs).to_dict()
+
+
+def recipe_experiment_spec(recipe: PipelineRecipe) -> ExperimentSpec:
+    """Adapt an executable research recipe to the legacy experiment runner."""
+    return experiment_spec_from_recipe(recipe)
 
 
 def _run_one(
