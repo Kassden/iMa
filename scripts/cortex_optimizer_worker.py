@@ -192,9 +192,11 @@ def remote_install_command_with_options(
 def remote_optimizer_command(
     target: RemoteTarget,
     campaign: str,
-    max_trials: int = 1,
+    max_trials: str = "1",
     proposal_batch_size: int = 1,
-    max_concurrent_trials: int = 1,
+    max_concurrent_trials: str = "1",
+    timeout_minutes: int | None = None,
+    spec_profile: str = "default",
     venv_dir: str = DEFAULT_VENV_DIR,
     dry_run: bool = False,
 ) -> list[str]:
@@ -208,14 +210,18 @@ def remote_optimizer_command(
         "--campaign",
         campaign_arg,
         "--max-trials",
-        str(max_trials),
+        shlex.quote(str(max_trials)),
         "--proposal-batch-size",
         str(proposal_batch_size),
         "--max-concurrent-trials",
-        str(max_concurrent_trials),
+        shlex.quote(str(max_concurrent_trials)),
+        "--spec-profile",
+        shlex.quote(spec_profile),
         "--policy",
         "local",
     ]
+    if timeout_minutes is not None:
+        args.extend(["--timeout-minutes", str(timeout_minutes)])
     if dry_run:
         args.append("--dry-run")
     inner = f"set -eu; cd {root}; {' '.join(args)}"
@@ -270,9 +276,11 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument("--dry-run-command", action="store_true")
         if name in {"remote-dry-run", "remote-run"}:
             item.add_argument("--campaign", default="artifacts/agentic-learning/cortex-smoke")
-            item.add_argument("--max-trials", type=int, default=1)
+            item.add_argument("--max-trials", default="1")
             item.add_argument("--proposal-batch-size", type=int, default=1)
-            item.add_argument("--max-concurrent-trials", type=int, default=1)
+            item.add_argument("--max-concurrent-trials", default="1")
+            item.add_argument("--timeout-minutes", type=int)
+            item.add_argument("--spec-profile", choices=("default", "long"), default="default")
         if name == "pull":
             item.add_argument("--campaign-name", default="cortex-smoke")
             item.add_argument("--local-pull-root", type=Path, default=DEFAULT_LOCAL_PULL_ROOT)
@@ -326,6 +334,8 @@ def main() -> int:
                 args.max_trials,
                 args.proposal_batch_size,
                 args.max_concurrent_trials,
+                args.timeout_minutes,
+                args.spec_profile,
                 args.venv_dir,
                 dry_run=True,
             ),
@@ -339,6 +349,8 @@ def main() -> int:
                 args.max_trials,
                 args.proposal_batch_size,
                 args.max_concurrent_trials,
+                args.timeout_minutes,
+                args.spec_profile,
                 args.venv_dir,
             ),
             args.dry_run_command,

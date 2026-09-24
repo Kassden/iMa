@@ -7,19 +7,39 @@ from pathlib import Path
 from ima.optimizer import CampaignConfig, run_campaign
 
 
+def _parse_max_trials(value: str) -> int | None:
+    normalized = value.strip().lower()
+    if normalized in {"0", "none", "unlimited", "forever"}:
+        return None
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("max-trials must be positive or 'unlimited'")
+    return parsed
+
+
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Run the iMa model self-optimizer loop")
     sub = root.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="Run or dry-run an optimizer campaign")
     run.add_argument("--campaign", type=Path, required=True)
     run.add_argument("--policy", choices=("local", "openrouter"), default="local")
-    run.add_argument("--max-trials", type=int, default=1)
+    run.add_argument(
+        "--max-trials",
+        type=_parse_max_trials,
+        default=1,
+        help="Completed trial budget; use 0 or 'unlimited' to drain the spec profile",
+    )
     run.add_argument("--proposal-batch-size", type=int, default=1)
-    run.add_argument("--max-concurrent-trials", type=int, default=1)
+    run.add_argument(
+        "--max-concurrent-trials",
+        default="1",
+        help="Parallel trial workers, or 'auto' to size from available CPU with headroom",
+    )
     run.add_argument("--timeout-minutes", type=int)
     run.add_argument("--service-tier", choices=("flex",), help="OpenRouter service tier")
     run.add_argument("--openrouter-batch", action="store_true")
     run.add_argument("--model", help="Remote planner model, e.g. openai/gpt-5.6-luna")
+    run.add_argument("--spec-profile", choices=("default", "long"), default="default")
     run.add_argument("--dry-run", action="store_true")
     return root
 
@@ -27,16 +47,20 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = parser().parse_args()
     if args.command == "run":
+        max_concurrent_trials = (
+            "auto" if args.max_concurrent_trials == "auto" else int(args.max_concurrent_trials)
+        )
         config = CampaignConfig(
             campaign_dir=args.campaign,
             policy=args.policy,
             max_trials=args.max_trials,
             proposal_batch_size=args.proposal_batch_size,
-            max_concurrent_trials=args.max_concurrent_trials,
+            max_concurrent_trials=max_concurrent_trials,
             timeout_minutes=args.timeout_minutes,
             service_tier=args.service_tier,
             openrouter_batch=args.openrouter_batch,
             model=args.model or "openrouter/local-policy",
+            spec_profile=args.spec_profile,
         )
         payload = run_campaign(config, dry=args.dry_run)
         print(_render(payload))
@@ -66,12 +90,26 @@ def _render(payload: dict) -> str:
         lines.append("Wrote: dry-run.json")
         return "\n".join(lines)
     if payload.get("mode") == "executed":
-        lines = [f"Campaign: {payload['campaign_dir']}", "Mode: executed", ""]
+        lines = [
+            f"Campaign: {payload['campaign_dir']}",
+            "Mode: executed",
+            f"Cycles: {payload.get('cycles', 1)}",
+            "",
+        ]
         for result in payload["results"]:
             lines.append(f"- {result['trial_id']} {result['run_id']}: {result['status']}")
         lines.append("")
         lines.append("Wrote: trials.jsonl, decisions.jsonl, report.md")
         return "\n".join(lines)
+    if payload.get("mode") == "time_budget_reached":
+        return "\n".join([
+            f"Campaign: {payload['campaign_dir']}",
+            "Mode: time-budget-reached",
+            f"Cycles: {payload.get('cycles', 0)}",
+            f"Trials returned in this command: {len(payload.get('results', []))}",
+            "",
+            "Wrote: trials.jsonl, decisions.jsonl, report.md",
+        ])
     if payload.get("mode") == "openrouter_batch_submitted":
         batch = payload["batch"]
         return "\n".join([
