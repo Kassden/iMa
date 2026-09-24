@@ -48,6 +48,40 @@
   - Server outbound downloads to GitHub/Astral are very slow or stall; use China-accessible PyPI mirrors for Python packages where possible and prefer pre-cached or transferred runtime artifacts for Python itself.
   - Tailscale later reported `cortex-server` offline, last seen `2026-09-22T16:40:00Z`, while the minimal dependency install was in progress.
 
+## Root-Cause Baseline
+- Trigger scope and affected surface:
+  - Remote optimizer setup is blocked at runtime/dependency bootstrap on `cortex-server`.
+  - Affected surface is the new isolated iMa worker only: `/home/imaopt`, `/home/imaopt/iMa`, remote Python/venv install, and optimizer campaign execution.
+- Proven causes:
+  - Direct SSH as `imaopt` is blocked by tailnet policy; root-mediated execution is required.
+  - The server only has system Python `3.14.4`, outside project metadata `>=3.11,<3.14`.
+  - Python 3.14 fallback is unsuitable for the current dependency set because local Linux `cp314` wheel resolution failed on `matplotlib` -> `kiwisolver`.
+  - The wrapper originally excluded `.venv/` but not `.venv*/`; `rsync --delete` attempted to delete `.venv314`, so all remote virtualenv directories must be treated as server-local state.
+- Likely hypotheses:
+  - GitHub/Astral downloads from the server fail intermittently because the server is using China-local internet egress for outbound HTTPS.
+  - A temporary Tailscale exit node for server-side install traffic should avoid local China egress without copying runtime archives from the local machine.
+- Possible causes:
+  - Server DNS or resolver path may intermittently return or fail GitHub records.
+  - GitHub chunk connections may be reset independently, so segmented downloads need retry support.
+- Disproven causes:
+  - Lack of disk/RAM/CPU is not the blocker; the server has about `121Gi` RAM and `28` CPU threads.
+  - Missing `imaopt` user is no longer the blocker; `imaopt` exists and owns `/home/imaopt/iMa`.
+  - Missing `uv` binary is not the current blocker; `uv 0.12.17` exists under `/home/imaopt/.local/bin`.
+- Missing evidence:
+  - Whether a temporary server-side Tailscale exit node can reliably reach GitHub without disrupting existing services.
+  - Whether a fully installed Python 3.12 venv can pass optimizer tests on cortex.
+  - Whether high-concurrency trial execution is CPU/RAM bounded or data/IO bounded on the first real run.
+- Mutation boundary:
+  - Allowed mutations are limited to `/home/imaopt`, wrapper/doc/test updates in this repo, and reversible Tailscale exit-node configuration for install traffic.
+  - Do not restart or edit `cortex-web.service`, `cortex-worker.service`, nginx, PostgreSQL, solar-simulator, `/srv/apps/cortex`, or `/srv/apps/solar-simulator`.
+  - If a Tailscale exit node is enabled for dependency install, record current state first and unset it after runtime/dependency bootstrap.
+- Remediation mapping:
+  - Root-mediated SSH maps to tailnet policy blocking direct `imaopt` login.
+  - Python 3.12 runtime install maps to system Python incompatibility.
+  - `.venv*/` rsync exclusion maps to server-local virtualenv preservation.
+  - Temporary Tailscale exit-node use maps to China-local outbound egress failures.
+  - Bounded high-concurrency optimizer run maps to the user-approved use of the mostly idle 128GB/dual-CPU server.
+
 ## SOTA, Standards, And Best Practices
 - Current SOTA / prior art:
   - Keep heavy training near CPU/RAM and data; keep model-selection authority near the audit conversation.
