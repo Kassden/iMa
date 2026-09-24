@@ -36,6 +36,11 @@ ima-optimize = "scripts.optimize:main"
 dev = [
   "playwright>=1.54,<2",
 ]
+research = [
+  "optuna>=4.2,<5",
+  "psutil>=6,<8",
+  "pydantic>=2.10,<3",
+]
 
 [tool.setuptools.packages.find]
 include = ["scrapper*", "ima*", "scripts*"]
