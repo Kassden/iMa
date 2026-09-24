@@ -11,6 +11,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+for _thread_env in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+):
+    os.environ.setdefault(_thread_env, "1")
+
 from .experiments import ExperimentSpec, experiment_specs
 from .openrouter_orchestrator import OpenRouterConfig, choose_proposals, submit_proposal_batch
 
