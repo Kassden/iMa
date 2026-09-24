@@ -11,7 +11,7 @@ DEFAULT_HOST = "100.95.24.121"
 DEFAULT_ADMIN_USER = "cortex"
 DEFAULT_SSH_USER = "root"
 DEFAULT_WORKER_USER = "imaopt"
-DEFAULT_REMOTE_ROOT = Path("/home/imaopt/iMa")
+DEFAULT_REMOTE_ROOT = Path("/home/imaopt/research-v2")
 DEFAULT_LOCAL_PULL_ROOT = Path("artifacts/remote-cortex")
 DEFAULT_VENV_DIR = ".venv"
 
@@ -96,13 +96,14 @@ def admin_commands(worker_user: str = DEFAULT_WORKER_USER, source_user: str = DE
     quoted_worker = shlex.quote(worker_user)
     quoted_source = shlex.quote(source_user)
     home = f"/home/{worker_user}"
+    research_root = f"{home}/research-v2"
     return "\n".join([
         f"sudo useradd --create-home --shell /bin/bash {quoted_worker}",
         f"sudo install -d -m 700 -o {quoted_worker} -g {quoted_worker} {home}/.ssh",
         f"sudo install -m 600 -o {quoted_worker} -g {quoted_worker} /home/{quoted_source}/.ssh/authorized_keys {home}/.ssh/authorized_keys",
-        f"sudo install -d -m 755 -o {quoted_worker} -g {quoted_worker} {home}/iMa",
+        f"sudo install -d -m 755 -o {quoted_worker} -g {quoted_worker} {research_root}",
         f"getent passwd {quoted_worker}",
-        f"sudo -u {quoted_worker} -H bash -lc 'whoami; pwd; ls -ld {home} {home}/iMa'",
+        f"sudo -u {quoted_worker} -H bash -lc 'whoami; pwd; ls -ld {home} {research_root}'",
     ])
 
 
@@ -156,6 +157,7 @@ def remote_install_command_with_options(
     upgrade_pip: bool = True,
     ignore_requires_python: bool = False,
     no_deps: bool = False,
+    research_extra: bool = False,
 ) -> list[str]:
     remote_root = require_safe_remote_root(target.remote_root, target.user)
     root = shlex.quote(remote_root.as_posix())
@@ -180,7 +182,8 @@ def remote_install_command_with_options(
         f"set -eu; cd {root}; "
         f"{py} -m venv {venv}; "
         f"{upgrade}"
-        f"{pip_env}{venv}/bin/python -m pip install {rendered_install_flags}-e .; "
+        f"{pip_env}{venv}/bin/python -m pip install {rendered_install_flags}-e "
+        f"{shlex.quote('.[research]' if research_extra else '.')}; "
         f"{venv}/bin/python --version; "
         f"{venv}/bin/ima-optimize --help >/dev/null; "
         "echo install_ok"
@@ -197,6 +200,7 @@ def remote_optimizer_command(
     max_concurrent_trials: str = "1",
     timeout_minutes: int | None = None,
     spec_profile: str = "default",
+    policy: str = "local",
     venv_dir: str = DEFAULT_VENV_DIR,
     dry_run: bool = False,
 ) -> list[str]:
@@ -218,7 +222,7 @@ def remote_optimizer_command(
         "--spec-profile",
         shlex.quote(spec_profile),
         "--policy",
-        "local",
+        shlex.quote(policy),
     ]
     if timeout_minutes is not None:
         args.extend(["--timeout-minutes", str(timeout_minutes)])
@@ -281,6 +285,7 @@ def parser() -> argparse.ArgumentParser:
             item.add_argument("--max-concurrent-trials", default="1")
             item.add_argument("--timeout-minutes", type=int)
             item.add_argument("--spec-profile", choices=("default", "long", "adaptive"), default="default")
+            item.add_argument("--policy", choices=("local", "agentic"), default="local")
         if name == "pull":
             item.add_argument("--campaign-name", default="cortex-smoke")
             item.add_argument("--local-pull-root", type=Path, default=DEFAULT_LOCAL_PULL_ROOT)
@@ -292,6 +297,7 @@ def parser() -> argparse.ArgumentParser:
             item.add_argument("--no-pip-upgrade", action="store_true")
             item.add_argument("--ignore-requires-python", action="store_true")
             item.add_argument("--no-deps", action="store_true")
+            item.add_argument("--research-extra", action="store_true")
         if name in {"remote-dry-run", "remote-run"}:
             item.add_argument("--venv-dir", default=DEFAULT_VENV_DIR)
 
@@ -323,6 +329,7 @@ def main() -> int:
                 upgrade_pip=not args.no_pip_upgrade,
                 ignore_requires_python=args.ignore_requires_python,
                 no_deps=args.no_deps,
+                research_extra=args.research_extra,
             ),
             args.dry_run_command,
         )
@@ -335,8 +342,9 @@ def main() -> int:
                 args.proposal_batch_size,
                 args.max_concurrent_trials,
                 args.timeout_minutes,
-                args.spec_profile,
-                args.venv_dir,
+                spec_profile=args.spec_profile,
+                policy=args.policy,
+                venv_dir=args.venv_dir,
                 dry_run=True,
             ),
             args.dry_run_command,
@@ -350,8 +358,9 @@ def main() -> int:
                 args.proposal_batch_size,
                 args.max_concurrent_trials,
                 args.timeout_minutes,
-                args.spec_profile,
-                args.venv_dir,
+                spec_profile=args.spec_profile,
+                policy=args.policy,
+                venv_dir=args.venv_dir,
             ),
             args.dry_run_command,
         )
