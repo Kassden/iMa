@@ -32,6 +32,7 @@ class CortexOptimizerWorkerTests(unittest.TestCase):
         rendered = " ".join(command)
         self.assertIn("--delete", command)
         self.assertIn("--exclude .venv/", rendered)
+        self.assertIn("--exclude .venv*/", rendered)
         self.assertIn("--exclude artifacts/", rendered)
         self.assertIn("--exclude .env.local", rendered)
         self.assertTrue(command[-1].endswith("root@100.95.24.121:/home/imaopt/iMa/"))

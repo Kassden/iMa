@@ -117,6 +117,8 @@ def rsync_push_command(target: RemoteTarget, local_root: Path = Path(".")) -> li
         "--exclude",
         ".venv/",
         "--exclude",
+        ".venv*/",
+        "--exclude",
         ".mega/",
         "--exclude",
         "__pycache__/",
