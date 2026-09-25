@@ -21,10 +21,18 @@ from ima.optimizer import (
     validate_proposal_batch,
     voting_rank,
 )
-from scripts.optimize import _load_config
+from scripts.optimize import _load_config, parser
 
 
 class OptimizerTests(unittest.TestCase):
+    def test_cli_unlimited_distinguishes_override_from_omission(self):
+        omitted = parser().parse_args(["run", "--campaign", "/tmp/campaign"])
+        unlimited = parser().parse_args([
+            "run", "--campaign", "/tmp/campaign", "--max-trials", "unlimited",
+        ])
+        self.assertFalse(hasattr(omitted, "max_trials"))
+        self.assertIsNone(unlimited.max_trials)
+
     def test_optimizer_config_is_strict_and_keeps_unlimited(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "optimizer.json"

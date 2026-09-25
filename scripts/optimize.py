@@ -39,7 +39,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--max-trials",
         type=_parse_max_trials,
-        default=None,
+        default=argparse.SUPPRESS,
         help="Completed trial budget; use 0 or 'unlimited' to drain the spec profile",
     )
     run.add_argument("--proposal-batch-size", type=int)
@@ -76,7 +76,7 @@ def main() -> int:
         values = _load_config(args.config)
         cli_values = {
             "policy": args.policy,
-            "max_trials": args.max_trials,
+            "max_trials": getattr(args, "max_trials", argparse.SUPPRESS),
             "proposal_batch_size": args.proposal_batch_size,
             "max_concurrent_trials": args.max_concurrent_trials,
             "timeout_minutes": args.timeout_minutes,
@@ -94,7 +94,13 @@ def main() -> int:
             "protocol_path": args.protocol_path,
             "mlflow_tracking_uri": args.mlflow_tracking_uri,
         }
-        values.update({key: value for key, value in cli_values.items() if value is not None})
+        values.update({
+            key: value
+            for key, value in cli_values.items()
+            if value is not None and value is not argparse.SUPPRESS
+        })
+        if cli_values["max_trials"] is None:
+            values["max_trials"] = None
         max_concurrent = values.get("max_concurrent_trials", 1)
         max_concurrent_trials = "auto" if max_concurrent == "auto" else int(max_concurrent)
         config = CampaignConfig(
