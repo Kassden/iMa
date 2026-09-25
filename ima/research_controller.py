@@ -536,6 +536,14 @@ def _persist_decision(campaign_dir: Path, cycle: int, decision: dict[str, Any]) 
 
 
 def _code_revision() -> str:
+    configured = os.environ.get("IMA_CODE_REVISION")
+    if configured:
+        return configured.strip()
+    revision_file = Path("REVISION")
+    if revision_file.is_file():
+        revision = revision_file.read_text(encoding="utf-8").strip()
+        if revision:
+            return revision
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"], text=True, capture_output=True, check=False
     )

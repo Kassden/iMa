@@ -8,6 +8,7 @@ import pandas as pd
 
 from ima.optimizer import CampaignConfig
 from ima.research_controller import (
+    _code_revision,
     _fixture_proposals,
     campaign_status,
     request_campaign_stop,
@@ -43,6 +44,10 @@ class ResearchControllerTests(unittest.TestCase):
             "max_folds": 1,
         }), encoding="utf-8")
         return dataset, protocol
+
+    def test_deployment_revision_can_be_explicit_without_git_metadata(self):
+        with mock.patch.dict("os.environ", {"IMA_CODE_REVISION": "release-abc"}):
+            self.assertEqual("release-abc", _code_revision())
 
     def config(self, campaign: Path, dataset: Path, protocol: Path, max_trials: int):
         return CampaignConfig(
