@@ -8,7 +8,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy.optimize import check_grad, minimize
-from scipy.stats import spearmanr
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.impute import SimpleImputer
@@ -18,6 +17,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .feature_sets import FeatureSchema
 from .modeling import normalize_by_race, race_log_loss
+from .research_evaluation import placing_metrics, ranking_metrics, regression_metrics
 from .research_targets import TargetContract, apply_target_contract, target_contract
 
 
@@ -177,25 +177,32 @@ def secondary_target_diagnostics(
     labelled = apply_target_contract(frame, contract)
     values = np.asarray(predictions, dtype=float)
     if contract.kind == "adjusted_finish_time_or_speed":
-        actual = labelled[contract.label_column].to_numpy(dtype=float)
-        valid = np.isfinite(actual) & np.isfinite(values)
-        mae = float(np.mean(np.abs(values[valid] - actual[valid])))
-        corr = spearmanr(actual[valid], values[valid]).correlation if valid.any() else np.nan
-        return {"mae": mae, "spearman": float(corr) if np.isfinite(corr) else 0.0}
+        metrics = regression_metrics(values, labelled, label_column=contract.label_column)
+        return metrics | {
+            "mae": metrics["race_mae"],
+            "spearman": metrics["race_spearman"],
+        }
     if contract.kind == "ranking_strength":
-        actual = labelled[contract.label_column].to_numpy(dtype=float)
-        corr = spearmanr(actual, values).correlation
-        return {"spearman": float(corr) if np.isfinite(corr) else 0.0}
+        metrics = ranking_metrics(values, labelled, label_column=contract.label_column)
+        return metrics | {"spearman": metrics["race_spearman"]}
     if contract.kind == "placing_top_k":
-        actual = labelled[contract.label_column].to_numpy(dtype=float)
-        clipped = np.clip(values, 1e-12, 1.0 - 1e-12)
-        brier = float(np.mean(np.square(clipped - actual)))
-        return {"brier": brier}
+        metrics = placing_metrics(
+            values,
+            labelled,
+            label_column=contract.label_column,
+            top_k=int(contract.parameters["top_k"]),
+        )
+        return metrics | {"brier": metrics["race_brier"]}
     if contract.kind == "win_probability":
         return {"race_log_loss": race_log_loss(values, labelled)}
     if contract.kind == "market_odds_forecast":
-        actual = labelled[contract.label_column].to_numpy(dtype=float)
-        return {"mae": float(np.mean(np.abs(values - actual)))}
+        metrics = regression_metrics(
+            values,
+            labelled,
+            label_column=contract.label_column,
+            include_rank_metrics=False,
+        )
+        return metrics | {"mae": metrics["race_mae"]}
     raise ValueError(f"Unsupported target diagnostics: {contract.kind}")
 
 
