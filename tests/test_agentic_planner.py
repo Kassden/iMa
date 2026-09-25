@@ -52,6 +52,9 @@ class AgenticPlannerTests(unittest.TestCase):
         schema = json.loads(user_content)["required_recipe_object_shape"]
         self.assertIsInstance(schema["feature_schema"], str)
         self.assertIsInstance(schema["train_window"], str)
+        compatibility = json.loads(user_content)["target_recipe_compatibility"]
+        self.assertEqual("pairwise_ranker", compatibility["ranking_strength"]["model"])
+        self.assertEqual("none", compatibility["placing_top_k"]["blend"])
 
     def test_research_proposal_response_validates_typed_recipe(self):
         response = {

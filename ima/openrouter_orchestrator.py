@@ -190,7 +190,8 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
             "content": (
                 "You are the iMa research optimizer planner. Return strict JSON only. "
                 "Propose registered PipelineRecipe v2 objects. Do not request raw runner rows, "
-                "labels, credentials, promotion, final odds or live betting."
+                "labels, credentials, promotion, final odds or live betting. Every recipe must "
+                "obey the supplied target/model/calibration/blend compatibility matrix exactly."
             ),
         },
         {
@@ -227,6 +228,33 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                         "calibration": {"kind": "temperature", "parameters": {}},
                         "blend": {"kind": "market_softmax", "parameters": {}},
                         "seed": 42,
+                    },
+                    "target_recipe_compatibility": {
+                        "win_probability": {
+                            "model": "one of: logit, boosted",
+                            "calibration": "one of: temperature, none",
+                            "blend": "one of: market_softmax, none",
+                        },
+                        "placing_top_k": {
+                            "model": "one of: logit, boosted",
+                            "calibration": "none",
+                            "blend": "none",
+                        },
+                        "ranking_strength": {
+                            "model": "pairwise_ranker",
+                            "calibration": "none",
+                            "blend": "none",
+                        },
+                        "adjusted_finish_time_or_speed": {
+                            "model": "one of: hist_gradient_regressor, ridge_regressor",
+                            "calibration": "none",
+                            "blend": "none",
+                        },
+                        "market_odds_forecast": {
+                            "model": "one of: hist_gradient_regressor, ridge_regressor",
+                            "calibration": "none",
+                            "blend": "none",
+                        },
                     },
                     "evidence_bundle": evidence_bundle,
                     "output_schema": {
