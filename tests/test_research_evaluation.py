@@ -12,6 +12,9 @@ from ima.research_evaluation import (
     evaluate_research_probabilities,
     make_protocol_manifest,
     per_race_log_losses,
+    placing_metrics,
+    ranking_metrics,
+    regression_metrics,
     select_fold,
 )
 
@@ -74,6 +77,69 @@ class ResearchEvaluationTests(unittest.TestCase):
             evaluate_research_probabilities(bad, self.frame, label="bad")
         with self.assertRaisesRegex(ResearchEvaluationError, "length"):
             evaluate_research_probabilities(bad[:-1], self.frame, label="bad")
+
+    def test_probability_metrics_include_race_dispersion_and_winner_mrr(self):
+        probabilities = baseline_probabilities(self.frame, "uniform")
+        metrics = evaluate_research_probabilities(
+            probabilities, self.frame, label="uniform"
+        )["metrics"]
+        self.assertIn("race_log_loss_std", metrics)
+        self.assertIn("worst_race_brier", metrics)
+        self.assertGreater(metrics["winner_mrr"], 0.0)
+        self.assertLessEqual(metrics["winner_mrr"], 1.0)
+
+    def test_placing_metrics_weight_races_equally_and_score_exact_top_k(self):
+        frame = pd.DataFrame({
+            "race_id": ["small"] * 3 + ["large"] * 5,
+            "place": [1, 1, 0, 1, 1, 0, 0, 0],
+        })
+        perfect = np.array([0.9, 0.8, 0.1, 0.9, 0.8, 0.3, 0.2, 0.1])
+        metrics = placing_metrics(perfect, frame, label_column="place", top_k=2)
+        self.assertAlmostEqual(1.0, metrics["race_precision_at_k"])
+        self.assertAlmostEqual(1.0, metrics["race_recall_at_k"])
+        self.assertAlmostEqual(1.0, metrics["race_f1_at_k"])
+        self.assertAlmostEqual(1.0, metrics["race_top_pick_place_rate"])
+        self.assertGreater(metrics["race_binary_log_loss"], 0.0)
+
+    def test_ranking_metrics_are_grouped_by_race_and_handle_ties(self):
+        frame = pd.DataFrame({
+            "race_id": ["R1"] * 4 + ["R2"] * 2,
+            "relevance": [1.0, 0.75, 0.5, 0.25, 1.0, 0.5],
+        })
+        perfect = frame["relevance"].to_numpy()
+        metrics = ranking_metrics(perfect, frame, label_column="relevance")
+        self.assertAlmostEqual(1.0, metrics["race_ndcg_at_3"])
+        self.assertAlmostEqual(1.0, metrics["race_ndcg"])
+        self.assertAlmostEqual(1.0, metrics["race_pairwise_accuracy"])
+        self.assertAlmostEqual(1.0, metrics["winner_mrr"])
+
+        tied = ranking_metrics(
+            np.ones(len(frame)), frame, label_column="relevance"
+        )
+        self.assertAlmostEqual(0.5, tied["race_pairwise_accuracy"])
+        self.assertEqual(0.0, tied["race_spearman"])
+
+    def test_regression_metrics_report_race_mae_rmse_and_rank_quality(self):
+        frame = pd.DataFrame({
+            "race_id": ["R1", "R1", "R2", "R2", "R2"],
+            "speed": [10.0, 9.0, 8.0, 7.0, 6.0],
+        })
+        predictions = np.array([11.0, 9.0, 8.0, 5.0, 6.0])
+        metrics = regression_metrics(
+            predictions, frame, label_column="speed"
+        )
+        self.assertAlmostEqual((0.5 + (2.0 / 3.0)) / 2.0, metrics["race_mae"])
+        self.assertGreaterEqual(metrics["race_rmse"], metrics["race_mae"])
+        self.assertLessEqual(metrics["race_spearman"], 1.0)
+
+    def test_target_metrics_reject_non_finite_and_wrong_length_predictions(self):
+        frame = pd.DataFrame({"race_id": ["R1", "R1"], "label": [1, 0]})
+        with self.assertRaisesRegex(ResearchEvaluationError, "finite"):
+            placing_metrics(
+                np.array([np.nan, 0.2]), frame, label_column="label", top_k=1
+            )
+        with self.assertRaisesRegex(ResearchEvaluationError, "length"):
+            regression_metrics(np.array([1.0]), frame, label_column="label")
 
 
 if __name__ == "__main__":
