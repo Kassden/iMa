@@ -32,8 +32,10 @@ Use a strict JSON file. Credentials stay in the environment.
   "schema_version": 1,
   "policy": "agentic",
   "planner_mode": "openrouter",
-  "model": "REPLACE_WITH_VERIFIED_OPENROUTER_MODEL",
+  "model": "deepseek/deepseek-v4-pro-0813",
   "service_tier": "flex",
+  "provider_endpoint": "baidu/fp8",
+  "planner_reasoning_effort": "none",
   "max_total_cost_usd": 1.0,
   "max_output_tokens": 2400,
   "max_trials": 9,
@@ -43,6 +45,14 @@ Use a strict JSON file. Credentials stay in the environment.
   "mlflow_tracking_uri": "http://100.95.24.121:5000"
 }
 ```
+
+The Cortex canary pins `baidu/fp8` with provider fallbacks disabled. A live
+probe on 2026-09-25 confirmed that this endpoint served the requested DeepSeek
+model. OpenRouter returned `service_tier: null`, so Flex is a request preference,
+not a verified provider tier for this route. The explicit `none` reasoning
+setting preserves the bounded completion budget for the strict JSON recipe;
+without it, this model consumed the completion budget in hidden reasoning and
+returned no usable content.
 
 ```bash
 .venv/bin/ima-optimize run \
