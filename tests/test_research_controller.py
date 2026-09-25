@@ -113,6 +113,19 @@ class ResearchControllerTests(unittest.TestCase):
             lines = (campaign / "trials.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertEqual(6, len(lines))
             self.assertEqual(6, len({json.loads(line)["attempt_id"] for line in lines}))
+            decisions = [
+                json.loads(line) for line in (campaign / "decisions.jsonl")
+                .read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual([0, 1], [decision["cycle"] for decision in decisions])
+            first_cycle = json.loads(
+                (campaign / "decisions" / "cycle-0000.json").read_text(encoding="utf-8")
+            )
+            second_cycle = json.loads(
+                (campaign / "decisions" / "cycle-0001.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual("bootstrap", first_cycle["source"])
+            self.assertEqual("fixture", second_cycle["source"])
 
     def test_counterfactual_evidence_changes_fixture_recipe(self):
         base = {
