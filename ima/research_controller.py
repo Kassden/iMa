@@ -23,6 +23,13 @@ from .research_specs import PipelineRecipe, ResearchProposal
 from .research_store import ResearchLedger, utc_now
 
 
+class PlannerSpendCapReached(RuntimeError):
+    def __init__(self, spent: float, cap: float) -> None:
+        self.spent = spent
+        self.cap = cap
+        super().__init__(f"OpenRouter planner spend cap reached: ${spent:.6f} of ${cap:.6f}")
+
+
 def run_research_campaign(config: Any) -> dict[str, Any]:
     config.validate()
     if config.protocol_path is None:
@@ -85,9 +92,19 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 payload["resources"] = resources
                 _write_json_atomic(campaign_dir / "status.json", payload)
                 return payload
-            suggestions, decision = _next_suggestions(
-                config, campaign_dir, ledger, search, batch_size, cycles
-            )
+            try:
+                suggestions, decision = _next_suggestions(
+                    config, campaign_dir, ledger, search, batch_size, cycles
+                )
+            except PlannerSpendCapReached as exc:
+                payload = _finish_payload(
+                    campaign_dir, ledger, search, cycles, new_results,
+                    "paused_spend", tracking_errors,
+                )
+                payload["planner_spend_usd"] = exc.spent
+                payload["planner_spend_cap_usd"] = exc.cap
+                _write_json_atomic(campaign_dir / "status.json", payload)
+                return payload
             if not suggestions:
                 return _finish_payload(
                     campaign_dir, ledger, search, cycles, new_results, "paused",
@@ -209,9 +226,7 @@ def _next_suggestions(
     if config.planner_mode == "openrouter":
         spent = _planner_spend(campaign_dir)
         if spent >= float(config.max_total_cost_usd):
-            raise RuntimeError(
-                f"OpenRouter planner spend cap reached: ${spent:.6f}"
-            )
+            raise PlannerSpendCapReached(spent, float(config.max_total_cost_usd))
         remote = OpenRouterConfig.from_env(
             model=config.model,
             service_tier=config.service_tier,
@@ -267,14 +282,30 @@ def _next_suggestions(
         return suggestions, decision
     completed_ids = {row["attempt_id"] for row in successes}
     suggestions = []
+    rejected_proposals = []
     for proposal in proposals:
         if proposal.evidence_ids != (evidence["evidence_id"],):
             raise ValueError("planner proposal must cite the current evidence_id")
         if not proposal.parent_trial_ids or not set(proposal.parent_trial_ids).issubset(completed_ids):
             raise ValueError("planner proposal cites unknown or missing parent trials")
-        suggestions.append(search.reserve_recipe(
-            proposal.recipe, proposal.hypothesis, proposal.changed_axes
-        ))
+        try:
+            suggestion = search.reserve_recipe(
+                proposal.recipe, proposal.hypothesis, proposal.changed_axes
+            )
+        except ValueError as exc:
+            if not str(exc).startswith("Recipe already reserved:"):
+                raise
+            rejected_proposals.append({
+                "proposal_id": proposal.proposal_id,
+                "recipe_hash": proposal.recipe.recipe_hash(),
+                "reason": "duplicate_recipe",
+            })
+            continue
+        suggestions.append(suggestion)
+    local_refill = []
+    if len(suggestions) < count:
+        local_refill = search.ask(count - len(suggestions))
+        suggestions.extend(local_refill)
     decision = {
         "cycle": cycle,
         "source": source,
@@ -282,6 +313,8 @@ def _next_suggestions(
         "completed_trial_count": len(successes),
         "evidence_trial_ids": [row["attempt_id"] for row in successes[-32:]],
         "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
+        "rejected_proposals": rejected_proposals,
+        "local_refill_trial_ids": [item.trial_id for item in local_refill],
         "suggestions": [item.serializable() for item in suggestions],
     }
     _persist_decision(campaign_dir, cycle, decision)

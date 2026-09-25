@@ -260,6 +260,98 @@ class ResearchControllerTests(unittest.TestCase):
             )
             self.assertEqual("provider/test-model", planner["requested_model"])
 
+    def test_spend_cap_pauses_without_dispatching_provider_or_new_trial(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            first = self.config(campaign, dataset, protocol, max_trials=3)
+            first = CampaignConfig(**{**first.__dict__, "planner_mode": "local"})
+            run_research_campaign(first)
+            planner_dir = campaign / "planner"
+            planner_dir.mkdir()
+            (planner_dir / "cycle-0000.json").write_text(json.dumps({
+                "response": {"raw_response": {"usage": {"cost": 1.0}}},
+            }), encoding="utf-8")
+            resumed = CampaignConfig(**{
+                **first.__dict__,
+                "planner_mode": "openrouter",
+                "model": "provider/test-model",
+                "service_tier": "flex",
+                "max_total_cost_usd": 0.5,
+                "max_trials": 4,
+            })
+            with mock.patch(
+                "ima.research_controller.choose_research_proposals"
+            ) as provider:
+                payload = run_research_campaign(resumed)
+            self.assertEqual("paused_spend", payload["mode"])
+            self.assertEqual(1.0, payload["planner_spend_usd"])
+            self.assertEqual(3, payload["search"]["trials"])
+            provider.assert_not_called()
+
+    def test_duplicate_provider_recipe_is_rejected_and_refilled_locally(self):
+        def duplicate_choose(evidence, count, config):
+            parent_ids = [row["attempt_id"] for row in evidence["completed_trials"]]
+            return {
+                "raw_response": {"usage": {"cost": 0.01}},
+                "service_tier": "flex",
+                "proposals": [{
+                    "proposal_id": "duplicate-seed",
+                    "parent_trial_ids": parent_ids,
+                    "evidence_ids": [evidence["evidence_id"]],
+                    "hypothesis": "Retry the baseline control.",
+                    "changed_axes": ["hyperparameters"],
+                    "recipe": {
+                        "schema_version": 2,
+                        "target": {"kind": "win_probability", "parameters": {}},
+                        "feature_schema": "baseline-v1",
+                        "drop_feature_families": [],
+                        "transforms": [],
+                        "train_window": "all_history",
+                        "model": {
+                            "kind": "logit",
+                            "parameters": {"C": 0.5, "class_weight": "balanced"},
+                        },
+                        "calibration": {"kind": "temperature", "parameters": {}},
+                        "blend": {"kind": "market_softmax", "parameters": {}},
+                        "seed": 42,
+                    },
+                    "expected_observation": "The control remains stable.",
+                    "falsification_rule": "Reject when it duplicates prior work.",
+                }],
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            config = CampaignConfig(
+                campaign_dir=campaign,
+                policy="agentic",
+                planner_mode="openrouter",
+                model="provider/test-model",
+                service_tier="flex",
+                max_total_cost_usd=1.0,
+                dataset_path=dataset,
+                protocol_path=protocol,
+                max_trials=4,
+                proposal_batch_size=2,
+                max_concurrent_trials=1,
+                replan_every_terminal_trials=2,
+            )
+            with mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "secret"}), mock.patch(
+                "ima.research_controller.choose_research_proposals",
+                side_effect=duplicate_choose,
+            ):
+                payload = run_research_campaign(config)
+            self.assertEqual("complete", payload["mode"])
+            decision = json.loads(
+                (campaign / "decisions" / "cycle-0001.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual("duplicate_recipe", decision["rejected_proposals"][0]["reason"])
+            self.assertEqual(2, len(decision["local_refill_trial_ids"]))
+
     def test_zero_resource_slots_pause_before_search_reservation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
