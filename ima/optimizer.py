@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -23,6 +24,8 @@ for _thread_env in (
 
 from .experiments import ExperimentSpec, experiment_specs
 from .openrouter_orchestrator import OpenRouterConfig, choose_proposals, submit_proposal_batch
+from .research_resources import admission_slots, observe_resources
+from .research_search import RecipeSearchController
 
 
 ALLOWED_CHANGED_SURFACES = {
@@ -71,13 +74,26 @@ class CampaignConfig:
     max_concurrent_trials: int | str = 1
     timeout_minutes: int | None = None
     service_tier: str | None = None
+    provider_endpoint: str | None = None
+    planner_reasoning_effort: str | None = None
     openrouter_batch: bool = False
     model: str = "openrouter/local-policy"
     spec_profile: str = "default"
     champion_run_id: str | None = None
+    planner_mode: str = "local"
+    max_total_cost_usd: float | None = None
+    max_output_tokens: int = 4000
+    planner_timeout_seconds: int = 300
+    replan_every_terminal_trials: int = 32
+    max_consecutive_failed_trials: int = 12
+    dataset_path: Path | None = None
+    protocol_path: Path | None = None
+    mlflow_tracking_uri: str | None = None
     gates: MetricGates = field(default_factory=MetricGates)
 
     def validate(self) -> None:
+        if self.policy not in {"local", "openrouter", "agentic"}:
+            raise ValueError("policy must be local, openrouter, or agentic")
         if self.max_trials is not None and self.max_trials <= 0:
             raise ValueError("max_trials must be positive or None for unlimited")
         if self.proposal_batch_size <= 0:
@@ -97,14 +113,39 @@ class CampaignConfig:
             raise ValueError("max_concurrent_trials cannot exceed max_trials")
         if self.service_tier and self.service_tier != "flex":
             raise ValueError("only OpenRouter service_tier='flex' is supported")
-        if self.openrouter_batch and self.policy == "local":
+        if self.provider_endpoint is not None and not self.provider_endpoint.strip():
+            raise ValueError("provider_endpoint must be a non-empty provider slug")
+        if self.planner_reasoning_effort not in {
+            None, "none", "minimal", "low", "medium", "high", "xhigh", "max",
+        }:
+            raise ValueError("planner_reasoning_effort is not supported")
+        if self.openrouter_batch and self.policy in {"local", "agentic"}:
             raise ValueError("openrouter batch mode requires a remote OpenRouter policy")
         if self.spec_profile not in SPEC_PROFILES:
             raise ValueError(f"Unknown experiment spec profile: {self.spec_profile}")
+        if self.planner_mode not in {"local", "fixture", "openrouter"}:
+            raise ValueError("planner_mode must be local, fixture, or openrouter")
+        if self.max_total_cost_usd is not None and self.max_total_cost_usd <= 0:
+            raise ValueError("max_total_cost_usd must be positive when configured")
+        if self.max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be positive")
+        if self.planner_timeout_seconds <= 0:
+            raise ValueError("planner_timeout_seconds must be positive")
+        if self.replan_every_terminal_trials <= 0:
+            raise ValueError("replan_every_terminal_trials must be positive")
+        if self.max_consecutive_failed_trials <= 0:
+            raise ValueError("max_consecutive_failed_trials must be positive")
+        if self.policy == "agentic" and self.planner_mode == "openrouter":
+            if self.model == "openrouter/local-policy":
+                raise ValueError("agentic OpenRouter planning requires an explicit model")
+            if self.max_total_cost_usd is None:
+                raise ValueError("agentic OpenRouter planning requires max_total_cost_usd")
 
     def serializable(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["campaign_dir"] = str(self.campaign_dir)
+        payload["dataset_path"] = str(self.dataset_path) if self.dataset_path else None
+        payload["protocol_path"] = str(self.protocol_path) if self.protocol_path else None
         return payload
 
 
@@ -373,6 +414,17 @@ def available_specs(config: CampaignConfig) -> list[ExperimentSpec]:
     return [spec for spec in specs_for_config(config) if spec.run_id not in done]
 
 
+def research_recipe_proposals(campaign_dir: Path, count: int = 1) -> list[dict[str, Any]]:
+    """Return persisted v2 recipe suggestions without touching legacy execution."""
+    return [proposal.serializable() for proposal in RecipeSearchController(campaign_dir).ask(count)]
+
+
+def preview_research_recipe_proposals(count: int = 1) -> list[dict[str, Any]]:
+    """Preview recipes without consuming the campaign's persistent study."""
+    with tempfile.TemporaryDirectory(prefix="ima-recipe-preview-") as directory:
+        return research_recipe_proposals(Path(directory), count)
+
+
 def _proposals_from_remote_payload(
     config: CampaignConfig,
     payload: dict[str, Any],
@@ -597,6 +649,10 @@ def resolved_concurrency(config: CampaignConfig, available_trials: int | None = 
     else:
         cpu_count = os.cpu_count() or 1
         value = max(1, min(32, cpu_count - 2 if cpu_count > 4 else cpu_count))
+        try:
+            value = max(1, admission_slots(observe_resources(str(config.campaign_dir)), requested=value))
+        except Exception:
+            pass
     value = min(value, config.proposal_batch_size)
     if config.max_trials is not None:
         value = min(value, config.max_trials)
@@ -640,6 +696,22 @@ def write_report(campaign_dir: Path, results: list[TrialResult], decision: Agent
 def dry_run(config: CampaignConfig) -> dict[str, Any]:
     write_campaign(config)
     remaining = remaining_trial_budget(config)
+    if config.policy == "agentic":
+        count = config.proposal_batch_size if remaining is None else min(config.proposal_batch_size, remaining)
+        proposals = preview_research_recipe_proposals(count)
+        payload = {
+            "mode": "dry_run",
+            "campaign": config.serializable(),
+            "proposals": proposals,
+            "completed_run_ids": sorted(completed_run_ids(config.campaign_dir)),
+            "remaining_trials": "unlimited" if remaining is None else remaining,
+            "resolved_concurrency": 0,
+        }
+        (config.campaign_dir / "dry-run.json").write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        return payload
     if config.policy == "openrouter" and config.openrouter_batch:
         remote_config = OpenRouterConfig.from_env(
             model=config.model if config.model != "openrouter/local-policy" else None,
@@ -687,6 +759,9 @@ def run_campaign(config: CampaignConfig, dry: bool = False) -> dict[str, Any]:
     write_campaign(config)
     if dry:
         return dry_run(config)
+    if config.policy == "agentic":
+        from .research_controller import run_research_campaign
+        return run_research_campaign(config)
     if config.policy == "openrouter" and config.openrouter_batch:
         return dry_run(config)
     deadline = None

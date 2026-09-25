@@ -258,3 +258,35 @@ def validate_feature_contract() -> None:
         raise ValueError(f"Notebook-rich family mismatch: missing={missing}, extra={extra}")
     if len(assigned_notebook) != len(set(assigned_notebook)):
         raise ValueError("Notebook-rich features must belong to exactly one family")
+
+
+def feature_families_for_schema(schema_name: str) -> dict[str, tuple[str, ...]]:
+    if schema_name == BASELINE_SCHEMA.name:
+        baseline = set(BASELINE_SCHEMA.features)
+        return {
+            name: tuple(feature for feature in features if feature in baseline)
+            for name, features in FEATURE_FAMILIES.items()
+            if any(feature in baseline for feature in features)
+        }
+    if schema_name == RICH_SCHEMA.name:
+        return dict(FEATURE_FAMILIES)
+    if schema_name == NOTEBOOK_RICH_SCHEMA.name:
+        return dict(NOTEBOOK_FEATURE_FAMILIES)
+    raise ValueError(f"Unknown feature schema: {schema_name}")
+
+
+def drop_feature_families(
+    schema: FeatureSchema,
+    families: tuple[str, ...] | list[str],
+) -> FeatureSchema:
+    family_map = feature_families_for_schema(schema.name)
+    unknown = sorted(set(families) - set(family_map))
+    if unknown:
+        raise ValueError(f"Unknown feature families for {schema.name}: {unknown}")
+    dropped = {feature for family in families for feature in family_map[family]}
+    numeric = tuple(feature for feature in schema.numeric if feature not in dropped)
+    categorical = tuple(feature for feature in schema.categorical if feature not in dropped)
+    if not numeric and not categorical:
+        raise ValueError("Feature-family drop removed all features")
+    suffix = "-drop-" + "-".join(sorted(families)) if families else ""
+    return FeatureSchema(f"{schema.name}{suffix}", numeric, categorical)
