@@ -75,6 +75,7 @@ class CampaignConfig:
     timeout_minutes: int | None = None
     service_tier: str | None = None
     provider_endpoint: str | None = None
+    planner_reasoning_effort: str | None = None
     openrouter_batch: bool = False
     model: str = "openrouter/local-policy"
     spec_profile: str = "default"
@@ -114,6 +115,10 @@ class CampaignConfig:
             raise ValueError("only OpenRouter service_tier='flex' is supported")
         if self.provider_endpoint is not None and not self.provider_endpoint.strip():
             raise ValueError("provider_endpoint must be a non-empty provider slug")
+        if self.planner_reasoning_effort not in {
+            None, "none", "minimal", "low", "medium", "high", "xhigh", "max",
+        }:
+            raise ValueError("planner_reasoning_effort is not supported")
         if self.openrouter_batch and self.policy in {"local", "agentic"}:
             raise ValueError("openrouter batch mode requires a remote OpenRouter policy")
         if self.spec_profile not in SPEC_PROFILES:

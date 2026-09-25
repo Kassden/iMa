@@ -19,6 +19,9 @@ from .research_specs import (
 
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api"
+OPENROUTER_REASONING_EFFORTS = {
+    "none", "minimal", "low", "medium", "high", "xhigh", "max",
+}
 
 
 class OpenRouterError(RuntimeError):
@@ -34,6 +37,7 @@ class OpenRouterConfig:
     max_output_tokens: int = 2400
     base_url: str = OPENROUTER_BASE_URL
     provider_endpoint: str | None = None
+    reasoning_effort: str | None = None
 
     @classmethod
     def from_env(
@@ -43,6 +47,7 @@ class OpenRouterConfig:
         max_output_tokens: int = 2400,
         timeout_seconds: int = 300,
         provider_endpoint: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> "OpenRouterConfig":
         api_key = os.environ.get("OPENROUTER_API_KEY")
         if not api_key:
@@ -60,6 +65,10 @@ class OpenRouterConfig:
                 provider_endpoint
                 or os.environ.get("IMA_OPTIMIZER_PROVIDER_ENDPOINT")
             ),
+            reasoning_effort=(
+                reasoning_effort
+                or os.environ.get("IMA_OPTIMIZER_REASONING_EFFORT")
+            ),
         )
 
 
@@ -72,6 +81,15 @@ def _provider_route(config: OpenRouterConfig) -> dict[str, Any]:
             "allow_fallbacks": False,
         }
     }
+
+
+def _reasoning_options(config: OpenRouterConfig) -> dict[str, Any]:
+    if config.reasoning_effort is None:
+        return {}
+    if config.reasoning_effort not in OPENROUTER_REASONING_EFFORTS:
+        allowed = ", ".join(sorted(OPENROUTER_REASONING_EFFORTS))
+        raise OpenRouterError(f"reasoning_effort must be one of: {allowed}")
+    return {"reasoning_effort": config.reasoning_effort}
 
 
 def _post_json(url: str, payload: dict[str, Any], config: OpenRouterConfig) -> dict[str, Any]:
@@ -171,6 +189,11 @@ def _proposal_payload_from_response(response: dict[str, Any]) -> dict[str, Any]:
         content = response["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
         raise OpenRouterError("OpenRouter response did not contain a chat message") from exc
+    if not isinstance(content, str):
+        raise OpenRouterError(
+            "OpenRouter response did not contain text content; the completion may have "
+            "exhausted its token budget during reasoning"
+        )
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError as exc:
@@ -194,7 +217,7 @@ def choose_proposals(
         "max_tokens": 1200,
         "response_format": {"type": "json_object"},
         "service_tier": config.service_tier,
-    } | _provider_route(config)
+    } | _provider_route(config) | _reasoning_options(config)
     response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
     parsed = _proposal_payload_from_response(response)
     return {
@@ -339,7 +362,7 @@ def choose_research_proposals(
         "max_tokens": config.max_output_tokens,
         "response_format": {"type": "json_object"},
         "service_tier": config.service_tier,
-    } | _provider_route(config)
+    } | _provider_route(config) | _reasoning_options(config)
     response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
     try:
         proposals, rejected = _validated_research_proposals(response)
@@ -372,7 +395,7 @@ def submit_proposal_batch(
         "max_tokens": 1200,
         "response_format": {"type": "json_object"},
         "service_tier": config.service_tier,
-    } | _provider_route(config)
+    } | _provider_route(config) | _reasoning_options(config)
     payload = {
         "endpoint": "/v1/chat/completions",
         "model": config.model,

@@ -12,6 +12,7 @@ _CONFIG_KEYS = {
     "schema_version", "policy", "max_trials", "proposal_batch_size",
     "max_concurrent_trials", "timeout_minutes", "service_tier",
     "provider_endpoint",
+    "planner_reasoning_effort",
     "openrouter_batch", "model", "spec_profile", "planner_mode",
     "max_total_cost_usd", "max_output_tokens", "planner_timeout_seconds",
     "replan_every_terminal_trials",
@@ -52,6 +53,11 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--timeout-minutes", type=int)
     run.add_argument("--service-tier", choices=("flex",), help="OpenRouter service tier")
     run.add_argument("--provider-endpoint", help="Exact OpenRouter provider endpoint slug")
+    run.add_argument(
+        "--planner-reasoning-effort",
+        choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
+        help="Bound planner reasoning so the response budget remains available for JSON",
+    )
     run.add_argument("--openrouter-batch", action="store_true", default=None)
     run.add_argument("--model", help="Remote planner model, e.g. openai/gpt-5.6-luna")
     run.add_argument("--spec-profile", choices=("default", "long", "adaptive"))
@@ -84,6 +90,7 @@ def main() -> int:
             "timeout_minutes": args.timeout_minutes,
             "service_tier": args.service_tier,
             "provider_endpoint": args.provider_endpoint,
+            "planner_reasoning_effort": args.planner_reasoning_effort,
             "openrouter_batch": args.openrouter_batch,
             "model": args.model,
             "spec_profile": args.spec_profile,
@@ -115,6 +122,7 @@ def main() -> int:
             timeout_minutes=values.get("timeout_minutes"),
             service_tier=values.get("service_tier"),
             provider_endpoint=values.get("provider_endpoint"),
+            planner_reasoning_effort=values.get("planner_reasoning_effort"),
             openrouter_batch=bool(values.get("openrouter_batch", False)),
             model=values.get("model", "openrouter/local-policy"),
             spec_profile=values.get("spec_profile", "default"),
