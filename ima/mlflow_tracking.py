@@ -112,6 +112,9 @@ def research_run_parameters(
         "recipe_hash": str(result.get("recipe_hash", "")),
         "target_kind": str(result.get("target_kind", "")),
         "objective_name": str(result.get("objective_name", "")),
+        "metric_contract_version": int(
+            result.get("metrics", {}).get("metric_contract_version", 1)
+        ),
     }
 
     def add(prefix: str, value: Any) -> None:
@@ -139,6 +142,7 @@ def research_run_metrics(result: dict[str, Any]) -> dict[str, float]:
         "objective": result.get("objective_value"),
         "duration_seconds": result.get("duration_seconds"),
         "mean_selected_minus_market": source.get("mean_selected_minus_market"),
+        "summary": source.get("summary", {}),
         "dataset_exclusions": source.get("dataset_exclusions", {}),
         "fold_count": len(source.get("folds") or []),
     }
