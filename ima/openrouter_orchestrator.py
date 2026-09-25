@@ -210,14 +210,14 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                         "market_blend",
                         "target",
                     ],
-                    "registered_recipe_schema": {
+                    "required_recipe_object_shape": {
                         "schema_version": 2,
                         "target": {
                             "kind": "one of: win_probability, ranking_strength, placing_top_k, adjusted_finish_time_or_speed, market_odds_forecast",
                             "parameters": {},
                         },
-                        "feature_schema": ["baseline-v1", "benter-rich-v1", "notebook-rich-v2"],
-                        "train_window": ["all_history", "trailing_3_years"],
+                        "feature_schema": "one of: baseline-v1, benter-rich-v1, notebook-rich-v2",
+                        "train_window": "one of: all_history, trailing_3_years",
                         "model": {
                             "kind": "one of: logit, boosted, pairwise_ranker, hist_gradient_regressor, ridge_regressor",
                             "parameters": {},

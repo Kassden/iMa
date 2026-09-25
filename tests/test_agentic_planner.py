@@ -49,6 +49,9 @@ class AgenticPlannerTests(unittest.TestCase):
         self.assertNotIn("raw_runner_rows", user_content)
         self.assertNotIn('"model.kind"', user_content)
         self.assertNotIn('"target.kind"', user_content)
+        schema = json.loads(user_content)["required_recipe_object_shape"]
+        self.assertIsInstance(schema["feature_schema"], str)
+        self.assertIsInstance(schema["train_window"], str)
 
     def test_research_proposal_response_validates_typed_recipe(self):
         response = {
