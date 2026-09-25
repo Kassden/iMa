@@ -61,6 +61,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
         _reconcile_tells(ledger, search)
         tracking_errors = _reconcile_tracking(config, ledger)
         cycles = 0
+        cycle = _next_cycle_number(campaign_dir)
         new_results: list[dict[str, Any]] = []
         while config.max_trials is None or _success_count(ledger) < config.max_trials:
             if (campaign_dir / "STOP").exists():
@@ -94,7 +95,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 return payload
             try:
                 suggestions, decision = _next_suggestions(
-                    config, campaign_dir, ledger, search, batch_size, cycles
+                    config, campaign_dir, ledger, search, batch_size, cycle
                 )
             except PlannerSpendCapReached as exc:
                 payload = _finish_payload(
@@ -152,6 +153,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 _reconcile_tells(ledger, search)
                 tracking_errors.extend(_reconcile_tracking(config, ledger))
                 cycles += 1
+                cycle += 1
                 continue
             completed = _execute_requests(requests, slots)
             for result in completed:
@@ -162,6 +164,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 _reconcile_tells(ledger, search)
                 tracking_errors.extend(_reconcile_tracking(config, ledger))
             cycles += 1
+            cycle += 1
         return _finish_payload(
             campaign_dir, ledger, search, cycles, new_results, "complete",
             tracking_errors,
@@ -592,6 +595,36 @@ def _finish_payload(
 def _persist_decision(campaign_dir: Path, cycle: int, decision: dict[str, Any]) -> None:
     _write_json_atomic(campaign_dir / "decisions" / f"cycle-{cycle:04d}.json", decision)
     _append_jsonl(campaign_dir / "decisions.jsonl", decision)
+
+
+def _next_cycle_number(campaign_dir: Path) -> int:
+    observed: set[int] = set()
+    decisions = campaign_dir / "decisions.jsonl"
+    if decisions.exists():
+        for line_number, line in enumerate(
+            decisions.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+                cycle = row["cycle"]
+            except (json.JSONDecodeError, KeyError, TypeError) as exc:
+                raise RuntimeError(
+                    f"Invalid durable decision at {decisions}:{line_number}"
+                ) from exc
+            if not isinstance(cycle, int) or cycle < 0:
+                raise RuntimeError(
+                    f"Invalid cycle number at {decisions}:{line_number}"
+                )
+            observed.add(cycle)
+    for directory in ("decisions", "evidence", "planner"):
+        for path in (campaign_dir / directory).glob("cycle-*.json"):
+            try:
+                observed.add(int(path.stem.removeprefix("cycle-")))
+            except ValueError as exc:
+                raise RuntimeError(f"Invalid cycle artifact name: {path}") from exc
+    return max(observed, default=-1) + 1
 
 
 def _code_revision() -> str:
