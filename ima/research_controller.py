@@ -25,6 +25,10 @@ from .research_store import ResearchLedger, utc_now
 
 def run_research_campaign(config: Any) -> dict[str, Any]:
     config.validate()
+    if config.protocol_path is None:
+        raise ValueError(
+            "Executable agentic campaigns require an explicit protocol_path"
+        )
     campaign_dir = Path(config.campaign_dir)
     campaign_dir.mkdir(parents=True, exist_ok=True)
     with campaign_lock(campaign_dir):

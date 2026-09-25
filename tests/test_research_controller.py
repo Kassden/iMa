@@ -49,6 +49,19 @@ class ResearchControllerTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {"IMA_CODE_REVISION": "release-abc"}):
             self.assertEqual("release-abc", _code_revision())
 
+    def test_executable_campaign_requires_explicit_protocol(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, _ = self.fixture(root)
+            config = CampaignConfig(
+                campaign_dir=root / "campaign",
+                policy="agentic",
+                planner_mode="local",
+                dataset_path=dataset,
+            )
+            with self.assertRaisesRegex(ValueError, "explicit protocol_path"):
+                run_research_campaign(config)
+
     def config(self, campaign: Path, dataset: Path, protocol: Path, max_trials: int):
         return CampaignConfig(
             campaign_dir=campaign,
