@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from ima.openrouter_orchestrator import (
     OpenRouterConfig,
+    OpenRouterError,
     agentic_planner_messages,
     choose_research_proposals,
     research_proposals_from_response,
@@ -46,6 +47,8 @@ class AgenticPlannerTests(unittest.TestCase):
         user_content = messages[1]["content"]
         self.assertIn("propose_agentic_research_recipes", user_content)
         self.assertNotIn("raw_runner_rows", user_content)
+        self.assertNotIn('"model.kind"', user_content)
+        self.assertNotIn('"target.kind"', user_content)
 
     def test_research_proposal_response_validates_typed_recipe(self):
         response = {
@@ -125,6 +128,30 @@ class AgenticPlannerTests(unittest.TestCase):
             )
         self.assertEqual("flex", result["service_tier"])
         self.assertEqual("boosted", result["proposals"][0]["recipe"]["model"]["kind"])
+
+    def test_choose_wraps_malformed_provider_recipe_as_bounded_error(self):
+        response = {
+            "choices": [{"message": {"content": json.dumps({"proposals": [{
+                "proposal_id": "bad-dotted-shape",
+                "parent_trial_ids": ["attempt-1"],
+                "evidence_ids": ["e1"],
+                "hypothesis": "Try a different regularization value.",
+                "changed_axes": ["hyperparameters"],
+                "recipe": {
+                    "schema_version": 2,
+                    "model.kind": "logit",
+                    "target.kind": "win_probability",
+                },
+                "expected_observation": "Development loss changes.",
+                "falsification_rule": "Reject if loss does not improve.",
+            }]})}}],
+        }
+        with mock.patch("ima.openrouter_orchestrator._post_json", return_value=response):
+            with self.assertRaisesRegex(OpenRouterError, "invalid research proposals"):
+                choose_research_proposals(
+                    {"evidence_id": "e1"}, 1,
+                    OpenRouterConfig("key", "openai/test", service_tier="flex"),
+                )
 
 
 if __name__ == "__main__":

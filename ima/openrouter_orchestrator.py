@@ -207,22 +207,21 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                     ],
                     "registered_recipe_schema": {
                         "schema_version": 2,
-                        "target.kind": [
-                            "win_probability",
-                            "ranking_strength",
-                            "placing_top_k",
-                            "adjusted_finish_time_or_speed",
-                            "market_odds_forecast",
-                        ],
+                        "target": {
+                            "kind": "one of: win_probability, ranking_strength, placing_top_k, adjusted_finish_time_or_speed, market_odds_forecast",
+                            "parameters": {},
+                        },
                         "feature_schema": ["baseline-v1", "benter-rich-v1", "notebook-rich-v2"],
                         "train_window": ["all_history", "trailing_3_years"],
-                        "model.kind": [
-                            "logit",
-                            "boosted",
-                            "pairwise_ranker",
-                            "hist_gradient_regressor",
-                            "ridge_regressor",
-                        ],
+                        "model": {
+                            "kind": "one of: logit, boosted, pairwise_ranker, hist_gradient_regressor, ridge_regressor",
+                            "parameters": {},
+                        },
+                        "drop_feature_families": [],
+                        "transforms": [],
+                        "calibration": {"kind": "temperature", "parameters": {}},
+                        "blend": {"kind": "market_softmax", "parameters": {}},
+                        "seed": 42,
                     },
                     "evidence_bundle": evidence_bundle,
                     "output_schema": {
@@ -266,7 +265,12 @@ def choose_research_proposals(
         "service_tier": config.service_tier,
     }
     response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
-    proposals = research_proposals_from_response(response)
+    try:
+        proposals = research_proposals_from_response(response)
+    except Exception as exc:
+        raise OpenRouterError(
+            f"OpenRouter planner returned invalid research proposals: {exc}"
+        ) from exc
     return {
         "raw_response": response,
         "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
