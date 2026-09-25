@@ -81,6 +81,7 @@ class CampaignConfig:
     planner_mode: str = "local"
     max_total_cost_usd: float | None = None
     max_output_tokens: int = 4000
+    planner_timeout_seconds: int = 300
     replan_every_terminal_trials: int = 32
     max_consecutive_failed_trials: int = 12
     dataset_path: Path | None = None
@@ -120,6 +121,8 @@ class CampaignConfig:
             raise ValueError("max_total_cost_usd must be positive when configured")
         if self.max_output_tokens <= 0:
             raise ValueError("max_output_tokens must be positive")
+        if self.planner_timeout_seconds <= 0:
+            raise ValueError("planner_timeout_seconds must be positive")
         if self.replan_every_terminal_trials <= 0:
             raise ValueError("replan_every_terminal_trials must be positive")
         if self.max_consecutive_failed_trials <= 0:

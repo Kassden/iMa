@@ -1,4 +1,5 @@
 import unittest
+import socket
 from unittest import mock
 
 from ima.openrouter_orchestrator import (
@@ -48,6 +49,13 @@ class OpenRouterOrchestratorTests(unittest.TestCase):
         self.assertTrue(batch_is_terminal({"status": "expired"}))
         self.assertTrue(batch_is_terminal({"status": "cancelled"}))
         self.assertFalse(batch_is_terminal({"status": "in_progress"}))
+
+    def test_transport_timeout_is_wrapped(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=socket.timeout("slow flex response")
+        ):
+            with self.assertRaisesRegex(OpenRouterError, "slow flex response"):
+                get_batch("batch_123", OpenRouterConfig("key", "openai/test"))
 
 
 if __name__ == "__main__":

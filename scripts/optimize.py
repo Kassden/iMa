@@ -12,7 +12,8 @@ _CONFIG_KEYS = {
     "schema_version", "policy", "max_trials", "proposal_batch_size",
     "max_concurrent_trials", "timeout_minutes", "service_tier",
     "openrouter_batch", "model", "spec_profile", "planner_mode",
-    "max_total_cost_usd", "max_output_tokens", "replan_every_terminal_trials",
+    "max_total_cost_usd", "max_output_tokens", "planner_timeout_seconds",
+    "replan_every_terminal_trials",
     "max_consecutive_failed_trials",
     "dataset_path", "protocol_path", "mlflow_tracking_uri",
 }
@@ -55,6 +56,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--planner-mode", choices=("local", "fixture", "openrouter"))
     run.add_argument("--max-total-cost-usd", type=float)
     run.add_argument("--max-output-tokens", type=int)
+    run.add_argument("--planner-timeout-seconds", type=int)
     run.add_argument("--replan-every-terminal-trials", type=int)
     run.add_argument("--max-consecutive-failed-trials", type=int)
     run.add_argument("--dataset-path", type=Path)
@@ -85,6 +87,7 @@ def main() -> int:
             "planner_mode": args.planner_mode,
             "max_total_cost_usd": args.max_total_cost_usd,
             "max_output_tokens": args.max_output_tokens,
+            "planner_timeout_seconds": args.planner_timeout_seconds,
             "replan_every_terminal_trials": args.replan_every_terminal_trials,
             "max_consecutive_failed_trials": args.max_consecutive_failed_trials,
             "dataset_path": args.dataset_path,
@@ -108,6 +111,7 @@ def main() -> int:
             planner_mode=values.get("planner_mode", "local"),
             max_total_cost_usd=values.get("max_total_cost_usd"),
             max_output_tokens=int(values.get("max_output_tokens", 4000)),
+            planner_timeout_seconds=int(values.get("planner_timeout_seconds", 300)),
             replan_every_terminal_trials=int(values.get("replan_every_terminal_trials", 32)),
             max_consecutive_failed_trials=int(
                 values.get("max_consecutive_failed_trials", 12)
