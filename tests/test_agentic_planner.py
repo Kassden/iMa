@@ -138,6 +138,32 @@ class AgenticPlannerTests(unittest.TestCase):
         self.assertEqual("flex", result["service_tier"])
         self.assertEqual("boosted", result["proposals"][0]["recipe"]["model"]["kind"])
 
+    def test_choose_research_proposals_pins_exact_provider_endpoint(self):
+        response = {
+            "choices": [{"message": {"content": json.dumps({"proposals": [{
+                "proposal_id": "pinned-provider",
+                "hypothesis": "Try a valid classifier.",
+                "changed_axes": ["hyperparameters"],
+                "recipe": {"schema_version": 2},
+                "expected_observation": "Development loss changes.",
+                "falsification_rule": "Reject if loss worsens.",
+            }]})}}],
+        }
+
+        def fake_post(url, payload, config):
+            self.assertEqual(["openai/flex"], payload["provider"]["order"])
+            self.assertFalse(payload["provider"]["allow_fallbacks"])
+            self.assertEqual("flex", payload["service_tier"])
+            return response
+
+        config = OpenRouterConfig(
+            "key", "openai/gpt-5.6-sol", service_tier="flex",
+            provider_endpoint="openai/flex",
+        )
+        with mock.patch("ima.openrouter_orchestrator._post_json", fake_post):
+            result = choose_research_proposals({"evidence_id": "e1"}, 1, config)
+        self.assertEqual("pinned-provider", result["proposals"][0]["proposal_id"])
+
     def test_choose_wraps_malformed_provider_recipe_as_bounded_error(self):
         response = {
             "choices": [{"message": {"content": json.dumps({"proposals": [{

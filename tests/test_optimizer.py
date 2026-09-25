@@ -216,6 +216,11 @@ class OptimizerTests(unittest.TestCase):
                 CampaignConfig(
                     Path(directory), policy="agentic", planner_mode="openrouter"
                 ).validate()
+            CampaignConfig(
+                Path(directory), policy="agentic", planner_mode="openrouter",
+                model="openai/gpt-5.6-sol", service_tier="flex",
+                provider_endpoint="openai/flex", max_total_cost_usd=1.0,
+            ).validate()
             with self.assertRaisesRegex(ValueError, "max_total_cost_usd"):
                 CampaignConfig(
                     Path(directory), policy="agentic", planner_mode="openrouter",

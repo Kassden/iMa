@@ -33,6 +33,7 @@ class OpenRouterConfig:
     timeout_seconds: int = 60
     max_output_tokens: int = 2400
     base_url: str = OPENROUTER_BASE_URL
+    provider_endpoint: str | None = None
 
     @classmethod
     def from_env(
@@ -41,6 +42,7 @@ class OpenRouterConfig:
         service_tier: str | None = None,
         max_output_tokens: int = 2400,
         timeout_seconds: int = 300,
+        provider_endpoint: str | None = None,
     ) -> "OpenRouterConfig":
         api_key = os.environ.get("OPENROUTER_API_KEY")
         if not api_key:
@@ -54,7 +56,22 @@ class OpenRouterConfig:
             service_tier=service_tier or os.environ.get("IMA_OPTIMIZER_SERVICE_TIER") or "flex",
             max_output_tokens=max_output_tokens,
             timeout_seconds=timeout_seconds,
+            provider_endpoint=(
+                provider_endpoint
+                or os.environ.get("IMA_OPTIMIZER_PROVIDER_ENDPOINT")
+            ),
         )
+
+
+def _provider_route(config: OpenRouterConfig) -> dict[str, Any]:
+    if not config.provider_endpoint:
+        return {}
+    return {
+        "provider": {
+            "order": [config.provider_endpoint],
+            "allow_fallbacks": False,
+        }
+    }
 
 
 def _post_json(url: str, payload: dict[str, Any], config: OpenRouterConfig) -> dict[str, Any]:
@@ -177,7 +194,7 @@ def choose_proposals(
         "max_tokens": 1200,
         "response_format": {"type": "json_object"},
         "service_tier": config.service_tier,
-    }
+    } | _provider_route(config)
     response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
     parsed = _proposal_payload_from_response(response)
     return {
@@ -322,7 +339,7 @@ def choose_research_proposals(
         "max_tokens": config.max_output_tokens,
         "response_format": {"type": "json_object"},
         "service_tier": config.service_tier,
-    }
+    } | _provider_route(config)
     response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
     try:
         proposals, rejected = _validated_research_proposals(response)
@@ -355,7 +372,7 @@ def submit_proposal_batch(
         "max_tokens": 1200,
         "response_format": {"type": "json_object"},
         "service_tier": config.service_tier,
-    }
+    } | _provider_route(config)
     payload = {
         "endpoint": "/v1/chat/completions",
         "model": config.model,

@@ -232,6 +232,7 @@ def _next_suggestions(
             service_tier=config.service_tier,
             max_output_tokens=config.max_output_tokens,
             timeout_seconds=config.planner_timeout_seconds,
+            provider_endpoint=config.provider_endpoint,
         )
         _write_json_atomic(campaign_dir / "status.json", {
             "status": "provider_planning",
