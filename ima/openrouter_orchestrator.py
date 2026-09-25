@@ -289,6 +289,27 @@ def research_proposals_from_response(response: dict[str, Any]) -> list[ResearchP
     return proposals
 
 
+def _validated_research_proposals(
+    response: dict[str, Any],
+) -> tuple[list[ResearchProposal], list[dict[str, Any]]]:
+    payload = _proposal_payload_from_response(response)
+    valid: list[ResearchProposal] = []
+    rejected: list[dict[str, Any]] = []
+    for index, row in enumerate(payload["proposals"]):
+        try:
+            valid.append(ResearchProposal.model_validate(row))
+        except Exception as exc:
+            proposal_id = row.get("proposal_id") if isinstance(row, dict) else None
+            rejected.append({
+                "index": index,
+                "proposal_id": proposal_id,
+                "reason": f"{type(exc).__name__}: {exc}"[:2000],
+            })
+    if valid:
+        validate_research_proposal_batch(valid)
+    return valid, rejected
+
+
 def choose_research_proposals(
     evidence_bundle: dict[str, Any],
     proposal_count: int,
@@ -304,14 +325,20 @@ def choose_research_proposals(
     }
     response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
     try:
-        proposals = research_proposals_from_response(response)
+        proposals, rejected = _validated_research_proposals(response)
     except Exception as exc:
         raise OpenRouterError(
             f"OpenRouter planner returned invalid research proposals: {exc}"
         ) from exc
+    if not proposals:
+        detail = rejected[0]["reason"] if rejected else "no proposals"
+        raise OpenRouterError(
+            f"OpenRouter planner returned no valid research proposals: {detail}"
+        )
     return {
         "raw_response": response,
         "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
+        "rejected_proposals": rejected,
         "service_tier": response.get("service_tier"),
     }
 

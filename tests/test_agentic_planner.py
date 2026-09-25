@@ -156,11 +156,38 @@ class AgenticPlannerTests(unittest.TestCase):
             }]})}}],
         }
         with mock.patch("ima.openrouter_orchestrator._post_json", return_value=response):
-            with self.assertRaisesRegex(OpenRouterError, "invalid research proposals"):
+            with self.assertRaisesRegex(OpenRouterError, "no valid research proposals"):
                 choose_research_proposals(
                     {"evidence_id": "e1"}, 1,
                     OpenRouterConfig("key", "openai/test", service_tier="flex"),
                 )
+
+    def test_choose_keeps_valid_proposals_and_reports_invalid_siblings(self):
+        valid = {
+            "proposal_id": "valid-logit",
+            "hypothesis": "Try a valid classifier.",
+            "changed_axes": ["hyperparameters"],
+            "recipe": {
+                "schema_version": 2,
+                "target": {"kind": "win_probability"},
+                "model": {"kind": "logit", "parameters": {"C": 0.2}},
+            },
+            "expected_observation": "Development loss changes.",
+            "falsification_rule": "Reject if loss worsens.",
+        }
+        invalid = json.loads(json.dumps(valid))
+        invalid["proposal_id"] = "invalid-ranker"
+        invalid["recipe"]["model"] = {"kind": "pairwise_ranker"}
+        response = {"choices": [{"message": {"content": json.dumps({
+            "proposals": [invalid, valid],
+        })}}]}
+        with mock.patch("ima.openrouter_orchestrator._post_json", return_value=response):
+            result = choose_research_proposals(
+                {"evidence_id": "e1"}, 2,
+                OpenRouterConfig("key", "openai/test", service_tier="flex"),
+            )
+        self.assertEqual(["valid-logit"], [row["proposal_id"] for row in result["proposals"]])
+        self.assertEqual("invalid-ranker", result["rejected_proposals"][0]["proposal_id"])
 
 
 if __name__ == "__main__":

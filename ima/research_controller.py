@@ -282,7 +282,7 @@ def _next_suggestions(
         return suggestions, decision
     completed_ids = {row["attempt_id"] for row in successes}
     suggestions = []
-    rejected_proposals = []
+    rejected_proposals = list(response.get("rejected_proposals", [])) if source == "openrouter" else []
     for proposal in proposals:
         if proposal.evidence_ids != (evidence["evidence_id"],):
             raise ValueError("planner proposal must cite the current evidence_id")
