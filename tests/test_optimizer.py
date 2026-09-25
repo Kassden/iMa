@@ -345,6 +345,12 @@ class OptimizerTests(unittest.TestCase):
         })
         self.assertEqual("logit-c005-balanced", payload["proposals"][0]["run_id"])
 
+    def test_openrouter_parser_explains_missing_content(self):
+        with self.assertRaisesRegex(OpenRouterError, "exhausted its token budget"):
+            _proposal_payload_from_response({
+                "choices": [{"message": {"content": None, "reasoning": "thinking"}}]
+            })
+
     def test_openrouter_batch_dry_run_persists_submission(self):
         def fake_post(url, payload, config):
             self.assertIn("/v1/batches", url)

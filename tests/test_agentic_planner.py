@@ -164,6 +164,30 @@ class AgenticPlannerTests(unittest.TestCase):
             result = choose_research_proposals({"evidence_id": "e1"}, 1, config)
         self.assertEqual("pinned-provider", result["proposals"][0]["proposal_id"])
 
+    def test_choose_research_proposals_bounds_reasoning_effort(self):
+        response = {
+            "choices": [{"message": {"content": json.dumps({"proposals": [{
+                "proposal_id": "bounded-reasoning",
+                "hypothesis": "Try a valid classifier.",
+                "changed_axes": ["hyperparameters"],
+                "recipe": {"schema_version": 2},
+                "expected_observation": "Development loss changes.",
+                "falsification_rule": "Reject if loss worsens.",
+            }]})}}],
+        }
+
+        def fake_post(url, payload, config):
+            self.assertEqual("none", payload["reasoning_effort"])
+            return response
+
+        config = OpenRouterConfig(
+            "key", "deepseek/deepseek-v4-pro-0813",
+            provider_endpoint="baidu/fp8", reasoning_effort="none",
+        )
+        with mock.patch("ima.openrouter_orchestrator._post_json", fake_post):
+            result = choose_research_proposals({"evidence_id": "e1"}, 1, config)
+        self.assertEqual("bounded-reasoning", result["proposals"][0]["proposal_id"])
+
     def test_choose_wraps_malformed_provider_recipe_as_bounded_error(self):
         response = {
             "choices": [{"message": {"content": json.dumps({"proposals": [{
