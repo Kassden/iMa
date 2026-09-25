@@ -10,6 +10,7 @@ from ima.optimizer import CampaignConfig
 from ima.research_controller import (
     _code_revision,
     _fixture_proposals,
+    _trace_completed_cycle,
     campaign_status,
     request_campaign_stop,
     run_research_campaign,
@@ -96,6 +97,52 @@ class ResearchControllerTests(unittest.TestCase):
                 self.assertTrue(proposal["parent_trial_ids"])
                 self.assertEqual([decisions[1]["evidence_id"]], proposal["evidence_ids"])
             self.assertEqual(6, payload["search"]["completed"])
+
+    def test_mlflow_tracking_writes_model_run_and_cycle_trace(self):
+        import mlflow
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            config = self.config(campaign, dataset, protocol, max_trials=1)
+            config = CampaignConfig(**{
+                **config.__dict__,
+                "max_concurrent_trials": 1,
+                "mlflow_tracking_uri": f"sqlite:///{root / 'mlflow.db'}",
+            })
+            with mock.patch.dict("os.environ", {}, clear=False):
+                payload = run_research_campaign(config)
+                self.assertEqual("complete", payload["mode"])
+                traces = list((campaign / "traces").glob("cycle-*.json"))
+                self.assertEqual(1, len(traces))
+                linkage = json.loads(traces[0].read_text(encoding="utf-8"))
+                trace = mlflow.get_trace(linkage["trace_id"], flush=True)
+                self.assertIsNotNone(trace)
+                self.assertEqual("unavailable", linkage["cost_status"])
+                experiment = mlflow.get_experiment_by_name("ima-agentic-v2")
+                runs = mlflow.search_runs([experiment.experiment_id])
+                self.assertEqual(1, len(runs))
+                self.assertIn(
+                    "metrics.summary.selected.race_log_loss.mean", runs.iloc[0]
+                )
+
+    def test_trace_failure_is_reported_without_raising(self):
+        config = CampaignConfig(
+            campaign_dir=Path("campaign"),
+            mlflow_tracking_uri="http://mlflow.invalid",
+        )
+        with mock.patch(
+            "ima.research_controller.log_optimizer_cycle_trace",
+            side_effect=RuntimeError("tracking unavailable"),
+        ):
+            error = _trace_completed_cycle(
+                config,
+                Path("campaign"),
+                {"cycle": 7, "source": "fixture"},
+                [],
+            )
+        self.assertIn("cycle-7: trace: RuntimeError: tracking unavailable", error)
 
     def test_resume_preserves_first_cycle_and_does_not_duplicate(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -272,6 +319,13 @@ class ResearchControllerTests(unittest.TestCase):
                 (config.campaign_dir / "planner" / "cycle-0001.json").read_text(encoding="utf-8")
             )
             self.assertEqual("provider/test-model", planner["requested_model"])
+            decision = json.loads(
+                (config.campaign_dir / "decisions" / "cycle-0001.json")
+                .read_text(encoding="utf-8")
+            )
+            self.assertEqual("provider/test-model", decision["planner_model"])
+            self.assertEqual(0.01, decision["planner_usage"]["total_cost_usd"])
+            self.assertEqual("reported", decision["planner_usage"]["cost_status"])
 
     def test_spend_cap_pauses_without_dispatching_provider_or_new_trial(self):
         with tempfile.TemporaryDirectory() as directory:
