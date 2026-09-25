@@ -97,6 +97,34 @@ Successful trials register target-specific models in MLflow under
 model name, registered version, and URI. A tracking outage leaves
 `pending_tracking` nonzero and retries on the next controller run.
 
+### Runs, Models, and Traces
+
+- **Run:** one trained recipe attempt. Its searchable metrics include the
+  objective, every fold, model/baseline/control comparisons, and mean/std/worst
+  fold summaries under `summary.*`.
+- **Model:** the loadable package produced by that run, registered under the
+  target-specific model name. Models are versioned independently of traces.
+- **Trace:** one optimizer decision cycle. The root `optimizer-cycle-NNNN` span
+  contains evidence identity and the aggregate/best outcome. `planner-decision`
+  records hypotheses, recipes, rejected proposals, token usage, and provider
+  cost. Each executed attempt has a child `trial-*` span with its target,
+  objective, status, duration, and metric summary.
+
+Cycle linkage is persisted at `CAMPAIGN/traces/cycle-NNNN.json`; retrying the
+same cycle reads that linkage instead of creating a duplicate trace. Trace
+failure is added to `tracking_errors` and does not stop model training.
+
+OpenRouter cost is never reconstructed from a price table. When the provider
+returns `usage.cost` or `usage.total_cost`, MLflow receives that exact USD value
+and standard token attributes. When the provider omits cost, the trace is tagged
+`ima.cost_status=unavailable`, `total_cost_usd` is null, and the UI must not be
+interpreted as a confirmed zero-cost call. Local, fixture, and Optuna-only
+decisions naturally have unavailable LLM cost.
+
+In MLflow, open experiment `ima-agentic-v2`, use **Runs** for model-attempt
+comparison, **Models** for registered package versions, and **Traces** for the
+planner-to-results narrative and cost.
+
 Do not restart Cortex, solar simulator, nginx, postgres, or other workloads.
 
 ## Verified Live Campaign
