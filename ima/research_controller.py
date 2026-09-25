@@ -58,9 +58,19 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                     campaign_dir, ledger, search, cycles, new_results, "stopped",
                     tracking_errors,
                 )
+            consecutive_failures = _consecutive_failure_count(ledger)
+            if consecutive_failures >= config.max_consecutive_failed_trials:
+                return _finish_payload(
+                    campaign_dir, ledger, search, cycles, new_results,
+                    "blocked_failures", tracking_errors,
+                )
             remaining = None if config.max_trials is None else config.max_trials - _success_count(ledger)
             batch_size = config.proposal_batch_size if remaining is None else min(
                 config.proposal_batch_size, remaining
+            )
+            batch_size = min(
+                batch_size,
+                config.max_consecutive_failed_trials - consecutive_failures,
             )
             slots, resources = _slots(config, campaign_dir, batch_size)
             if slots == 0:
@@ -504,6 +514,15 @@ def _validate_campaign_identity(
 
 def _success_count(ledger: ResearchLedger) -> int:
     return sum(row["status"] == "completed" for row in ledger.terminal_results())
+
+
+def _consecutive_failure_count(ledger: ResearchLedger) -> int:
+    count = 0
+    for row in reversed(ledger.terminal_results()):
+        if row["status"] == "completed":
+            break
+        count += 1
+    return count
 
 
 def _finish_payload(

@@ -261,6 +261,22 @@ class ResearchControllerTests(unittest.TestCase):
             self.assertEqual(0, payload["search"]["trials"])
             self.assertEqual(0, payload["resources"]["admission_slots"])
 
+    def test_repeated_training_failures_trip_circuit_breaker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            frame = pd.read_csv(dataset).drop(columns=["target_probability"])
+            frame.to_csv(dataset, index=False)
+            config = self.config(root / "campaign", dataset, protocol, max_trials=9)
+            config = CampaignConfig(**{
+                **config.__dict__,
+                "max_consecutive_failed_trials": 3,
+            })
+            payload = run_research_campaign(config)
+            self.assertEqual("blocked_failures", payload["mode"])
+            self.assertEqual(3, payload["ledger"]["failed"])
+            self.assertEqual(3, payload["search"]["trials"])
+
     def test_completed_trial_gets_durable_mlflow_linkage(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -82,6 +82,7 @@ class CampaignConfig:
     max_total_cost_usd: float | None = None
     max_output_tokens: int = 4000
     replan_every_terminal_trials: int = 32
+    max_consecutive_failed_trials: int = 12
     dataset_path: Path | None = None
     protocol_path: Path | None = None
     mlflow_tracking_uri: str | None = None
@@ -121,6 +122,8 @@ class CampaignConfig:
             raise ValueError("max_output_tokens must be positive")
         if self.replan_every_terminal_trials <= 0:
             raise ValueError("replan_every_terminal_trials must be positive")
+        if self.max_consecutive_failed_trials <= 0:
+            raise ValueError("max_consecutive_failed_trials must be positive")
         if self.policy == "agentic" and self.planner_mode == "openrouter":
             if self.model == "openrouter/local-policy":
                 raise ValueError("agentic OpenRouter planning requires an explicit model")

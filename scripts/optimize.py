@@ -13,6 +13,7 @@ _CONFIG_KEYS = {
     "max_concurrent_trials", "timeout_minutes", "service_tier",
     "openrouter_batch", "model", "spec_profile", "planner_mode",
     "max_total_cost_usd", "max_output_tokens", "replan_every_terminal_trials",
+    "max_consecutive_failed_trials",
     "dataset_path", "protocol_path", "mlflow_tracking_uri",
 }
 
@@ -55,6 +56,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--max-total-cost-usd", type=float)
     run.add_argument("--max-output-tokens", type=int)
     run.add_argument("--replan-every-terminal-trials", type=int)
+    run.add_argument("--max-consecutive-failed-trials", type=int)
     run.add_argument("--dataset-path", type=Path)
     run.add_argument("--protocol-path", type=Path)
     run.add_argument("--mlflow-tracking-uri")
@@ -84,6 +86,7 @@ def main() -> int:
             "max_total_cost_usd": args.max_total_cost_usd,
             "max_output_tokens": args.max_output_tokens,
             "replan_every_terminal_trials": args.replan_every_terminal_trials,
+            "max_consecutive_failed_trials": args.max_consecutive_failed_trials,
             "dataset_path": args.dataset_path,
             "protocol_path": args.protocol_path,
             "mlflow_tracking_uri": args.mlflow_tracking_uri,
@@ -106,6 +109,9 @@ def main() -> int:
             max_total_cost_usd=values.get("max_total_cost_usd"),
             max_output_tokens=int(values.get("max_output_tokens", 4000)),
             replan_every_terminal_trials=int(values.get("replan_every_terminal_trials", 32)),
+            max_consecutive_failed_trials=int(
+                values.get("max_consecutive_failed_trials", 12)
+            ),
             dataset_path=Path(values["dataset_path"]) if values.get("dataset_path") else None,
             protocol_path=Path(values["protocol_path"]) if values.get("protocol_path") else None,
             mlflow_tracking_uri=values.get("mlflow_tracking_uri"),
@@ -167,7 +173,10 @@ def _render(payload: dict) -> str:
         lines.append("")
         lines.append("Wrote: dry-run.json")
         return "\n".join(lines)
-    if payload.get("mode") in {"executed", "complete", "stopped", "paused", "paused_admission"}:
+    if payload.get("mode") in {
+        "executed", "complete", "stopped", "paused", "paused_admission",
+        "blocked_failures",
+    }:
         lines = [
             f"Campaign: {payload['campaign_dir']}",
             f"Mode: {payload['mode']}",

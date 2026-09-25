@@ -107,6 +107,25 @@ class ResearchExecutorTests(unittest.TestCase):
             self.assertIn("dataset hash", result.error)
             self.assertFalse((Path(directory) / "bad" / "package").exists())
 
+    def test_win_target_excludes_dead_heat_races_before_protocol(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            frame = pd.read_csv(FIXTURE)
+            dead_heat_race = frame["race_id"].iloc[0]
+            indices = frame.index[frame["race_id"].eq(dead_heat_race)][:2]
+            frame.loc[indices, "target_win"] = 1
+            frame.loc[frame["race_id"].eq(dead_heat_race), "target_probability"] = 0.0
+            frame.loc[indices, "target_probability"] = 0.5
+            dataset = root / "dead-heat.csv"
+            frame.to_csv(dataset, index=False)
+            result = self._run(root, PipelineRecipe(), dataset)
+            self.assertEqual("completed", result.status, result.error)
+            self.assertEqual(
+                1, result.metrics["dataset_exclusions"]["non_single_winner_races"]
+            )
+            predictions = pd.read_csv(result.artifacts["predictions"])
+            self.assertNotIn(dead_heat_race, set(predictions["race_id"]))
+
     def test_secondary_targets_train_score_controls_and_reload(self):
         recipes = [
             PipelineRecipe(

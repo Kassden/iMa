@@ -147,6 +147,9 @@ def _execute_frame(
 ) -> RecipeExecutionResult:
     recipe = request.recipe
     contract = target_contract(recipe.target.kind, recipe.target.parameters)
+    exclusions: dict[str, Any] = {}
+    if recipe.target.kind == "win_probability":
+        frame, exclusions = _exclude_non_single_winner_races(frame)
     labelled = apply_target_contract(frame, contract)
     schema = _effective_schema(recipe)
     labelled = _ensure_feature_columns(labelled, schema)
@@ -277,6 +280,7 @@ def _execute_frame(
         "objective": objective,
         "folds": folds,
         "effective_training": effective_training,
+        "dataset_exclusions": exclusions,
         "mean_selected_minus_market": float(np.mean([
             row["selected_minus_market"] for row in folds
         ])),
@@ -320,6 +324,25 @@ def _execute_frame(
     )
     _write_json_atomic(request.output_dir / "result.json", result.serializable())
     return result
+
+
+def _exclude_non_single_winner_races(
+    frame: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    if "race_id" not in frame or "target_win" not in frame:
+        return frame, {}
+    winners = pd.to_numeric(frame["target_win"], errors="coerce").groupby(
+        frame["race_id"]
+    ).sum(min_count=1)
+    excluded = winners[~np.isclose(winners.to_numpy(dtype=float), 1.0)].index
+    if len(excluded) == 0:
+        return frame, {"non_single_winner_races": 0, "excluded_rows": 0}
+    keep = ~frame["race_id"].isin(excluded)
+    return frame.loc[keep].copy(), {
+        "non_single_winner_races": int(len(excluded)),
+        "excluded_rows": int((~keep).sum()),
+        "policy": "exclude_dead_heats_and_missing_winners_for_win_probability_v1",
+    }
 
 
 def _execute_secondary_frame(
