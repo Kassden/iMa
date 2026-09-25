@@ -55,6 +55,9 @@ class AgenticPlannerTests(unittest.TestCase):
         compatibility = json.loads(user_content)["target_recipe_compatibility"]
         self.assertEqual("pairwise_ranker", compatibility["ranking_strength"]["model"])
         self.assertEqual("none", compatibility["placing_top_k"]["blend"])
+        parameters = json.loads(user_content)["allowed_model_parameters"]
+        self.assertIn("max_iter", parameters["boosted"])
+        self.assertNotIn("n_estimators", parameters["boosted"])
 
     def test_research_proposal_response_validates_typed_recipe(self):
         response = {

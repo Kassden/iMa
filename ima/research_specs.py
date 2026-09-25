@@ -39,6 +39,43 @@ FORBIDDEN_RESEARCH_TERMS = {
 }
 
 
+MODEL_PARAMETER_CONTRACTS: dict[str, dict[str, str]] = {
+    "logit": {
+        "C": "number greater than 0 and at most 100",
+        "class_weight": "balanced or null",
+        "max_iter": "integer from 1 through 5000",
+    },
+    "boosted": {
+        "learning_rate": "number greater than 0 and at most 1",
+        "max_iter": "integer from 1 through 2000; do not use n_estimators",
+        "max_leaf_nodes": "integer from 2 through 255",
+        "max_depth": "integer from 1 through 64 or null",
+        "min_samples_leaf": "integer from 1 through 1000",
+        "l2_regularization": "number from 0 through 100",
+    },
+    "pairwise_ranker": {
+        "learning_rate": "number greater than 0 and at most 1",
+        "max_iter": "integer from 1 through 2000; do not use n_estimators",
+        "max_leaf_nodes": "integer from 2 through 255",
+        "max_depth": "integer from 1 through 64 or null",
+        "min_samples_leaf": "integer from 1 through 1000",
+        "l2_regularization": "number from 0 through 100",
+    },
+    "hist_gradient_regressor": {
+        "learning_rate": "number greater than 0 and at most 1",
+        "max_iter": "integer from 1 through 2000; do not use n_estimators",
+        "max_leaf_nodes": "integer from 2 through 255",
+        "max_depth": "integer from 1 through 64 or null",
+        "min_samples_leaf": "integer from 1 through 1000",
+        "l2_regularization": "number from 0 through 100",
+    },
+    "ridge_regressor": {
+        "alpha": "number from 0 through 1000000",
+        "fit_intercept": "boolean",
+    },
+}
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -73,6 +110,11 @@ class ModelSpec(StrictModel):
         "ridge_regressor",
     ] = "logit"
     parameters: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_parameters(self) -> "ModelSpec":
+        _validate_model_parameters(self.kind, self.parameters)
+        return self
 
 
 class CalibrationSpec(StrictModel):
@@ -203,6 +245,57 @@ def _validate_model_target(model_kind: str, task: str, target_kind: str) -> None
         raise RecipeValidationError(f"{target_kind} requires a ranker model")
     if task == "regressor" and model_kind not in regressors:
         raise RecipeValidationError(f"{target_kind} requires a regressor model")
+
+
+def _validate_model_parameters(model_kind: str, parameters: dict[str, Any]) -> None:
+    allowed = MODEL_PARAMETER_CONTRACTS[model_kind]
+    unknown = sorted(set(parameters) - set(allowed))
+    if unknown:
+        raise RecipeValidationError(
+            f"Unsupported {model_kind} parameters: {unknown}; allowed: {sorted(allowed)}"
+        )
+
+    def number(name: str, lower: float, upper: float, *, inclusive_lower: bool) -> None:
+        if name not in parameters:
+            return
+        value = parameters[name]
+        valid_type = isinstance(value, (int, float)) and not isinstance(value, bool)
+        if not valid_type:
+            raise RecipeValidationError(f"{model_kind}.{name} must be numeric")
+        lower_ok = value >= lower if inclusive_lower else value > lower
+        if not lower_ok or value > upper:
+            bracket = "[" if inclusive_lower else "("
+            raise RecipeValidationError(
+                f"{model_kind}.{name} must be in {bracket}{lower}, {upper}]"
+            )
+
+    def integer(name: str, lower: int, upper: int, *, nullable: bool = False) -> None:
+        if name not in parameters:
+            return
+        value = parameters[name]
+        if nullable and value is None:
+            return
+        if not isinstance(value, int) or isinstance(value, bool) or not lower <= value <= upper:
+            raise RecipeValidationError(
+                f"{model_kind}.{name} must be an integer from {lower} through {upper}"
+            )
+
+    if model_kind == "logit":
+        number("C", 0.0, 100.0, inclusive_lower=False)
+        integer("max_iter", 1, 5000)
+        if parameters.get("class_weight") not in {None, "balanced"}:
+            raise RecipeValidationError("logit.class_weight must be balanced or null")
+    elif model_kind in {"boosted", "pairwise_ranker", "hist_gradient_regressor"}:
+        number("learning_rate", 0.0, 1.0, inclusive_lower=False)
+        number("l2_regularization", 0.0, 100.0, inclusive_lower=True)
+        integer("max_iter", 1, 2000)
+        integer("max_leaf_nodes", 2, 255)
+        integer("max_depth", 1, 64, nullable=True)
+        integer("min_samples_leaf", 1, 1000)
+    elif model_kind == "ridge_regressor":
+        number("alpha", 0.0, 1_000_000.0, inclusive_lower=True)
+        if "fit_intercept" in parameters and not isinstance(parameters["fit_intercept"], bool):
+            raise RecipeValidationError("ridge_regressor.fit_intercept must be boolean")
 
 
 def validate_research_proposal_batch(proposals: list[ResearchProposal]) -> None:

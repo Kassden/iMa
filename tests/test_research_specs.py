@@ -44,6 +44,19 @@ class ResearchSpecTests(unittest.TestCase):
         )
         self.assertEqual("ridge_regressor", valid.model.kind)
 
+    def test_model_parameters_reject_unsupported_or_out_of_range_values(self):
+        with self.assertRaisesRegex(ValidationError, "n_estimators"):
+            PipelineRecipe(model={"kind": "boosted", "parameters": {"n_estimators": 100}})
+        with self.assertRaisesRegex(ValidationError, "learning_rate"):
+            PipelineRecipe(model={"kind": "boosted", "parameters": {"learning_rate": 0}})
+        with self.assertRaisesRegex(ValidationError, "class_weight"):
+            PipelineRecipe(model={"kind": "logit", "parameters": {"class_weight": "auto"}})
+        valid = PipelineRecipe(model={
+            "kind": "boosted",
+            "parameters": {"max_iter": 200, "max_leaf_nodes": 31},
+        })
+        self.assertEqual(200, valid.model.parameters["max_iter"])
+
     def test_non_win_targets_cannot_use_win_probability_blend(self):
         with self.assertRaises(ValidationError):
             PipelineRecipe(

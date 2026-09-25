@@ -11,7 +11,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from .experiments import ExperimentSpec
-from .research_specs import ResearchProposal, validate_research_proposal_batch
+from .research_specs import (
+    MODEL_PARAMETER_CONTRACTS,
+    ResearchProposal,
+    validate_research_proposal_batch,
+)
 
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api"
@@ -256,6 +260,7 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                             "blend": "none",
                         },
                     },
+                    "allowed_model_parameters": MODEL_PARAMETER_CONTRACTS,
                     "evidence_bundle": evidence_bundle,
                     "output_schema": {
                         "proposals": [{
