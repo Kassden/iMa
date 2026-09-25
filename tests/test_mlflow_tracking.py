@@ -11,6 +11,8 @@ from ima.mlflow_tracking import (
     flatten_numeric_metrics,
     log_research_package,
     log_research_package_version,
+    research_run_metrics,
+    research_run_parameters,
     run_parameters,
 )
 from ima.research_model_package import ResearchModelPackage
@@ -74,6 +76,56 @@ class MLflowTrackingTests(unittest.TestCase):
     def test_research_package_logging_is_noop_when_disabled(self):
         self.assertIsNone(log_research_package(Path("."), MLflowConfig(enabled=False)))
 
+    def test_research_run_data_exposes_recipe_and_fold_comparisons(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = ResearchModelPackage(
+                DummyProbabilityModel(),
+                PipelineRecipe(
+                    feature_schema="benter-rich-v1",
+                    model={"kind": "logit", "parameters": {"C": 0.25}},
+                ),
+                protocol_id="protocol-1",
+                code_revision="abc123",
+            )
+            package_dir = package.save(Path(directory) / "package")
+            result = {
+                "recipe_hash": package.recipe.recipe_hash(),
+                "target_kind": "win_probability",
+                "objective_name": "development_race_log_loss",
+                "objective_value": 2.01,
+                "duration_seconds": 12.5,
+                "metrics": {
+                    "mean_selected_minus_market": -0.002,
+                    "dataset_exclusions": {"excluded_rows": 4, "policy": "test"},
+                    "folds": [{
+                        "fold_id": "fold-001",
+                        "selected": {"race_log_loss": 2.01},
+                        "raw_market": {"race_log_loss": 2.02},
+                    }],
+                    "effective_training": [{
+                        "fold_id": "fold-001",
+                        "rows": 100,
+                        "races": 10,
+                        "features": ["a", "b"],
+                        "available_features": ["a"],
+                        "unavailable_features": ["b"],
+                    }],
+                },
+            }
+            params = research_run_parameters(
+                package_dir, result, attempt_id="attempt-1"
+            )
+            metrics = research_run_metrics(result)
+
+            self.assertEqual("benter-rich-v1", params["recipe.feature_schema"])
+            self.assertEqual("logit", params["recipe.model.kind"])
+            self.assertEqual(0.25, params["recipe.model.parameters.C"])
+            self.assertEqual(2.01, metrics["objective"])
+            self.assertEqual(
+                2.01, metrics["fold.fold-001.selected.race_log_loss"]
+            )
+            self.assertEqual(2.0, metrics["training.fold-001.feature_count"])
+
     def test_research_package_version_is_idempotent_and_loadable(self):
         import mlflow
 
@@ -113,6 +165,9 @@ class MLflowTrackingTests(unittest.TestCase):
             )
             self.assertEqual(first, second)
             self.assertIn("model_version", first)
+            run = mlflow.get_run(first["run_id"])
+            self.assertEqual("baseline-v1", run.data.params["recipe.feature_schema"])
+            self.assertEqual(1.0, run.data.metrics["objective"])
             loaded = mlflow.pyfunc.load_model(first["registered_model_uri"])
             frame = pd.DataFrame({
                 "race_id": ["R1", "R1", "R2", "R2"],

@@ -99,6 +99,64 @@ def run_parameters(run: dict[str, Any]) -> dict[str, str | int | float | bool]:
     return params
 
 
+def research_run_parameters(
+    package_dir: Path,
+    result: dict[str, Any],
+    *,
+    attempt_id: str,
+) -> dict[str, str | int | float | bool]:
+    """Return searchable recipe parameters for a research MLflow run."""
+    recipe = json.loads((package_dir / "recipe.json").read_text(encoding="utf-8"))
+    params: dict[str, str | int | float | bool] = {
+        "attempt_id": attempt_id,
+        "recipe_hash": str(result.get("recipe_hash", "")),
+        "target_kind": str(result.get("target_kind", "")),
+        "objective_name": str(result.get("objective_name", "")),
+    }
+
+    def add(prefix: str, value: Any) -> None:
+        key = _safe_key(prefix)
+        if isinstance(value, dict):
+            for child_key, child_value in value.items():
+                add(f"{prefix}.{child_key}", child_value)
+        elif isinstance(value, list):
+            params[key] = json.dumps(value, sort_keys=True, separators=(",", ":"))
+        elif value is None:
+            params[key] = "null"
+        elif isinstance(value, str | int | float | bool):
+            params[key] = value
+        else:
+            params[key] = str(value)
+
+    add("recipe", recipe)
+    return params
+
+
+def research_run_metrics(result: dict[str, Any]) -> dict[str, float]:
+    """Return comparison-friendly summary and per-fold research metrics."""
+    source = result.get("metrics") or {}
+    payload: dict[str, Any] = {
+        "objective": result.get("objective_value"),
+        "duration_seconds": result.get("duration_seconds"),
+        "mean_selected_minus_market": source.get("mean_selected_minus_market"),
+        "dataset_exclusions": source.get("dataset_exclusions", {}),
+        "fold_count": len(source.get("folds") or []),
+    }
+    for fold in source.get("folds") or []:
+        fold_id = str(fold.get("fold_id", "unknown"))
+        payload[f"fold.{fold_id}"] = fold
+    for training in source.get("effective_training") or []:
+        fold_id = str(training.get("fold_id", "unknown"))
+        payload[f"training.{fold_id}"] = {
+            "rows": training.get("rows"),
+            "races": training.get("races"),
+            "feature_count": len(training.get("features") or []),
+            "available_feature_count": len(training.get("available_features") or []),
+            "unavailable_feature_count": len(training.get("unavailable_features") or []),
+        }
+    return flatten_numeric_metrics(payload)
+
+
 def _model_artifact_source(artifact_uri: str, model_path: Path) -> str:
     return f"{artifact_uri.rstrip('/')}/models/{model_path.name}"
 
@@ -277,14 +335,10 @@ def log_research_package_version(
         "ima.environment_hash": str(result.get("lineage", {}).get("environment_hash", "")),
     }
     with mlflow.start_run(run_name=attempt_id, tags=tags) as active:
-        mlflow.log_params({
-            "attempt_id": attempt_id,
-            "recipe_hash": str(result.get("recipe_hash", "")),
-            "target_kind": target_kind,
-            "objective_name": str(result.get("objective_name", "")),
-        })
-        if result.get("objective_value") is not None:
-            mlflow.log_metric("objective", float(result["objective_value"]))
+        mlflow.log_params(research_run_parameters(
+            package_dir, result, attempt_id=attempt_id
+        ))
+        mlflow.log_metrics(research_run_metrics(result))
         mlflow.log_dict(result, "result.json")
         mlflow.pyfunc.log_model(
             name="model",
