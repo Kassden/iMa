@@ -6,9 +6,9 @@
 .venv/bin/python -m unittest tests.test_agentic_optimizer_e2e
 ```
 
-The test launches the terminal optimizer in `--policy agentic --dry-run` mode,
-resumes the same campaign, verifies recipe persistence, then saves and reloads a
-research package.
+The test launches the terminal optimizer with the fixture planner, trains nine
+real recipes, and verifies bootstrap plus two evidence-driven planning cycles.
+It also verifies offline status and that preview mode creates no Optuna study.
 
 ## Local Dry Run
 
@@ -21,18 +21,70 @@ research package.
   --dry-run
 ```
 
+Dry run never calls OpenRouter, fits a model, or advances the persistent study.
+
+## Campaign Configuration
+
+Use a strict JSON file. Credentials stay in the environment.
+
+```json
+{
+  "schema_version": 1,
+  "policy": "agentic",
+  "planner_mode": "openrouter",
+  "model": "REPLACE_WITH_VERIFIED_OPENROUTER_MODEL",
+  "service_tier": "flex",
+  "max_total_cost_usd": 1.0,
+  "max_output_tokens": 2400,
+  "max_trials": 9,
+  "proposal_batch_size": 3,
+  "max_concurrent_trials": 2,
+  "replan_every_terminal_trials": 3,
+  "mlflow_tracking_uri": "http://100.95.24.121:5000"
+}
+```
+
+```bash
+.venv/bin/ima-optimize run \
+  --campaign artifacts/agentic-learning/feedback-canary \
+  --config campaign.json
+
+.venv/bin/ima-optimize status \
+  --campaign artifacts/agentic-learning/feedback-canary
+
+.venv/bin/ima-optimize stop \
+  --campaign artifacts/agentic-learning/feedback-canary
+```
+
+`stop` is consumed on acknowledgement. Running the same campaign again resumes
+from its ledger and Optuna journal. Dataset, protocol, code, environment, target
+contract, and metric identity are immutable within a campaign.
+
 ## Cortex Canary
 
-Use only the isolated worker checkout:
+Use only the isolated `imaopt` checkout and a distinct tmux session. Inspect
+shared services read-only before and after; do not restart them.
 
 ```bash
 python -m scripts.cortex_optimizer_worker run \
   --remote-root /home/imaopt/research-v2 \
-  --campaign artifacts/agentic-learning/cortex-agentic-smoke \
-  --max-trials 6 \
+  --campaign artifacts/agentic-learning/feedback-canary \
+  --config campaign.json \
+  --max-trials 9 \
   --proposal-batch-size 3 \
-  --max-concurrent-trials 2 \
-  --dry-run
+  --max-concurrent-trials 2
 ```
+
+Start at two workers. Observe CPU percent, load percent, available memory, disk,
+and the owned process tree for at least 30 seconds before increasing the cap.
+Defaults pause below 10 GiB disk and reserve the greater of 16 GiB or 20% RAM.
+Operational overrides are `IMA_RESEARCH_MAX_WORKERS`,
+`IMA_RESEARCH_RESERVE_MEMORY_GIB`, `IMA_RESEARCH_TRIAL_RSS_GIB`,
+`IMA_RESEARCH_DISK_PAUSE_GIB`, and `IMA_RESEARCH_CPU_CEILING_PERCENT`.
+
+Successful trials register target-specific models in MLflow under
+`ima-agentic-candidates-<target>`. The campaign ledger stores the MLflow run,
+model name, registered version, and URI. A tracking outage leaves
+`pending_tracking` nonzero and retries on the next controller run.
 
 Do not restart Cortex, solar simulator, nginx, postgres, or other workloads.

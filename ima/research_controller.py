@@ -33,6 +33,13 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
         protocol_parameters = _protocol_parameters(config)
         code_revision = _code_revision()
         environment_hash = _environment_hash()
+        _validate_campaign_identity(
+            campaign_dir,
+            dataset_hash=dataset_hash,
+            protocol_parameters=protocol_parameters,
+            code_revision=code_revision,
+            environment_hash=environment_hash,
+        )
         ledger = ResearchLedger(campaign_dir / "ledger.sqlite")
         search = RecipeSearchController(campaign_dir)
         if search.study is None:
@@ -46,6 +53,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
         new_results: list[dict[str, Any]] = []
         while config.max_trials is None or _success_count(ledger) < config.max_trials:
             if (campaign_dir / "STOP").exists():
+                (campaign_dir / "STOP").unlink()
                 return _finish_payload(
                     campaign_dir, ledger, search, cycles, new_results, "stopped",
                     tracking_errors,
@@ -195,6 +203,16 @@ def _next_suggestions(
             service_tier=config.service_tier,
             max_output_tokens=config.max_output_tokens,
         )
+        _write_json_atomic(campaign_dir / "status.json", {
+            "status": "provider_planning",
+            "updated_at": utc_now(),
+            "cycle": cycle,
+            "ledger": ledger.snapshot(),
+            "search": search.snapshot(),
+            "evidence_id": evidence["evidence_id"],
+            "planner_model": config.model,
+            "planner_spend_usd": spent,
+        })
         try:
             response = choose_research_proposals(evidence, count, remote)
         except OpenRouterError as exc:
@@ -268,7 +286,10 @@ def _fixture_proposals(
             recipe = PipelineRecipe(
                 feature_schema="benter-rich-v1",
                 model={"kind": "logit", "parameters": {
-                    "C": round(0.03 * (index + 1) * max(best, 0.1), 6),
+                    "C": round(
+                        0.03 * (index + 1) * max(best, 0.1) * (1 + cycle * 0.01),
+                        6,
+                    ),
                     "class_weight": None,
                     "max_iter": 1200,
                 }},
@@ -282,7 +303,7 @@ def _fixture_proposals(
                     "parameters": {"columns": ["horse_rating"]},
                 },),
                 model={"kind": "boosted", "parameters": {
-                    "learning_rate": round(0.025 + index * 0.01, 4),
+                    "learning_rate": round(0.025 + index * 0.01 + cycle * 0.0001, 4),
                     "max_iter": 100 + index * 20,
                     "max_leaf_nodes": 15,
                 }},
@@ -329,15 +350,15 @@ def _build_evidence(successes: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _execute_requests(
     requests: list[RecipeExecutionRequest], slots: int
-) -> list[Any]:
+) -> Iterator[Any]:
     if slots <= 1 or len(requests) == 1:
-        return [execute_recipe(request) for request in requests]
-    results = []
+        for request in requests:
+            yield execute_recipe(request)
+        return
     with ProcessPoolExecutor(max_workers=min(slots, len(requests))) as pool:
         futures = {pool.submit(execute_recipe, request): request for request in requests}
         for future in as_completed(futures):
-            results.append(future.result())
-    return results
+            yield future.result()
 
 
 def _reconcile_tells(ledger: ResearchLedger, search: RecipeSearchController) -> None:
@@ -442,6 +463,43 @@ def _execution_signature(
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def _validate_campaign_identity(
+    campaign_dir: Path,
+    *,
+    dataset_hash: str,
+    protocol_parameters: dict[str, Any],
+    code_revision: str,
+    environment_hash: str,
+) -> None:
+    identity = {
+        "schema_version": 1,
+        "dataset_hash": dataset_hash,
+        "protocol_hash": hashlib.sha256(
+            json.dumps(
+                protocol_parameters, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest(),
+        "code_revision": code_revision,
+        "environment_hash": environment_hash,
+        "target_contract_version": "research-targets-v2",
+        "metric_version": "protected-development-v2",
+    }
+    path = campaign_dir / "campaign-identity.json"
+    if path.exists():
+        stored = _read_json(path)
+        if stored != identity:
+            changed = sorted(
+                key for key in set(stored) | set(identity)
+                if stored.get(key) != identity.get(key)
+            )
+            raise RuntimeError(
+                "Campaign scientific identity changed; start a new campaign: "
+                + ", ".join(changed)
+            )
+        return
+    _write_json_atomic(path, identity)
 
 
 def _success_count(ledger: ResearchLedger) -> int:

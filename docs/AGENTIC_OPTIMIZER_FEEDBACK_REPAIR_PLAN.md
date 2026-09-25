@@ -3,19 +3,19 @@
 ## GOAL
 Deliver one terminal controller that proposes executable recipes, trains them, evaluates them, versions models and uses completed results to choose subsequent experiments autonomously on Cortex.
 
-Status: PLANNED, NOT IMPLEMENTED. Date: 2026-09-25. This is the corrective execution sequence for AGENTIC_OPTIMIZER_V2_PLAN.md; its acceptance criteria remain binding. This request authorizes planning, not implementation or server changes. Race-day readiness stays deferred.
+Status: IMPLEMENTED AND VERIFIED LOCALLY; LIVE CORTEX/PROVIDER CANARY PENDING. Date: 2026-09-25. This is the corrective execution sequence for AGENTIC_OPTIMIZER_V2_PLAN.md; its acceptance criteria remain binding. The later execution request authorizes implementation and the isolated server canary. Race-day readiness stays deferred.
 
 ## Acceptance Criteria
-- [ ] Non-dry agentic mode executes real recipe training, never silently returns preview or substitutes the legacy catalogue.
+- [x] Non-dry agentic mode executes real recipe training, never silently returns preview or substitutes the legacy catalogue.
 - [ ] Two consecutive provider planning cycles consume actual completed evidence; cycle two cites cycle-one trials and changes an executed recipe/search space. Counterfactual fixture evidence changes the next proposal.
 - [ ] Six successful win trials cover two schemas, two families, an ablation, a transform and a training-window change. Multi-axis proposals include matched controls.
-- [ ] Ranking, placing and adjusted finish-time/speed each have a real trained probe, target-specific baseline, shuffled-label control, leakage test and package readback. Odds forecasting is enabled only with valid timestamped snapshots; otherwise record unavailable with evidence.
-- [ ] Selection uses protected rolling development scores; train/calibration/score differ. Holdout and legacy test scores never influence v2 selection.
-- [ ] Resume preserves completed results and reconciles Optuna/MLflow without duplicate terminal records or model versions.
-- [ ] Every successful candidate has a loadable fitted package, recipe, hypothesis, parents, data/protocol/code/environment hashes and MLflow run/version linkage.
+- [x] Ranking, placing and adjusted finish-time/speed each have a real trained probe, target-specific baseline, shuffled-label control, leakage test and package readback. Odds forecasting is enabled only with valid timestamped snapshots; otherwise record unavailable with evidence.
+- [x] Selection uses protected rolling development scores; train/calibration/score differ. Holdout and legacy test scores never influence v2 selection.
+- [x] Resume preserves completed results and reconciles Optuna/MLflow without duplicate terminal records or model versions.
+- [x] Every successful candidate has a loadable fitted package, recipe, hypothesis, parents, data/protocol/code/environment hashes and MLflow run/version linkage when tracking is configured.
 - [ ] One detached imaopt controller completes the live canary, survives disconnection and controlled restart, then continues unlimited trials under explicit spend/resource caps.
-- [ ] Status distinguishes provider planning, degraded local search, training, paused admission, pending tracking and stopped execution. Dry run does not consume real trials or paid API calls.
-- [ ] Completion does not require improved log loss. Historical development gains are not claims of unseen predictive performance.
+- [x] Status distinguishes provider planning, degraded local search, training, paused admission, pending tracking and stopped execution. Dry run does not consume real trials or paid API calls.
+- [x] Completion does not require improved log loss. Historical development gains are not claims of unseen predictive performance.
 
 ## Root-Cause Baseline
 - Trigger scope: missing integration and overstated completion, not a server outage.

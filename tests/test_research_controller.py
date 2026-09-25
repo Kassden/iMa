@@ -122,6 +122,42 @@ class ResearchControllerTests(unittest.TestCase):
             status = campaign_status(campaign)
             self.assertEqual(str(campaign), status["campaign_dir"])
 
+    def test_stop_marker_is_consumed_and_campaign_can_resume(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            campaign.mkdir()
+            request_campaign_stop(campaign)
+            config = self.config(campaign, dataset, protocol, max_trials=1)
+            config = CampaignConfig(**{**config.__dict__, "max_concurrent_trials": 1})
+            stopped = run_research_campaign(
+                config
+            )
+            self.assertEqual("stopped", stopped["mode"])
+            self.assertFalse((campaign / "STOP").exists())
+            resumed = run_research_campaign(
+                config
+            )
+            self.assertEqual("complete", resumed["mode"])
+            self.assertEqual(1, resumed["ledger"]["completed"])
+
+    def test_resume_rejects_changed_dataset_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            config = self.config(campaign, dataset, protocol, max_trials=1)
+            config = CampaignConfig(**{**config.__dict__, "max_concurrent_trials": 1})
+            run_research_campaign(config)
+            frame = pd.read_csv(dataset)
+            frame.loc[0, "horse_rating"] += 1
+            frame.to_csv(dataset, index=False)
+            with self.assertRaisesRegex(RuntimeError, "scientific identity changed"):
+                run_research_campaign(
+                    CampaignConfig(**{**config.__dict__, "max_trials": 2})
+                )
+
     def test_search_progresses_beyond_six_seed_recipes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -141,6 +177,9 @@ class ResearchControllerTests(unittest.TestCase):
 
         def fake_choose(evidence, count, config):
             captured["evidence"] = evidence
+            captured["status"] = json.loads(
+                (root / "campaign" / "status.json").read_text(encoding="utf-8")
+            )
             proposals = []
             parents = [row["attempt_id"] for row in evidence["completed_trials"]]
             for index in range(count):
@@ -197,6 +236,7 @@ class ResearchControllerTests(unittest.TestCase):
                 payload = run_research_campaign(config)
             self.assertEqual(4, payload["ledger"]["completed"])
             self.assertEqual(2, len(captured["evidence"]["completed_trials"]))
+            self.assertEqual("provider_planning", captured["status"]["status"])
             planner = json.loads(
                 (config.campaign_dir / "planner" / "cycle-0001.json").read_text(encoding="utf-8")
             )

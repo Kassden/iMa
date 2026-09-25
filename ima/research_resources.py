@@ -65,7 +65,22 @@ def admission_slots(
     *,
     requested: int | None = None,
 ) -> int:
-    policy = policy or AdmissionPolicy()
+    policy = policy or AdmissionPolicy(
+        reserve_memory_gib=(
+            float(os.environ["IMA_RESEARCH_RESERVE_MEMORY_GIB"])
+            if "IMA_RESEARCH_RESERVE_MEMORY_GIB" in os.environ else None
+        ),
+        estimated_peak_trial_rss_gib=float(
+            os.environ.get("IMA_RESEARCH_TRIAL_RSS_GIB", "2")
+        ),
+        configured_ceiling=int(os.environ.get("IMA_RESEARCH_MAX_WORKERS", "32")),
+        disk_pause_threshold_gib=float(
+            os.environ.get("IMA_RESEARCH_DISK_PAUSE_GIB", "10")
+        ),
+        cpu_admission_ceiling_percent=float(
+            os.environ.get("IMA_RESEARCH_CPU_CEILING_PERCENT", "95")
+        ),
+    )
     if snapshot.disk_free_gib < policy.disk_pause_threshold_gib:
         return 0
     if snapshot.cpu_percent >= policy.cpu_admission_ceiling_percent:
