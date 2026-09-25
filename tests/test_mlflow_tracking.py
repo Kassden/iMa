@@ -96,6 +96,12 @@ class MLflowTrackingTests(unittest.TestCase):
                 "duration_seconds": 12.5,
                 "metrics": {
                     "mean_selected_minus_market": -0.002,
+                    "metric_contract_version": 2,
+                    "summary": {
+                        "selected": {
+                            "race_log_loss": {"mean": 2.01, "std": 0.1, "worst": 2.11}
+                        }
+                    },
                     "dataset_exclusions": {"excluded_rows": 4, "policy": "test"},
                     "folds": [{
                         "fold_id": "fold-001",
@@ -120,7 +126,11 @@ class MLflowTrackingTests(unittest.TestCase):
             self.assertEqual("benter-rich-v1", params["recipe.feature_schema"])
             self.assertEqual("logit", params["recipe.model.kind"])
             self.assertEqual(0.25, params["recipe.model.parameters.C"])
+            self.assertEqual(2, params["metric_contract_version"])
             self.assertEqual(2.01, metrics["objective"])
+            self.assertEqual(
+                2.01, metrics["summary.selected.race_log_loss.mean"]
+            )
             self.assertEqual(
                 2.01, metrics["fold.fold-001.selected.race_log_loss"]
             )
