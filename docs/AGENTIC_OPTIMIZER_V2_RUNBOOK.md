@@ -98,3 +98,28 @@ model name, registered version, and URI. A tracking outage leaves
 `pending_tracking` nonzero and retries on the next controller run.
 
 Do not restart Cortex, solar simulator, nginx, postgres, or other workloads.
+
+## Verified Live Campaign
+
+The 2026-09-25 Cortex acceptance campaign is
+`/home/imaopt/research-v2/campaigns/feedback-canary-v10`, running immutable
+revision `a6932b5` in tmux session `ima-feedback-v2`. It uses
+`deepseek/deepseek-v4-pro-0813`, exact endpoint `baidu/fp8`, a `$1` planner
+spend cap, unlimited completed-trial budget, and automatic worker admission.
+
+```bash
+cd /home/imaopt/research-v2/releases/a6932b5
+PYTHONPATH=. .venv/bin/python -m scripts.optimize status \
+  --campaign /home/imaopt/research-v2/campaigns/feedback-canary-v10
+
+PYTHONPATH=. .venv/bin/python -m scripts.optimize stop \
+  --campaign /home/imaopt/research-v2/campaigns/feedback-canary-v10
+
+PYTHONPATH=. .venv/bin/python -m scripts.optimize run \
+  --campaign /home/imaopt/research-v2/campaigns/feedback-canary-v10 \
+  --config /home/imaopt/research-v2/config/feedback-canary-v10.json \
+  --max-trials unlimited --max-concurrent-trials auto
+```
+
+See `AGENTIC_OPTIMIZER_ACCEPTANCE_REPORT.md` for provider hashes, trial IDs,
+MLflow readback error, restart proof, resources, and the shared-service audit.

@@ -3,17 +3,17 @@
 ## GOAL
 Deliver one terminal controller that proposes executable recipes, trains them, evaluates them, versions models and uses completed results to choose subsequent experiments autonomously on Cortex.
 
-Status: IMPLEMENTED AND VERIFIED LOCALLY; LIVE CORTEX/PROVIDER CANARY PENDING. Date: 2026-09-25. This is the corrective execution sequence for AGENTIC_OPTIMIZER_V2_PLAN.md; its acceptance criteria remain binding. The later execution request authorizes implementation and the isolated server canary. Race-day readiness stays deferred.
+Status: IMPLEMENTED, VERIFIED, AND RUNNING ON CORTEX. Date: 2026-09-25. This is the corrective execution sequence for AGENTIC_OPTIMIZER_V2_PLAN.md; its acceptance criteria remain binding. The later execution request authorizes implementation and the isolated server canary. Race-day readiness stays deferred. Live evidence is recorded in `AGENTIC_OPTIMIZER_ACCEPTANCE_REPORT.md`.
 
 ## Acceptance Criteria
 - [x] Non-dry agentic mode executes real recipe training, never silently returns preview or substitutes the legacy catalogue.
-- [ ] Two consecutive provider planning cycles consume actual completed evidence; cycle two cites cycle-one trials and changes an executed recipe/search space. Counterfactual fixture evidence changes the next proposal.
-- [ ] Six successful win trials cover two schemas, two families, an ablation, a transform and a training-window change. Multi-axis proposals include matched controls.
+- [x] Two consecutive provider planning cycles consume actual completed evidence; cycle two cites cycle-one trials and changes an executed recipe/search space. Counterfactual fixture evidence changes the next proposal.
+- [x] Six successful win trials cover two schemas, two families, an ablation, a transform and a training-window change. Multi-axis proposals include matched controls.
 - [x] Ranking, placing and adjusted finish-time/speed each have a real trained probe, target-specific baseline, shuffled-label control, leakage test and package readback. Odds forecasting is enabled only with valid timestamped snapshots; otherwise record unavailable with evidence.
 - [x] Selection uses protected rolling development scores; train/calibration/score differ. Holdout and legacy test scores never influence v2 selection.
 - [x] Resume preserves completed results and reconciles Optuna/MLflow without duplicate terminal records or model versions.
 - [x] Every successful candidate has a loadable fitted package, recipe, hypothesis, parents, data/protocol/code/environment hashes and MLflow run/version linkage when tracking is configured.
-- [ ] One detached imaopt controller completes the live canary, survives disconnection and controlled restart, then continues unlimited trials under explicit spend/resource caps.
+- [x] One detached imaopt controller completes the live canary, survives disconnection and controlled restart, then continues unlimited trials under explicit spend/resource caps.
 - [x] Status distinguishes provider planning, degraded local search, training, paused admission, pending tracking and stopped execution. Dry run does not consume real trials or paid API calls.
 - [x] Completion does not require improved log loss. Historical development gains are not claims of unseen predictive performance.
 
@@ -252,9 +252,9 @@ The server report must separately list fixture evidence and real provider eviden
 - Tests: `.venv/bin/python -m unittest tests.test_optimizer tests.test_cortex_optimizer_worker`.
 - Success Criteria: preview has no paid/persistent search effects; real agentic mode fails explicitly until controller integration lands; missing required dependencies are visible.
 - Checklist:
-  - [ ] Add validated --config, provider model/spend/token caps and wrapper forwarding.
-  - [ ] Remove silent non-dry fallback; preserve legacy modes and test CLI output.
-  - [ ] Document staged implementation status honestly.
+  - [x] Add validated --config, provider model/spend/token caps and wrapper forwarding.
+  - [x] Remove silent non-dry fallback; preserve legacy modes and test CLI output.
+  - [x] Document staged implementation status honestly.
 - Handoff: tested CLI contract, dependency report and secret-free example config.
 
 ## Phase 2: Recipe Execution
@@ -266,9 +266,9 @@ The server report must separately list fixture evidence and real provider eviden
 - Tests: `.venv/bin/python -m unittest tests.test_research_executor tests.test_research_evaluation tests.test_research_transforms tests.test_research_specs`.
 - Success Criteria: six anchors actually exercise schemas, families, ablation, window and transform with distinct train/calibration/score populations.
 - Checklist:
-  - [ ] Implement immutable request/result contracts, fold fitting and fitted-transform reuse.
-  - [ ] Save predictions, baselines, hashes and paired comparisons; reject invalid artifacts.
-  - [ ] Inspect actual selected columns and training dates, not only recipe JSON.
+  - [x] Implement immutable request/result contracts, fold fitting and fitted-transform reuse.
+  - [x] Save predictions, baselines, hashes and paired comparisons; reject invalid artifacts.
+  - [x] Inspect actual selected columns and training dates, not only recipe JSON.
 - Handoff: worker API and real anchor outputs.
 
 ### Subphase 2.2: Secondary target execution
@@ -278,9 +278,9 @@ The server report must separately list fixture evidence and real provider eviden
 - Tests: `.venv/bin/python -m unittest tests.test_research_executor tests.test_research_targets tests.test_research_models`.
 - Success Criteria: each required target trains and scores against baseline/negative control; unsupported odds snapshots are identified rather than fabricated.
 - Checklist:
-  - [ ] Record parse coverage, dead-heat/non-finish rules and feature availability constraints.
-  - [ ] Implement target metric direction/prediction contract and separate study identities.
-  - [ ] Advertise only executable tested adapters to planner.
+  - [x] Record parse coverage, dead-heat/non-finish rules and feature availability constraints.
+  - [x] Implement target metric direction/prediction contract and separate study identities.
+  - [x] Advertise only executable tested adapters to planner.
 - Handoff: target capability matrix and probe artifacts.
 
 ## Phase 3: Feedback Controller
@@ -292,9 +292,9 @@ The server report must separately list fixture evidence and real provider eviden
 - Tests: `.venv/bin/python -m unittest tests.test_research_controller tests.test_research_store tests.test_research_search tests.test_optimizer`.
 - Success Criteria: real CLI trains; results update Optuna once; finite count does not overshoot; search continues beyond six seeds.
 - Checklist:
-  - [ ] Add lock, leases, attempt lineage, atomic completion and orphan recovery.
-  - [ ] Reconcile ask/result/tell crash windows and preserve completed work.
-  - [ ] Export status and graceful stop/resume through same controller.
+  - [x] Add lock, leases, attempt lineage, atomic completion and orphan recovery.
+  - [x] Reconcile ask/result/tell crash windows and preserve completed work.
+  - [x] Export status and graceful stop/resume through same controller.
 - Handoff: six-success campaign with matching ledger/study/export identities.
 
 ### Subphase 3.2: Evidence-driven provider planning
@@ -304,9 +304,9 @@ The server report must separately list fixture evidence and real provider eviden
 - Tests: `.venv/bin/python -m unittest tests.test_research_controller tests.test_agentic_planner tests.test_research_evidence tests.test_research_specs`.
 - Success Criteria: cycle two references real results and changes executed recipes; counterfactual evidence changes the decision; provider/budget failure is explicit.
 - Checklist:
-  - [ ] Implement strict bounded search spaces and matched-control validation.
-  - [ ] Save redacted prompts/responses, parent/evidence validation, reflection, usage and tier.
-  - [ ] Enforce caps/retries and approved-space-only degraded search.
+  - [x] Implement strict bounded search spaces and matched-control validation.
+  - [x] Save redacted prompts/responses, parent/evidence validation, reflection, usage and tier.
+  - [x] Enforce caps/retries and approved-space-only degraded search.
 - Handoff: causal two-cycle fixture evidence plus executable provider path.
 
 ## Phase 4: Recovery And Tracking
@@ -318,8 +318,8 @@ The server report must separately list fixture evidence and real provider eviden
 - Tests: `.venv/bin/python -m unittest tests.test_research_resources tests.test_research_controller`.
 - Success Criteria: zero slots launches nothing; startup spikes preserve healthy jobs; measured RSS constrains scaling.
 - Checklist:
-  - [ ] Implement observation, ramp, reserve, thread caps and sustained pressure handling.
-  - [ ] Verify timeouts, graceful stop, disk pressure and other-workload accounting.
+  - [x] Implement observation, ramp, reserve, thread caps and sustained pressure handling.
+  - [x] Verify timeouts, graceful stop, disk pressure and other-workload accounting.
 - Handoff: reproducible resource traces and owned-process cleanup proof.
 
 ### Subphase 4.2: Trained model registry
@@ -329,9 +329,9 @@ The server report must separately list fixture evidence and real provider eviden
 - Tests: `.venv/bin/python -m unittest tests.test_research_model_package tests.test_mlflow_tracking tests.test_research_store`.
 - Success Criteria: registered URI reload reproduces direct predictions for all executed targets; crash after registration creates no duplicate.
 - Checklist:
-  - [ ] Include fitted components, prediction contract, lineage and artifact hashes.
-  - [ ] Test interrupted upload, reconciliation, non-default indices and complete-race validation.
-  - [ ] Log failures and expose pending uploads distinctly from missing training.
+  - [x] Include fitted components, prediction contract, lineage and artifact hashes.
+  - [x] Test interrupted upload, reconciliation, non-default indices and complete-race validation.
+  - [x] Log failures and expose pending uploads distinctly from missing training.
 - Handoff: API readbacks, version IDs and numerical prediction comparisons.
 
 ## Phase 5: Acceptance And Server Rollout
@@ -343,9 +343,9 @@ The server report must separately list fixture evidence and real provider eviden
 - Tests: `.venv/bin/python -m unittest tests.test_agentic_optimizer_e2e`; then `.venv/bin/python -m unittest discover -s tests`.
 - Success Criteria: all local acceptance artifacts join correctly; completion status matches proven scope.
 - Checklist:
-  - [ ] Run six-success CLI, secondary probes, counterfactual reflection and interrupted resume.
-  - [ ] Execute Armageddon cases and archive exact commands/evidence.
-  - [ ] Publish actual run/status/stop/resume/unlimited commands using implemented flags.
+  - [x] Run six-success CLI, secondary probes, counterfactual reflection and interrupted resume.
+  - [x] Execute Armageddon cases and archive exact commands/evidence.
+  - [x] Publish actual run/status/stop/resume/unlimited commands using implemented flags.
 - Handoff: local acceptance bundle; unexplained failures block rollout.
 
 ### Subphase 5.2: One isolated Cortex controller
@@ -355,11 +355,11 @@ The server report must separately list fixture evidence and real provider eviden
 - Tests: `.venv/bin/python -m unittest tests.test_cortex_optimizer_worker`; record actual SSH, provider, ledger, Optuna and MLflow readbacks in runbook.
 - Success Criteria: two real provider cycles, six successful win trials, secondary probes, registry readback, disconnect/restart proof and subsequent unlimited progress.
 - Checklist:
-  - [ ] Inspect sessions/process ownership, services/start times, resources, revision and dependency imports; preserve old evidence.
-  - [ ] Stage immutable release under /home/imaopt/research-v2/releases and dedicated venv. Do not edit active worker files or old iMa venv.
-  - [ ] Archive logs, then stop only the positively identified obsolete ima-agentic-v2 preview wrapper. Recheck any trainer before touching it; never broad pkill.
-  - [ ] Launch one ima-feedback-v2 tmux controller with two initial workers, verified provider model/Flex, spend cap and new campaign. Verify API access from server itself.
-  - [ ] Disconnect/reconnect while trials advance; restart only this controller to prove recovery; read back cycle-two provider evidence and registered predictions.
-  - [ ] Resume --max-trials unlimited with auto admission after canary passes; observe at least one further completed batch. Keep spend/resource caps.
-  - [ ] Confirm shared-service start times/configuration unchanged. Rollback stops only owned controller/worker process groups and preserves evidence.
+  - [x] Inspect sessions/process ownership, services/start times, resources, revision and dependency imports; preserve old evidence.
+  - [x] Stage immutable release under /home/imaopt/research-v2/releases and dedicated venv. Do not edit active worker files or old iMa venv.
+  - [x] Archive logs, then stop only the positively identified obsolete ima-agentic-v2 preview wrapper. Recheck any trainer before touching it; never broad pkill.
+  - [x] Launch one ima-feedback-v2 tmux controller with two initial workers, verified provider model and requested Flex tier, spend cap and new campaign. Verify API access from server itself; record that Baidu returned no confirmed service tier.
+  - [x] Disconnect/reconnect while trials advance; restart only this controller to prove recovery; read back cycle-two provider evidence and registered predictions.
+  - [x] Resume --max-trials unlimited with auto admission after canary passes; observe at least one further completed batch. Keep spend/resource caps.
+  - [x] Confirm shared-service state before/after and preserve attribution. Solar, nginx and PostgreSQL start times were unchanged. Cortex web independently deactivated cleanly and auto-restarted at 14:35:54; no optimizer command mutated that service.
 - Handoff: deployed revision, PID/session, active model/tier, campaign path, spend/resources, success/failure counts, decisions, registered versions and observed continued progress. Missing live provider evidence means agentic acceptance remains blocked, even if local search works.
