@@ -14,8 +14,17 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Iterator
 
-from .openrouter_orchestrator import OpenRouterConfig, OpenRouterError, choose_research_proposals
-from .mlflow_tracking import MLflowConfig, log_research_package_version
+from .openrouter_orchestrator import (
+    OpenRouterConfig,
+    OpenRouterError,
+    choose_research_proposals,
+    normalize_openrouter_usage,
+)
+from .mlflow_tracking import (
+    MLflowConfig,
+    log_optimizer_cycle_trace,
+    log_research_package_version,
+)
 from .research_executor import RecipeExecutionRequest, execute_recipe
 from .research_resources import admission_slots, observe_resources, resource_report
 from .research_search import RecipeSearchController, RecipeSuggestion
@@ -155,14 +164,21 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 cycles += 1
                 cycle += 1
                 continue
+            cycle_results: list[dict[str, Any]] = []
             completed = _execute_requests(requests, slots)
             for result in completed:
                 row = result.serializable()
+                cycle_results.append(row)
                 ledger.complete_attempt(result.attempt_id, row, status=result.status)
                 _append_jsonl(campaign_dir / "trials.jsonl", row)
                 new_results.append(row)
                 _reconcile_tells(ledger, search)
                 tracking_errors.extend(_reconcile_tracking(config, ledger))
+            trace_error = _trace_completed_cycle(
+                config, campaign_dir, decision, cycle_results
+            )
+            if trace_error:
+                tracking_errors.append(trace_error)
             cycles += 1
             cycle += 1
         return _finish_payload(
@@ -322,6 +338,14 @@ def _next_suggestions(
         "local_refill_trial_ids": [item.trial_id for item in local_refill],
         "suggestions": [item.serializable() for item in suggestions],
     }
+    if source == "openrouter":
+        decision.update({
+            "planner_model": config.model,
+            "service_tier": response.get("service_tier") or config.service_tier,
+            "planner_usage": response.get("usage") or normalize_openrouter_usage(
+                response.get("raw_response", {})
+            ),
+        })
     _persist_decision(campaign_dir, cycle, decision)
     return suggestions, decision
 
@@ -455,6 +479,27 @@ def _reconcile_tracking(config: Any, ledger: ResearchLedger) -> list[str]:
         except Exception as exc:  # tracking retries on the next controller pass.
             errors.append(f"{item['attempt_id']}: {type(exc).__name__}: {exc}")
     return errors
+
+
+def _trace_completed_cycle(
+    config: Any,
+    campaign_dir: Path,
+    decision: dict[str, Any],
+    results: list[dict[str, Any]],
+) -> str | None:
+    if not config.mlflow_tracking_uri:
+        return None
+    tracking = MLflowConfig.from_values(
+        tracking_uri=config.mlflow_tracking_uri,
+        experiment_name="ima-agentic-v2",
+        register_models=True,
+        registered_model_name="ima-agentic-candidates",
+    )
+    try:
+        log_optimizer_cycle_trace(campaign_dir, decision, results, tracking)
+    except Exception as exc:  # tracing is retriable and must not stop training.
+        return f"cycle-{decision.get('cycle')}: trace: {type(exc).__name__}: {exc}"
+    return None
 
 
 def _slots(config: Any, campaign_dir: Path, requested: int) -> tuple[int, dict[str, Any]]:
@@ -743,10 +788,11 @@ def _planner_spend(campaign_dir: Path) -> float:
     total = 0.0
     for path in (campaign_dir / "planner").glob("cycle-*.json"):
         payload = _read_json(path)
-        usage = payload.get("response", {}).get("raw_response", {}).get("usage", {})
-        value = usage.get("cost", usage.get("total_cost", 0.0))
-        try:
-            total += float(value or 0.0)
-        except (TypeError, ValueError):
-            continue
+        response = payload.get("response", {})
+        usage = response.get("usage") or normalize_openrouter_usage(
+            response.get("raw_response", {})
+        )
+        value = usage.get("total_cost_usd")
+        if value is not None:
+            total += float(value)
     return total

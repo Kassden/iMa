@@ -380,7 +380,53 @@ def choose_research_proposals(
         "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
         "rejected_proposals": rejected,
         "service_tier": response.get("service_tier"),
+        "usage": normalize_openrouter_usage(response),
     }
+
+
+def normalize_openrouter_usage(response: dict[str, Any]) -> dict[str, Any]:
+    """Return stable token/cost fields without estimating unreported spend."""
+    usage = response.get("usage") if isinstance(response, dict) else None
+    usage = usage if isinstance(usage, dict) else {}
+    input_tokens = _optional_non_negative_int(
+        usage.get("prompt_tokens", usage.get("input_tokens"))
+    )
+    output_tokens = _optional_non_negative_int(
+        usage.get("completion_tokens", usage.get("output_tokens"))
+    )
+    total_tokens = _optional_non_negative_int(usage.get("total_tokens"))
+    if total_tokens is None and input_tokens is not None and output_tokens is not None:
+        total_tokens = input_tokens + output_tokens
+    total_cost = _optional_non_negative_float(
+        usage.get("cost", usage.get("total_cost"))
+    )
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "total_cost_usd": total_cost,
+        "cost_status": "reported" if total_cost is not None else "unavailable",
+    }
+
+
+def _optional_non_negative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _optional_non_negative_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def submit_proposal_batch(
