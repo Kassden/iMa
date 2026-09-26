@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import hashlib
 import os
-import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -356,8 +355,10 @@ class ProgramSearchController:
     def bootstrap(self, batch_size: int) -> list[str]:
         if self.programs:
             return []
-        seeds = _seed_recipes()[:3]
-        budget = min(32, max(3, math.ceil(batch_size / len(seeds))))
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        seeds = _seed_recipes()[:min(3, batch_size)]
+        per_program, extra = divmod(batch_size, len(seeds))
         return [self.register(ResearchProposal(
             proposal_id=f"bootstrap-{index}",
             hypothesis=hypothesis,
@@ -365,7 +366,7 @@ class ProgramSearchController:
             recipe=recipe,
             expected_observation="Establish a comparable development baseline.",
             falsification_rule="Retire this direction if it cannot match the market baseline.",
-            max_trials=budget,
+            max_trials=per_program + (index < extra),
         )) for index, (recipe, hypothesis, axes) in enumerate(seeds)]
 
     def has_capacity(self) -> bool:

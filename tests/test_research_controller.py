@@ -354,6 +354,52 @@ class ResearchControllerTests(unittest.TestCase):
             self.assertEqual(0.01, decision["planner_usage"]["total_cost_usd"])
             self.assertEqual("reported", decision["planner_usage"]["cost_status"])
 
+    def test_planner_budget_runs_across_cycles_without_early_replanning(self):
+        def propose(evidence, count, config):
+            return {
+                "raw_response": {"usage": {"cost": 0.01}},
+                "service_tier": "flex",
+                "proposals": [{
+                    "proposal_id": "five-trial-direction",
+                    "parent_trial_ids": [row["attempt_id"] for row in evidence["completed_trials"]],
+                    "evidence_ids": [evidence["evidence_id"]],
+                    "hypothesis": "Explore winner regularization across five trials.",
+                    "changed_axes": ["hyperparameters"],
+                    "recipe": PipelineRecipe().canonical_payload(),
+                    "search_space": {"C": {"kind": "float", "low": 0.01, "high": 2.0}},
+                    "expected_observation": "Lower development loss.",
+                    "falsification_rule": "No improvement after five trials.",
+                    "max_trials": 5,
+                }],
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            config = CampaignConfig(**{
+                **self.config(root / "campaign", dataset, protocol, max_trials=7).__dict__,
+                "planner_mode": "openrouter",
+                "model": "provider/test-model",
+                "service_tier": "flex",
+                "max_total_cost_usd": 1.0,
+                "proposal_batch_size": 2,
+                "replan_every_terminal_trials": 2,
+            })
+            with mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "secret"}), mock.patch(
+                "ima.research_controller.choose_research_proposals", side_effect=propose
+            ) as planner:
+                payload = run_research_campaign(config)
+            self.assertEqual(7, payload["ledger"]["completed"])
+            self.assertEqual(1, planner.call_count)
+            decisions = [json.loads(line) for line in (
+                config.campaign_dir / "decisions.jsonl"
+            ).read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(
+                ["bootstrap", "openrouter", "approved_space_optuna", "approved_space_optuna"],
+                [decision["source"] for decision in decisions],
+            )
+            self.assertEqual([2, 2, 1], [len(decision["suggestions"]) for decision in decisions[1:]])
+
     def test_spend_cap_pauses_without_dispatching_provider_or_new_trial(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
