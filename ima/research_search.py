@@ -324,7 +324,9 @@ class ProgramSearchController:
         self.studies[program_id] = optuna.create_study(
             study_name=f"ima-program-{program_id}",
             storage=self.storage,
-            sampler=TPESampler(seed=self.seed, constant_liar=True),
+            sampler=TPESampler(
+                seed=self.seed ^ int(program_id[:8], 16), constant_liar=True
+            ),
             direction="minimize",
             load_if_exists=True,
         )
@@ -355,7 +357,7 @@ class ProgramSearchController:
         if self.programs:
             return []
         seeds = _seed_recipes()[:3]
-        budget = min(32, max(1, math.ceil(batch_size / len(seeds))))
+        budget = min(32, max(3, math.ceil(batch_size / len(seeds))))
         return [self.register(ResearchProposal(
             proposal_id=f"bootstrap-{index}",
             hypothesis=hypothesis,
@@ -367,8 +369,11 @@ class ProgramSearchController:
         )) for index, (recipe, hypothesis, axes) in enumerate(seeds)]
 
     def has_capacity(self) -> bool:
-        return any(
-            len(self.studies[program_id].get_trials(deepcopy=False)) < proposal.max_trials
+        return self.remaining_capacity() > 0
+
+    def remaining_capacity(self) -> int:
+        return sum(
+            max(0, proposal.max_trials - len(self.studies[program_id].get_trials(deepcopy=False)))
             for program_id, proposal in self.programs.items()
         )
 

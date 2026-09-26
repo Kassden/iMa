@@ -8,6 +8,7 @@ import pandas as pd
 
 from ima.optimizer import CampaignConfig
 from ima.research_controller import (
+    DatasetFeatureProfile,
     _code_revision,
     _fixture_proposals,
     _trace_completed_cycle,
@@ -16,6 +17,7 @@ from ima.research_controller import (
     run_research_campaign,
 )
 from ima.research_resources import ResourceSnapshot
+from ima.research_specs import PipelineRecipe
 from ima.research_store import ResearchLedger
 
 
@@ -190,6 +192,31 @@ class ResearchControllerTests(unittest.TestCase):
         second = _fixture_proposals(revised, 1, 1)[0]
         self.assertNotEqual(first.recipe.recipe_hash(), second.recipe.recipe_hash())
         self.assertNotEqual(first.changed_axes, second.changed_axes)
+
+    def test_missing_transform_column_is_rejected_before_training(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            frame = pd.read_csv(dataset).drop(columns=["horse_rating"])
+            frame.to_csv(dataset, index=False)
+            profile = DatasetFeatureProfile(dataset, json.loads(protocol.read_text()))
+            recipe = PipelineRecipe(transforms=({
+                "kind": "race_relative_rank",
+                "parameters": {"columns": ["horse_rating"]},
+            },))
+            self.assertIn("horse_rating", profile.admission_error(recipe))
+            evidence = {
+                "evidence_id": "evidence-missing-rating",
+                "completed_trials": [{
+                    "attempt_id": "attempt-parent",
+                    "target_kind": "win_probability",
+                    "objective_value": 1.2,
+                    "mean_selected_minus_market": 0.1,
+                }],
+                "feature_profile": profile.summary,
+            }
+            fallback = _fixture_proposals(evidence, 1, 1)[0]
+            self.assertFalse(fallback.recipe.transforms)
 
     def test_status_and_stop_use_campaign_state(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -369,21 +396,7 @@ class ResearchControllerTests(unittest.TestCase):
                     "evidence_ids": [evidence["evidence_id"]],
                     "hypothesis": "Retry the baseline control.",
                     "changed_axes": ["hyperparameters"],
-                    "recipe": {
-                        "schema_version": 2,
-                        "target": {"kind": "win_probability", "parameters": {}},
-                        "feature_schema": "baseline-v1",
-                        "drop_feature_families": [],
-                        "transforms": [],
-                        "train_window": "all_history",
-                        "model": {
-                            "kind": "logit",
-                            "parameters": {"C": 0.5, "class_weight": "balanced"},
-                        },
-                        "calibration": {"kind": "temperature", "parameters": {}},
-                        "blend": {"kind": "market_softmax", "parameters": {}},
-                        "seed": 42,
-                    },
+                    "recipe": evidence["best_by_target"]["win_probability"][0]["recipe"],
                     "expected_observation": "The control remains stable.",
                     "falsification_rule": "Reject when it duplicates prior work.",
                 }],

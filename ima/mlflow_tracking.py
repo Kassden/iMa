@@ -117,6 +117,9 @@ def research_run_parameters(
     recipe = json.loads((package_dir / "recipe.json").read_text(encoding="utf-8"))
     params: dict[str, str | int | float | bool] = {
         "attempt_id": attempt_id,
+        "trial_id": str(result.get("trial_id", "")),
+        "program_id": str(result.get("program_id", "")),
+        "proposal_id": str(result.get("proposal_id", "")),
         "recipe_hash": str(result.get("recipe_hash", "")),
         "target_kind": str(result.get("target_kind", "")),
         "objective_name": str(result.get("objective_name", "")),
@@ -280,13 +283,16 @@ def log_optimizer_cycle_trace(
         }
         for result in results:
             proposal_id = str(result.get("proposal_id", "unknown"))
-            suggestion = suggestions.get(proposal_id, {})
+            trial_id = str(result.get("trial_id") or proposal_id)
+            suggestion = suggestions.get(trial_id, {})
             with mlflow.start_span(
-                name=f"trial-{proposal_id}"[:250],
+                name=f"trial-{trial_id}"[:250],
                 span_type="TOOL",
                 attributes={
                     "ima.attempt_id": str(result.get("attempt_id", "")),
                     "ima.proposal_id": proposal_id,
+                    "ima.trial_id": trial_id,
+                    "ima.program_id": str(result.get("program_id") or ""),
                     "ima.status": str(result.get("status", "unknown")),
                     "ima.target_kind": str(result.get("target_kind", "")),
                 },
@@ -316,7 +322,26 @@ def _cycle_result_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
         result for result in results
         if result.get("status") == "completed" and result.get("objective_value") is not None
     ]
-    best = min(completed, key=lambda item: float(item["objective_value"])) if completed else None
+    def objective_key(item: dict[str, Any]) -> str:
+        return ":".join((
+            str(item.get("target_kind")),
+            str(item.get("objective_name")),
+            json.dumps(item.get("target_parameters") or {}, sort_keys=True),
+        ))
+
+    objective_names = {objective_key(item) for item in completed}
+    best = min(completed, key=lambda item: float(item["objective_value"])) if len(objective_names) == 1 else None
+    best_by_objective = {
+        name: {
+            "attempt_id": winner.get("attempt_id"),
+            "objective_value": winner.get("objective_value"),
+        }
+        for name in sorted(objective_names)
+        for winner in [min(
+            (item for item in completed if objective_key(item) == name),
+            key=lambda item: float(item["objective_value"]),
+        )]
+    }
     return {
         "trial_count": len(results),
         "completed_count": len(completed),
@@ -324,6 +349,7 @@ def _cycle_result_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
         "best_attempt_id": best.get("attempt_id") if best else None,
         "best_objective_name": best.get("objective_name") if best else None,
         "best_objective_value": best.get("objective_value") if best else None,
+        "best_by_objective": best_by_objective,
         "attempt_ids": [result.get("attempt_id") for result in results],
     }
 

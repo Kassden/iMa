@@ -233,7 +233,12 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
             "role": "system",
             "content": (
                 "You are the iMa research optimizer planner. Return strict JSON only. "
-                "Propose registered PipelineRecipe v2 objects. Do not request raw runner rows, "
+                "Propose bounded research programs: one structural PipelineRecipe v2 and a small "
+                "typed model-parameter search space per program. Optuna will select parameters "
+                "within each program; you select hypotheses, targets, features, transforms, models "
+                "and budgets from the registered capabilities. Cite the development evidence, "
+                "compare only compatible objectives, and avoid transform columns listed as "
+                "unavailable in feature_profile. Do not request raw runner rows, "
                 "labels, credentials, promotion, final odds or live betting. Every recipe must "
                 "obey the supplied target/model/calibration/blend compatibility matrix exactly."
             ),
@@ -242,7 +247,7 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
             "role": "user",
             "content": json.dumps(
                 {
-                    "task": "propose_agentic_research_recipes",
+                    "task": "propose_agentic_research_programs",
                     "proposal_count": proposal_count,
                     "allowed_changed_axes": [
                         "hyperparameters",
@@ -301,6 +306,12 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                         },
                     },
                     "allowed_model_parameters": MODEL_PARAMETER_CONTRACTS,
+                    "search_space_rules": {
+                        "parameters": "Only parameters registered for the recipe model kind.",
+                        "numeric": {"kind": "float or int", "low": "valid bound", "high": "valid bound", "log": False},
+                        "categorical": {"kind": "categorical", "choices": ["at least two valid values"]},
+                        "budget": "3 to 8 trials per program; keep the batch small and falsifiable",
+                    },
                     "evidence_bundle": evidence_bundle,
                     "output_schema": {
                         "proposals": [{
@@ -310,9 +321,17 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                             "hypothesis": "short falsifiable reason",
                             "changed_axes": ["one or more allowed axes"],
                             "recipe": "PipelineRecipe v2 object",
+                            "search_space": {
+                                "model_parameter_name": {
+                                    "kind": "float, int, or categorical",
+                                    "low": "numeric lower bound when applicable",
+                                    "high": "numeric upper bound when applicable",
+                                    "choices": "valid choices when categorical",
+                                }
+                            },
                             "expected_observation": "what should improve",
                             "falsification_rule": "what result rejects the idea",
-                            "max_trials": 1,
+                            "max_trials": "integer from 3 through 8",
                         }]
                     },
                 },

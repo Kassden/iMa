@@ -45,7 +45,8 @@ class AgenticPlannerTests(unittest.TestCase):
         self.assertNotIn("target_win", payload)
         messages = agentic_planner_messages(bundle, 1)
         user_content = messages[1]["content"]
-        self.assertIn("propose_agentic_research_recipes", user_content)
+        self.assertIn("propose_agentic_research_programs", user_content)
+        self.assertIn("search_space", user_content)
         self.assertNotIn("raw_runner_rows", user_content)
         self.assertNotIn('"model.kind"', user_content)
         self.assertNotIn('"target.kind"', user_content)
