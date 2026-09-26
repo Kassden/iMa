@@ -306,9 +306,28 @@ def _next_suggestions(
     rejected_proposals = list(response.get("rejected_proposals", [])) if source == "openrouter" else []
     for proposal in proposals:
         if proposal.evidence_ids != (evidence["evidence_id"],):
-            raise ValueError("planner proposal must cite the current evidence_id")
-        if not proposal.parent_trial_ids or not set(proposal.parent_trial_ids).issubset(completed_ids):
-            raise ValueError("planner proposal cites unknown or missing parent trials")
+            rejected_proposals.append({
+                "proposal_id": proposal.proposal_id,
+                "recipe_hash": proposal.recipe.recipe_hash(),
+                "reason": "stale_evidence_id",
+            })
+            continue
+        if not proposal.parent_trial_ids:
+            rejected_proposals.append({
+                "proposal_id": proposal.proposal_id,
+                "recipe_hash": proposal.recipe.recipe_hash(),
+                "reason": "missing_parent_trials",
+            })
+            continue
+        unknown_parents = sorted(set(proposal.parent_trial_ids) - completed_ids)
+        if unknown_parents:
+            rejected_proposals.append({
+                "proposal_id": proposal.proposal_id,
+                "recipe_hash": proposal.recipe.recipe_hash(),
+                "reason": "unknown_parent_trials",
+                "unknown_parent_trial_ids": unknown_parents,
+            })
+            continue
         try:
             suggestion = search.reserve_recipe(
                 proposal.recipe, proposal.hypothesis, proposal.changed_axes

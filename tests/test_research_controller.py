@@ -419,6 +419,82 @@ class ResearchControllerTests(unittest.TestCase):
             self.assertEqual("duplicate_recipe", decision["rejected_proposals"][0]["reason"])
             self.assertEqual(2, len(decision["local_refill_trial_ids"]))
 
+    def test_invalid_provider_lineage_is_rejected_and_refilled_locally(self):
+        def invalid_lineage_choose(evidence, count, config):
+            parent_id = evidence["completed_trials"][0]["attempt_id"]
+            proposals = []
+            for index, (evidence_ids, parent_ids) in enumerate((
+                (["stale-evidence"], [parent_id]),
+                ([evidence["evidence_id"]], []),
+                ([evidence["evidence_id"]], ["attempt-unknown"]),
+            )):
+                proposals.append({
+                    "proposal_id": f"invalid-lineage-{index}",
+                    "parent_trial_ids": parent_ids,
+                    "evidence_ids": evidence_ids,
+                    "hypothesis": "Exercise planner lineage validation.",
+                    "changed_axes": ["hyperparameters"],
+                    "recipe": {
+                        "schema_version": 2,
+                        "target": {"kind": "win_probability", "parameters": {}},
+                        "feature_schema": "baseline-v1",
+                        "drop_feature_families": [],
+                        "transforms": [],
+                        "train_window": "all_history",
+                        "model": {
+                            "kind": "logit",
+                            "parameters": {"C": 0.071 + index * 0.001},
+                        },
+                        "calibration": {"kind": "temperature", "parameters": {}},
+                        "blend": {"kind": "market_softmax", "parameters": {}},
+                        "seed": 42,
+                    },
+                    "expected_observation": "The invalid proposal is rejected.",
+                    "falsification_rule": "Fail if invalid lineage executes.",
+                })
+            return {
+                "raw_response": {"usage": {"cost": 0.01}},
+                "service_tier": "flex",
+                "proposals": proposals,
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            config = CampaignConfig(
+                campaign_dir=campaign,
+                policy="agentic",
+                planner_mode="openrouter",
+                model="provider/test-model",
+                service_tier="flex",
+                max_total_cost_usd=1.0,
+                dataset_path=dataset,
+                protocol_path=protocol,
+                max_trials=6,
+                proposal_batch_size=3,
+                max_concurrent_trials=1,
+                replan_every_terminal_trials=3,
+            )
+            with mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "secret"}), mock.patch(
+                "ima.research_controller.choose_research_proposals",
+                side_effect=invalid_lineage_choose,
+            ):
+                payload = run_research_campaign(config)
+            self.assertEqual("complete", payload["mode"])
+            decision = json.loads(
+                (campaign / "decisions" / "cycle-0001.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                ["stale_evidence_id", "missing_parent_trials", "unknown_parent_trials"],
+                [item["reason"] for item in decision["rejected_proposals"]],
+            )
+            self.assertEqual(
+                ["attempt-unknown"],
+                decision["rejected_proposals"][2]["unknown_parent_trial_ids"],
+            )
+            self.assertEqual(3, len(decision["local_refill_trial_ids"]))
+
     def test_zero_resource_slots_pause_before_search_reservation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
