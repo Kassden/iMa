@@ -137,7 +137,7 @@
 - Checklist:
   - [x] Run adversarial and resume cases; record outputs (225-test suite passed).
   - [x] Launch isolated canary; verify studies, MLflow, v12.
-  - [ ] Check scope/commit gate, push branch, final whole-plan gate.
+  - [x] Check scope/commit gate, push branch, final whole-plan gate.
 
 ## Execution Readback
 - Local suite: 226 tests passed after the scheduler correction, including focused search/e2e coverage that requires newly approved programs to train.
@@ -145,3 +145,4 @@
 - `hierarchical-canary-v2` completed six trials in two cycles, with zero pending tells/tracking. Cycle one approved programs `14343bfec6b77563` and `f253273ce8592a41`; both were trained in that cycle. All six completed Optuna trials had nonempty parameter maps.
 - MLflow stored six run/model links and two cycle traces; an API query found the new program's `trial_id` and proposal ID in run parameters. The fixture dataset lacks `horse_rating`, and the evidence marked it unavailable. The fixture scores are a workflow proof, not a predictive-accuracy estimate.
 - The existing `ima-feedback-v2` tmux session and v12 processes remained online. No shared service was restarted; the new code was exercised only in `imaopt`-owned `canary-releases/hierarchical-v2` and a fresh campaign.
+- Branch `feat/hierarchical-agentic-search` was pushed to `origin`; live v12 was deliberately not migrated in place.
