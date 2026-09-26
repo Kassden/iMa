@@ -10,6 +10,15 @@ The test launches the terminal optimizer with the fixture planner, trains nine
 real recipes, and verifies bootstrap plus two evidence-driven planning cycles.
 It also verifies offline status and that preview mode creates no Optuna study.
 
+The current controller stores each planner direction in `search/programs.jsonl`.
+Each program has a fixed target, structural recipe, bounded model-parameter
+search space, parents, and trial budget. `search/program-journal.log` contains
+one Optuna study per program. Every executed trial has Optuna parameters; the
+planner does not compete with Optuna for individual parameter values. Evidence
+files contain the recent recipes, comparable target leaders, program outcomes,
+failures, and transform-input coverage. A failed planner call falls back to a
+bounded local direction without changing the frozen dataset or protocol.
+
 ## Local Dry Run
 
 ```bash
@@ -101,11 +110,12 @@ model name, registered version, and URI. A tracking outage leaves
 
 - **Run:** one trained recipe attempt. Its searchable metrics include the
   objective, every fold, model/baseline/control comparisons, and mean/std/worst
-  fold summaries under `summary.*`.
+  fold summaries under `summary.*`. Searchable `program_id`, `trial_id`, and
+  `proposal_id` parameters link the run to the durable research direction.
 - **Model:** the loadable package produced by that run, registered under the
   target-specific model name. Models are versioned independently of traces.
 - **Trace:** one optimizer decision cycle. The root `optimizer-cycle-NNNN` span
-  contains evidence identity and the aggregate/best outcome. `planner-decision`
+  contains evidence identity and comparable per-objective outcomes. `planner-decision`
   records hypotheses, recipes, rejected proposals, token usage, and provider
   cost. Each executed attempt has a child `trial-*` span with its target,
   objective, status, duration, and metric summary.
@@ -127,7 +137,22 @@ planner-to-results narrative and cost.
 
 Do not restart Cortex, solar simulator, nginx, postgres, or other workloads.
 
-## Verified Live Campaign
+The ongoing v12 campaign at
+`/home/imaopt/research-v2/campaigns/feedback-canary-v12` uses immutable release
+`f54c604` in `ima-feedback-v2`. It is a legacy-search control, not a campaign
+to migrate in place. Start hierarchical-search work only in a new release and
+campaign directory; never reuse v12's ledger or journal.
+
+The isolated workflow canary is
+`/home/imaopt/research-v2/campaigns/hierarchical-canary-v2`, using
+`canary-releases/hierarchical-v2` and code revision `00e4c6a`. Its six fixture
+trials completed with two planner cycles, two cycle traces, and no pending
+Optuna or MLflow updates. The second cycle trained both newly approved
+programs. This small synthetic fixture verifies orchestration and tracking,
+not improved race prediction. The live v12 campaign still uses its previous
+search implementation until separately migrated.
+
+## Historical Live Campaign
 
 The 2026-09-25 Cortex acceptance campaign is
 `/home/imaopt/research-v2/campaigns/feedback-canary-v10`, running immutable

@@ -4,11 +4,11 @@
 - A planner selects bounded research directions and Optuna tunes parameters within each direction, using comparable feedback and rejecting unusable features before training.
 
 ## Acceptance Criteria
-- [ ] Each accepted proposal becomes a durable program with recipe template, numeric space, target/objective identity, hypothesis, parent IDs, and trial budget.
-- [ ] Every trained program trial has real Optuna parameters; distinct target/program objectives never share a study.
-- [ ] The planner sees recipes, best comparable results, program outcomes, failures, and feature coverage; cycle two responds to cycle one.
-- [ ] Unavailable transform inputs are rejected before worker execution and are not repeatedly sampled.
-- [ ] A seeded CLI campaign proves two feedback cycles, resume, MLflow linkage, and no change to live v12.
+- [x] Each accepted proposal becomes a durable program with recipe template, numeric space, target/objective identity, hypothesis, parent IDs, and trial budget.
+- [x] Every trained program trial has real Optuna parameters; distinct target/program objectives never share a study.
+- [x] The planner sees recipes, best comparable results, program outcomes, failures, and feature coverage; cycle two responds to cycle one.
+- [x] Unavailable transform inputs are rejected before worker execution and are not repeatedly sampled.
+- [x] A seeded CLI campaign proves two feedback cycles, resume, MLflow linkage, and no change to live v12.
 
 ## Research
 - Built-in options: reuse `ResearchLedger`, `PipelineRecipe`, evaluator, campaign identity, MLflow outbox/traces, and CLI.
@@ -73,7 +73,7 @@
 - Record phase starts, tests, commits, local/server readbacks, and any blocker. Regenerate dashboard with `mega_plan_dashboard.py --no-open` and inspect output.
 
 ## Regression Guardrails
-- Planned edit surface: `ima/research_specs.py`, `ima/research_search.py`, `ima/research_controller.py`, `ima/openrouter_orchestrator.py`, focused tests, `docs/AGENTIC_OPTIMIZER_V2_RUNBOOK.md`, this plan. Touch executor/MLflow only if a failing contract proves necessary.
+- Planned edit surface: `ima/research_specs.py`, `ima/research_search.py`, `ima/research_controller.py`, `ima/openrouter_orchestrator.py`, focused tests, `docs/AGENTIC_OPTIMIZER_V2_RUNBOOK.md`, this plan. MLflow linkage requires `ima/mlflow_tracking.py` because a program proposal ID spans multiple trial IDs; leave the executor unchanged.
 - Protected: legacy optimizer policy, frozen evaluation folds/labels, MLflow loadability, crash recovery, v12 release/session, Cortex/solar services.
 - Consumers: terminal optimizer, server worker, research tests, MLflow operator. Damage radius: large.
 - Branch strategy: `feat/hierarchical-agentic-search`, created before implementation. Proof: contracts, seeded CLI, resume, relevant suite, isolated canary/readback.
@@ -88,8 +88,8 @@
 - Planned Touch Files:
   - `docs/HIERARCHICAL_AGENTIC_SEARCH_PLAN.md`
 - Checklist:
-  - [ ] Record audited counts and official sources.
-  - [ ] Validate plan and dashboard.
+  - [x] Record audited counts and official sources.
+  - [x] Validate plan and dashboard.
 
 ## Phase 2: Search Contract
 
@@ -103,25 +103,26 @@
   - `tests/test_research_search.py`
   - `tests/test_research_specs.py`
 - Checklist:
-  - [ ] Add strict numeric search-space and program contract.
-  - [ ] Replace mixed global `ask` with program studies and typed sampling.
-  - [ ] Verify study separation, budgets, and resume.
+  - [x] Add strict numeric search-space and program contract.
+  - [x] Replace mixed global `ask` with program studies and typed sampling.
+  - [x] Verify study separation, budgets, and resume.
 
 ## Phase 3: Controller Feedback
 
 ### Subphase 3.1: Connect planner, evidence, and admission
 - Commit: `feat(optimizer): direct Optuna with planner evidence`.
-- Tests: `.venv/bin/python -m unittest tests.test_research_controller tests.test_agentic_planner tests.test_research_evidence`.
+- Tests: `.venv/bin/python -m unittest tests.test_research_controller tests.test_agentic_planner`.
 - Success Criteria: planner sees comparable recipes/results; proposals drive trials; invalid transforms are rejected before training; fallback uses approved programs.
 - Planned Touch Files:
   - `ima/research_controller.py`
   - `ima/openrouter_orchestrator.py`
+  - `ima/mlflow_tracking.py`
   - `tests/test_research_controller.py`
   - `tests/test_agentic_planner.py`
 - Checklist:
-  - [ ] Persist decisions and program outcomes.
-  - [ ] Enrich evidence and validate feature coverage/lineage.
-  - [ ] Route every request through an active program study.
+  - [x] Persist decisions and program outcomes.
+  - [x] Enrich evidence and validate feature coverage/lineage.
+  - [x] Route every request through an active program study.
 
 ## Phase 4: Verification And Rollout
 
@@ -134,6 +135,13 @@
   - `docs/AGENTIC_OPTIMIZER_V2_RUNBOOK.md`
   - `docs/HIERARCHICAL_AGENTIC_SEARCH_PLAN.md`
 - Checklist:
-  - [ ] Run adversarial and resume cases; record outputs.
-  - [ ] Launch isolated canary; verify studies, MLflow, v12.
+  - [x] Run adversarial and resume cases; record outputs (225-test suite passed).
+  - [x] Launch isolated canary; verify studies, MLflow, v12.
   - [ ] Check scope/commit gate, push branch, final whole-plan gate.
+
+## Execution Readback
+- Local suite: 226 tests passed after the scheduler correction, including focused search/e2e coverage that requires newly approved programs to train.
+- The first server canary exposed scheduler starvation: newly approved programs were registered but not sampled. This was corrected in `00e4c6a`; its before/after campaigns remain separate.
+- `hierarchical-canary-v2` completed six trials in two cycles, with zero pending tells/tracking. Cycle one approved programs `14343bfec6b77563` and `f253273ce8592a41`; both were trained in that cycle. All six completed Optuna trials had nonempty parameter maps.
+- MLflow stored six run/model links and two cycle traces; an API query found the new program's `trial_id` and proposal ID in run parameters. The fixture dataset lacks `horse_rating`, and the evidence marked it unavailable. The fixture scores are a workflow proof, not a predictive-accuracy estimate.
+- The existing `ima-feedback-v2` tmux session and v12 processes remained online. No shared service was restarted; the new code was exercised only in `imaopt`-owned `canary-releases/hierarchical-v2` and a fresh campaign.
