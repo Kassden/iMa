@@ -377,10 +377,14 @@ class ProgramSearchController:
             for program_id, proposal in self.programs.items()
         )
 
-    def ask(self, count: int) -> list[RecipeSuggestion]:
+    def ask(
+        self, count: int, *, preferred_program_ids: list[str] | None = None
+    ) -> list[RecipeSuggestion]:
         if count <= 0:
             raise ValueError("count must be positive")
         suggestions: list[RecipeSuggestion] = []
+        preferred = [program_id for program_id in preferred_program_ids or [] if program_id in self.programs]
+        program_order = preferred + [program_id for program_id in self.programs if program_id not in preferred]
         seen = {
             str(trial.user_attrs["recipe_hash"])
             for study in self.studies.values()
@@ -389,9 +393,10 @@ class ProgramSearchController:
         }
         attempts = 0
         while len(suggestions) < count and self.has_capacity() and attempts < count * 20:
-            for program_id, proposal in self.programs.items():
+            for program_id in program_order:
                 if len(suggestions) >= count:
                     break
+                proposal = self.programs[program_id]
                 study = self.studies[program_id]
                 if len(study.get_trials(deepcopy=False)) >= proposal.max_trials:
                     continue

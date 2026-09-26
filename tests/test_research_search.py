@@ -48,6 +48,23 @@ class ResearchSearchTests(unittest.TestCase):
             self.assertEqual([], resumed.ask(1))
             self.assertEqual("placing_top_k", resumed.programs[second_id].recipe.target.kind)
 
+    def test_newly_approved_program_runs_before_older_capacity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            search = ProgramSearchController(Path(directory))
+            search.bootstrap(3)
+            proposal = ResearchProposal(
+                proposal_id="new-direction", hypothesis="Test a new regularization direction.",
+                changed_axes=("hyperparameters",),
+                recipe=PipelineRecipe(model={"kind": "logit", "parameters": {"C": 0.2}}),
+                search_space={"C": {"kind": "float", "low": 0.1, "high": 0.3}},
+                expected_observation="Lower winner loss.", falsification_rule="No improvement.",
+                max_trials=3,
+            )
+            program_id = search.register(proposal)
+            suggestions = search.ask(2, preferred_program_ids=[program_id])
+            self.assertEqual(program_id, suggestions[0].program_id)
+            self.assertTrue(search.studies[program_id].trials[0].params)
+
     def test_seeded_suggestions_cover_required_research_axes(self):
         with tempfile.TemporaryDirectory() as directory:
             controller = RecipeSearchController(Path(directory))

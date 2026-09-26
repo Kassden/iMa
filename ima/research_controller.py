@@ -427,7 +427,7 @@ def _next_suggestions(
             search.register(fallback)
             if search.remaining_capacity() >= count:
                 break
-    suggestions = search.ask(count)
+    suggestions = search.ask(count, preferred_program_ids=program_ids)
     local_refill = [item.trial_id for item in suggestions if item.program_id not in program_ids]
     decision = {
         "cycle": cycle,
