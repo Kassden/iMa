@@ -8,7 +8,16 @@ import time
 from mlflow.entities import Param, RunTag
 from mlflow.tracking import MlflowClient
 
-from ima.mlflow_tracking import RESEARCH_IDENTITY_PARAM_PATHS
+try:
+    from ima.mlflow_tracking import RESEARCH_IDENTITY_PARAM_PATHS
+except ImportError:  # Allows an operational rollout beside an older immutable release.
+    RESEARCH_IDENTITY_PARAM_PATHS = {
+        "feature_schema": "recipe.feature_schema",
+        "model_kind": "recipe.model.kind",
+        "train_window": "recipe.train_window",
+        "calibration_kind": "recipe.calibration.kind",
+        "blend_kind": "recipe.blend.kind",
+    }
 
 
 def identity_updates(params: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
