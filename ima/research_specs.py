@@ -165,6 +165,33 @@ class PipelineRecipe(StrictModel):
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
+class SearchDimension(StrictModel):
+    kind: Literal["float", "int", "categorical"]
+    low: float | int | None = None
+    high: float | int | None = None
+    log: bool = False
+    choices: tuple[str | int | float | bool | None, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_dimension(self) -> "SearchDimension":
+        if self.kind == "categorical":
+            if len(self.choices) < 2 or self.low is not None or self.high is not None or self.log:
+                raise ValueError("categorical search requires at least two choices and no bounds")
+        elif (
+            self.low is None or self.high is None
+            or isinstance(self.low, bool) or isinstance(self.high, bool)
+            or self.low >= self.high or self.choices
+        ):
+            raise ValueError("numeric search requires ordered low/high bounds and no choices")
+        elif self.kind == "int" and (
+            not isinstance(self.low, int) or not isinstance(self.high, int) or self.log
+        ):
+            raise ValueError("integer search requires integer bounds without log scale")
+        elif self.log and self.low <= 0:
+            raise ValueError("logarithmic search requires positive bounds")
+        return self
+
+
 class ResearchProposal(StrictModel):
     proposal_id: str
     parent_trial_ids: tuple[str, ...] = ()
@@ -185,6 +212,7 @@ class ResearchProposal(StrictModel):
         ...,
     ]
     recipe: PipelineRecipe
+    search_space: dict[str, SearchDimension] = Field(default_factory=dict)
     expected_observation: str
     falsification_rule: str
     max_trials: int = 1
@@ -198,6 +226,22 @@ class ResearchProposal(StrictModel):
             raise ValueError(f"Research proposal contains forbidden terms: {matches}")
         if self.max_trials < 1:
             raise ValueError("max_trials must be positive")
+        if self.max_trials > 32:
+            raise ValueError("max_trials must be at most 32")
+        unknown = set(self.search_space) - set(MODEL_PARAMETER_CONTRACTS[self.recipe.model.kind])
+        if unknown:
+            raise ValueError(f"Search space contains unsupported model parameters: {sorted(unknown)}")
+        for name, dimension in self.search_space.items():
+            expected = MODEL_PARAMETER_CONTRACTS[self.recipe.model.kind][name]
+            if ("integer" in expected and dimension.kind != "int") or (
+                name in {"class_weight", "fit_intercept"} and dimension.kind != "categorical"
+            ):
+                raise ValueError(f"Search dimension has wrong type for {name}")
+            values = dimension.choices if dimension.kind == "categorical" else (
+                dimension.low, dimension.high
+            )
+            for value in values:
+                _validate_model_parameters(self.recipe.model.kind, {name: value})
         return self
 
 

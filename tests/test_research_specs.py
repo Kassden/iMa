@@ -4,10 +4,27 @@ from pydantic import ValidationError
 
 from ima.experiments import recipe_experiment_spec
 from ima.feature_sets import BASELINE_SCHEMA, RICH_SCHEMA, drop_feature_families
-from ima.research_specs import PipelineRecipe, RecipeValidationError
+from ima.research_specs import PipelineRecipe, RecipeValidationError, ResearchProposal
 
 
 class ResearchSpecTests(unittest.TestCase):
+    def test_proposal_search_space_rejects_invalid_bounds_and_parameters(self):
+        base = dict(
+            proposal_id="p", hypothesis="Tune C.", changed_axes=("hyperparameters",),
+            recipe=PipelineRecipe(), expected_observation="Better loss.",
+            falsification_rule="No improvement.", max_trials=4,
+        )
+        with self.assertRaises(ValidationError):
+            ResearchProposal(**base, search_space={"C": {"kind": "float", "low": 1, "high": 0}})
+        with self.assertRaises(ValidationError):
+            ResearchProposal(**base, search_space={"n_estimators": {"kind": "int", "low": 10, "high": 20}})
+        with self.assertRaises(ValidationError):
+            ResearchProposal(**base, search_space={"C": {"kind": "float", "low": 0.1, "high": 101}})
+        proposal = ResearchProposal(
+            **base, search_space={"C": {"kind": "float", "low": 0.1, "high": 1.0}}
+        )
+        self.assertEqual(4, proposal.max_trials)
+
     def test_recipe_hash_is_stable_and_families_are_sorted(self):
         first = PipelineRecipe(
             feature_schema="benter-rich-v1",
