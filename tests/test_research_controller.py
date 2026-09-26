@@ -8,13 +8,16 @@ import pandas as pd
 
 from ima.optimizer import CampaignConfig
 from ima.research_controller import (
+    DatasetFeatureProfile,
     _code_revision,
     _fixture_proposals,
+    _trace_completed_cycle,
     campaign_status,
     request_campaign_stop,
     run_research_campaign,
 )
 from ima.research_resources import ResourceSnapshot
+from ima.research_specs import PipelineRecipe
 from ima.research_store import ResearchLedger
 
 
@@ -97,6 +100,52 @@ class ResearchControllerTests(unittest.TestCase):
                 self.assertEqual([decisions[1]["evidence_id"]], proposal["evidence_ids"])
             self.assertEqual(6, payload["search"]["completed"])
 
+    def test_mlflow_tracking_writes_model_run_and_cycle_trace(self):
+        import mlflow
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            config = self.config(campaign, dataset, protocol, max_trials=1)
+            config = CampaignConfig(**{
+                **config.__dict__,
+                "max_concurrent_trials": 1,
+                "mlflow_tracking_uri": f"sqlite:///{root / 'mlflow.db'}",
+            })
+            with mock.patch.dict("os.environ", {}, clear=False):
+                payload = run_research_campaign(config)
+                self.assertEqual("complete", payload["mode"])
+                traces = list((campaign / "traces").glob("cycle-*.json"))
+                self.assertEqual(1, len(traces))
+                linkage = json.loads(traces[0].read_text(encoding="utf-8"))
+                trace = mlflow.get_trace(linkage["trace_id"], flush=True)
+                self.assertIsNotNone(trace)
+                self.assertEqual("unavailable", linkage["cost_status"])
+                experiment = mlflow.get_experiment_by_name("ima-agentic-v2")
+                runs = mlflow.search_runs([experiment.experiment_id])
+                self.assertEqual(1, len(runs))
+                self.assertIn(
+                    "metrics.summary.selected.race_log_loss.mean", runs.iloc[0]
+                )
+
+    def test_trace_failure_is_reported_without_raising(self):
+        config = CampaignConfig(
+            campaign_dir=Path("campaign"),
+            mlflow_tracking_uri="http://mlflow.invalid",
+        )
+        with mock.patch(
+            "ima.research_controller.log_optimizer_cycle_trace",
+            side_effect=RuntimeError("tracking unavailable"),
+        ):
+            error = _trace_completed_cycle(
+                config,
+                Path("campaign"),
+                {"cycle": 7, "source": "fixture"},
+                [],
+            )
+        self.assertIn("cycle-7: trace: RuntimeError: tracking unavailable", error)
+
     def test_resume_preserves_first_cycle_and_does_not_duplicate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -143,6 +192,31 @@ class ResearchControllerTests(unittest.TestCase):
         second = _fixture_proposals(revised, 1, 1)[0]
         self.assertNotEqual(first.recipe.recipe_hash(), second.recipe.recipe_hash())
         self.assertNotEqual(first.changed_axes, second.changed_axes)
+
+    def test_missing_transform_column_is_rejected_before_training(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            frame = pd.read_csv(dataset).drop(columns=["horse_rating"])
+            frame.to_csv(dataset, index=False)
+            profile = DatasetFeatureProfile(dataset, json.loads(protocol.read_text()))
+            recipe = PipelineRecipe(transforms=({
+                "kind": "race_relative_rank",
+                "parameters": {"columns": ["horse_rating"]},
+            },))
+            self.assertIn("horse_rating", profile.admission_error(recipe))
+            evidence = {
+                "evidence_id": "evidence-missing-rating",
+                "completed_trials": [{
+                    "attempt_id": "attempt-parent",
+                    "target_kind": "win_probability",
+                    "objective_value": 1.2,
+                    "mean_selected_minus_market": 0.1,
+                }],
+                "feature_profile": profile.summary,
+            }
+            fallback = _fixture_proposals(evidence, 1, 1)[0]
+            self.assertFalse(fallback.recipe.transforms)
 
     def test_status_and_stop_use_campaign_state(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -272,6 +346,13 @@ class ResearchControllerTests(unittest.TestCase):
                 (config.campaign_dir / "planner" / "cycle-0001.json").read_text(encoding="utf-8")
             )
             self.assertEqual("provider/test-model", planner["requested_model"])
+            decision = json.loads(
+                (config.campaign_dir / "decisions" / "cycle-0001.json")
+                .read_text(encoding="utf-8")
+            )
+            self.assertEqual("provider/test-model", decision["planner_model"])
+            self.assertEqual(0.01, decision["planner_usage"]["total_cost_usd"])
+            self.assertEqual("reported", decision["planner_usage"]["cost_status"])
 
     def test_spend_cap_pauses_without_dispatching_provider_or_new_trial(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -315,21 +396,7 @@ class ResearchControllerTests(unittest.TestCase):
                     "evidence_ids": [evidence["evidence_id"]],
                     "hypothesis": "Retry the baseline control.",
                     "changed_axes": ["hyperparameters"],
-                    "recipe": {
-                        "schema_version": 2,
-                        "target": {"kind": "win_probability", "parameters": {}},
-                        "feature_schema": "baseline-v1",
-                        "drop_feature_families": [],
-                        "transforms": [],
-                        "train_window": "all_history",
-                        "model": {
-                            "kind": "logit",
-                            "parameters": {"C": 0.5, "class_weight": "balanced"},
-                        },
-                        "calibration": {"kind": "temperature", "parameters": {}},
-                        "blend": {"kind": "market_softmax", "parameters": {}},
-                        "seed": 42,
-                    },
+                    "recipe": evidence["best_by_target"]["win_probability"][0]["recipe"],
                     "expected_observation": "The control remains stable.",
                     "falsification_rule": "Reject when it duplicates prior work.",
                 }],
@@ -364,6 +431,82 @@ class ResearchControllerTests(unittest.TestCase):
             )
             self.assertEqual("duplicate_recipe", decision["rejected_proposals"][0]["reason"])
             self.assertEqual(2, len(decision["local_refill_trial_ids"]))
+
+    def test_invalid_provider_lineage_is_rejected_and_refilled_locally(self):
+        def invalid_lineage_choose(evidence, count, config):
+            parent_id = evidence["completed_trials"][0]["attempt_id"]
+            proposals = []
+            for index, (evidence_ids, parent_ids) in enumerate((
+                (["stale-evidence"], [parent_id]),
+                ([evidence["evidence_id"]], []),
+                ([evidence["evidence_id"]], ["attempt-unknown"]),
+            )):
+                proposals.append({
+                    "proposal_id": f"invalid-lineage-{index}",
+                    "parent_trial_ids": parent_ids,
+                    "evidence_ids": evidence_ids,
+                    "hypothesis": "Exercise planner lineage validation.",
+                    "changed_axes": ["hyperparameters"],
+                    "recipe": {
+                        "schema_version": 2,
+                        "target": {"kind": "win_probability", "parameters": {}},
+                        "feature_schema": "baseline-v1",
+                        "drop_feature_families": [],
+                        "transforms": [],
+                        "train_window": "all_history",
+                        "model": {
+                            "kind": "logit",
+                            "parameters": {"C": 0.071 + index * 0.001},
+                        },
+                        "calibration": {"kind": "temperature", "parameters": {}},
+                        "blend": {"kind": "market_softmax", "parameters": {}},
+                        "seed": 42,
+                    },
+                    "expected_observation": "The invalid proposal is rejected.",
+                    "falsification_rule": "Fail if invalid lineage executes.",
+                })
+            return {
+                "raw_response": {"usage": {"cost": 0.01}},
+                "service_tier": "flex",
+                "proposals": proposals,
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "campaign"
+            config = CampaignConfig(
+                campaign_dir=campaign,
+                policy="agentic",
+                planner_mode="openrouter",
+                model="provider/test-model",
+                service_tier="flex",
+                max_total_cost_usd=1.0,
+                dataset_path=dataset,
+                protocol_path=protocol,
+                max_trials=6,
+                proposal_batch_size=3,
+                max_concurrent_trials=1,
+                replan_every_terminal_trials=3,
+            )
+            with mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "secret"}), mock.patch(
+                "ima.research_controller.choose_research_proposals",
+                side_effect=invalid_lineage_choose,
+            ):
+                payload = run_research_campaign(config)
+            self.assertEqual("complete", payload["mode"])
+            decision = json.loads(
+                (campaign / "decisions" / "cycle-0001.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                ["stale_evidence_id", "missing_parent_trials", "unknown_parent_trials"],
+                [item["reason"] for item in decision["rejected_proposals"]],
+            )
+            self.assertEqual(
+                ["attempt-unknown"],
+                decision["rejected_proposals"][2]["unknown_parent_trial_ids"],
+            )
+            self.assertEqual(3, len(decision["local_refill_trial_ids"]))
 
     def test_zero_resource_slots_pause_before_search_reservation(self):
         with tempfile.TemporaryDirectory() as directory:

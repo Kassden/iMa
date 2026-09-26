@@ -45,7 +45,8 @@ class AgenticPlannerTests(unittest.TestCase):
         self.assertNotIn("target_win", payload)
         messages = agentic_planner_messages(bundle, 1)
         user_content = messages[1]["content"]
-        self.assertIn("propose_agentic_research_recipes", user_content)
+        self.assertIn("propose_agentic_research_programs", user_content)
+        self.assertIn("search_space", user_content)
         self.assertNotIn("raw_runner_rows", user_content)
         self.assertNotIn('"model.kind"', user_content)
         self.assertNotIn('"target.kind"', user_content)
@@ -82,12 +83,15 @@ class AgenticPlannerTests(unittest.TestCase):
                     },
                     "expected_observation": "Lower development loss.",
                     "falsification_rule": "Reject if paired score loss worsens.",
-                    "max_trials": 1,
+                    "search_space": {"C": {"kind": "float", "low": 0.01, "high": 1.0, "log": True}},
+                    "max_trials": 4,
                 }]})}
             }]
         }
         proposals = research_proposals_from_response(response)
         self.assertEqual("benter-rich-v1", proposals[0].recipe.feature_schema)
+        self.assertEqual(4, proposals[0].max_trials)
+        self.assertTrue(proposals[0].search_space["C"].log)
 
     def test_forbidden_agentic_proposal_terms_are_rejected(self):
         response = {

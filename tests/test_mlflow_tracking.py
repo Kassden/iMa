@@ -9,8 +9,10 @@ from ima.mlflow_tracking import (
     MLflowConfig,
     _model_artifact_source,
     flatten_numeric_metrics,
+    log_optimizer_cycle_trace,
     log_research_package,
     log_research_package_version,
+    research_identity_tags,
     research_run_metrics,
     research_run_parameters,
     run_parameters,
@@ -96,6 +98,12 @@ class MLflowTrackingTests(unittest.TestCase):
                 "duration_seconds": 12.5,
                 "metrics": {
                     "mean_selected_minus_market": -0.002,
+                    "metric_contract_version": 2,
+                    "summary": {
+                        "selected": {
+                            "race_log_loss": {"mean": 2.01, "std": 0.1, "worst": 2.11}
+                        }
+                    },
                     "dataset_exclusions": {"excluded_rows": 4, "policy": "test"},
                     "folds": [{
                         "fold_id": "fold-001",
@@ -118,9 +126,21 @@ class MLflowTrackingTests(unittest.TestCase):
             metrics = research_run_metrics(result)
 
             self.assertEqual("benter-rich-v1", params["recipe.feature_schema"])
+            self.assertEqual("benter-rich-v1", params["feature_schema"])
             self.assertEqual("logit", params["recipe.model.kind"])
+            self.assertEqual("logit", params["model_kind"])
+            self.assertEqual("all_history", params["train_window"])
+            self.assertEqual("temperature", params["calibration_kind"])
+            self.assertEqual("market_softmax", params["blend_kind"])
+            self.assertEqual(
+                "benter-rich-v1", research_identity_tags(params)["ima.feature_schema"]
+            )
             self.assertEqual(0.25, params["recipe.model.parameters.C"])
+            self.assertEqual(2, params["metric_contract_version"])
             self.assertEqual(2.01, metrics["objective"])
+            self.assertEqual(
+                2.01, metrics["summary.selected.race_log_loss.mean"]
+            )
             self.assertEqual(
                 2.01, metrics["fold.fold-001.selected.race_log_loss"]
             )
@@ -167,6 +187,10 @@ class MLflowTrackingTests(unittest.TestCase):
             self.assertIn("model_version", first)
             run = mlflow.get_run(first["run_id"])
             self.assertEqual("baseline-v1", run.data.params["recipe.feature_schema"])
+            self.assertEqual("baseline-v1", run.data.params["feature_schema"])
+            self.assertEqual("logit", run.data.params["model_kind"])
+            self.assertEqual("baseline-v1", run.data.tags["ima.feature_schema"])
+            self.assertEqual("logit", run.data.tags["ima.model_kind"])
             self.assertEqual(1.0, run.data.metrics["objective"])
             loaded = mlflow.pyfunc.load_model(first["registered_model_uri"])
             frame = pd.DataFrame({
@@ -174,6 +198,106 @@ class MLflowTrackingTests(unittest.TestCase):
                 "field_size": [2, 2, 2, 2],
             })
             np.testing.assert_allclose(loaded.predict(frame), np.full(4, 0.5))
+
+    def test_optimizer_cycle_trace_links_decision_results_usage_and_cost(self):
+        import mlflow
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = MLflowConfig(
+                tracking_uri=f"sqlite:///{root / 'mlflow.db'}",
+                experiment_name="trace-test",
+                enabled=True,
+                register_models=False,
+            )
+            decision = {
+                "cycle": 3,
+                "source": "openrouter",
+                "evidence_id": "evidence-1",
+                "planner_model": "deepseek/test",
+                "service_tier": "flex",
+                "planner_usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 20,
+                    "total_tokens": 120,
+                    "total_cost_usd": 0.00125,
+                    "cost_status": "reported",
+                },
+                "suggestions": [{
+                    "trial_id": "proposal-1",
+                    "hypothesis": "A grouped rank objective improves top-three order.",
+                    "changed_axes": ["target"],
+                    "recipe_hash": "recipe-1",
+                    "recipe": {"target": {"kind": "ranking_strength"}},
+                }],
+            }
+            results = [{
+                "attempt_id": "attempt-1",
+                "proposal_id": "proposal-1",
+                "recipe_hash": "recipe-1",
+                "target_kind": "ranking_strength",
+                "status": "completed",
+                "objective_name": "negative_development_race_ndcg_at_3",
+                "objective_value": -0.72,
+                "duration_seconds": 2.5,
+                "metrics": {"summary": {"model": {"race_ndcg_at_3": {"mean": 0.72}}}},
+            }]
+            first = log_optimizer_cycle_trace(root, decision, results, config)
+            second = log_optimizer_cycle_trace(root, decision, results, config)
+
+            self.assertEqual(first, second)
+            experiment = mlflow.get_experiment_by_name("trace-test")
+            traces = mlflow.search_traces(
+                experiment_ids=[experiment.experiment_id], return_type="list"
+            )
+            self.assertEqual(1, len(traces))
+            trace = mlflow.get_trace(first["trace_id"], flush=True)
+            spans = {span.name: span for span in trace.data.spans}
+            self.assertIn("optimizer-cycle-0003", spans)
+            self.assertIn("planner-decision", spans)
+            self.assertIn("trial-proposal-1", spans)
+            self.assertEqual(
+                120,
+                spans["planner-decision"].get_attribute(
+                    "mlflow.chat.tokenUsage"
+                )["total_tokens"],
+            )
+            self.assertEqual(
+                0.00125,
+                spans["planner-decision"].get_attribute(
+                    "mlflow.llm.cost"
+                )["total_cost"],
+            )
+            self.assertEqual(120, trace.info.token_usage["total_tokens"])
+            self.assertEqual(0.00125, trace.info.cost["total_cost"])
+            self.assertEqual("reported", first["cost_status"])
+            self.assertEqual(1, len(list((root / "traces").glob("cycle-*.json"))))
+
+    def test_optimizer_cycle_trace_marks_missing_cost_unavailable(self):
+        import mlflow
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = MLflowConfig(
+                tracking_uri=f"sqlite:///{root / 'mlflow.db'}",
+                experiment_name="trace-no-cost",
+                enabled=True,
+                register_models=False,
+            )
+            linkage = log_optimizer_cycle_trace(
+                root,
+                {"cycle": 0, "source": "fixture", "suggestions": []},
+                [],
+                config,
+            )
+            trace = mlflow.get_trace(linkage["trace_id"], flush=True)
+            planner = next(
+                span for span in trace.data.spans if span.name == "planner-decision"
+            )
+            self.assertEqual("unavailable", linkage["cost_status"])
+            self.assertIsNone(linkage["total_cost_usd"])
+            self.assertIsNone(planner.get_attribute("mlflow.llm.cost"))
+            self.assertIsNone(trace.info.cost)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,24 @@ from .research_transforms import (
 
 
 RESULT_SCHEMA_VERSION = 1
+METRIC_CONTRACT_VERSION = 2
+
+LOWER_IS_BETTER_METRICS = {
+    "binary_log_loss",
+    "brier",
+    "ece",
+    "mae",
+    "mean_winner_rank",
+    "race_binary_log_loss",
+    "race_brier",
+    "race_log_loss",
+    "race_mae",
+    "race_rmse",
+    "rmse",
+    "winner_rank",
+    "worst_race_brier",
+    "worst_race_log_loss",
+}
 
 
 @dataclass(frozen=True)
@@ -279,6 +297,9 @@ def _execute_frame(
     metrics = {
         "objective": objective,
         "folds": folds,
+        "summary": _aggregate_fold_metrics(folds),
+        "metric_contract_version": METRIC_CONTRACT_VERSION,
+        "metric_directions": _metric_directions(folds),
         "effective_training": effective_training,
         "dataset_exclusions": exclusions,
         "mean_selected_minus_market": float(np.mean([
@@ -461,7 +482,14 @@ def _execute_secondary_frame(
         status="completed",
         objective_name=_objective_name(recipe.target.kind),
         objective_value=objective,
-        metrics={"objective": objective, "folds": folds, "effective_training": effective_training},
+        metrics={
+            "objective": objective,
+            "folds": folds,
+            "summary": _aggregate_fold_metrics(folds),
+            "metric_contract_version": METRIC_CONTRACT_VERSION,
+            "metric_directions": _metric_directions(folds),
+            "effective_training": effective_training,
+        },
         artifacts={
             "protocol": str(protocol_path),
             "predictions": str(predictions_path),
@@ -507,10 +535,66 @@ def _shuffle_labels_by_race(frame: pd.DataFrame, column: str, seed: int) -> np.n
 
 def _secondary_objective(target_kind: str, metrics: dict[str, float]) -> float:
     if target_kind == "ranking_strength":
-        return -float(metrics["spearman"])
+        return -float(metrics["race_ndcg_at_3"])
     if target_kind == "placing_top_k":
-        return float(metrics["brier"])
-    return float(metrics["mae"])
+        return float(metrics["race_brier"])
+    return float(metrics["race_mae"])
+
+
+def _aggregate_fold_metrics(folds: list[dict[str, Any]]) -> dict[str, Any]:
+    sources = sorted({
+        source
+        for fold in folds
+        for source, payload in fold.items()
+        if source not in {"fold_id", "objective", "selected_minus_market"}
+        and isinstance(payload, dict)
+    })
+    summary: dict[str, Any] = {}
+    for source in sources:
+        metric_names = sorted({
+            metric
+            for fold in folds
+            for metric, value in (fold.get(source) or {}).items()
+            if isinstance(value, int | float) and not isinstance(value, bool)
+        })
+        source_summary: dict[str, dict[str, float]] = {}
+        for metric in metric_names:
+            values = np.asarray([
+                float(fold[source][metric])
+                for fold in folds
+                if isinstance(fold.get(source), dict)
+                and isinstance(fold[source].get(metric), int | float)
+            ])
+            if not len(values):
+                continue
+            source_summary[metric] = {
+                "mean": float(values.mean()),
+                "std": float(values.std(ddof=0)),
+                "worst": float(
+                    values.max() if _lower_is_better(metric) else values.min()
+                ),
+            }
+        summary[source] = source_summary
+    return summary
+
+
+def _metric_directions(folds: list[dict[str, Any]]) -> dict[str, str]:
+    metrics = {
+        metric
+        for fold in folds
+        for source in fold.values()
+        if isinstance(source, dict)
+        for metric, value in source.items()
+        if isinstance(value, int | float) and not isinstance(value, bool)
+    }
+    return {
+        metric: "minimize" if _lower_is_better(metric) else "maximize"
+        for metric in sorted(metrics)
+    }
+
+
+def _lower_is_better(metric: str) -> bool:
+    return metric in LOWER_IS_BETTER_METRICS or metric.endswith(("_loss", "_error"))
 
 
 def _effective_schema(recipe: PipelineRecipe) -> FeatureSchema:
@@ -583,10 +667,10 @@ def _load_dataset(path: Path) -> pd.DataFrame:
 def _objective_name(target_kind: str) -> str:
     return {
         "win_probability": "development_race_log_loss",
-        "ranking_strength": "negative_development_spearman",
-        "placing_top_k": "development_brier",
-        "adjusted_finish_time_or_speed": "development_mae",
-        "market_odds_forecast": "development_mae",
+        "ranking_strength": "negative_development_race_ndcg_at_3",
+        "placing_top_k": "development_race_brier",
+        "adjusted_finish_time_or_speed": "development_race_mae",
+        "market_odds_forecast": "development_race_mae",
     }[target_kind]
 
 

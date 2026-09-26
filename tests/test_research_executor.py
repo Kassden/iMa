@@ -41,6 +41,11 @@ class ResearchExecutorTests(unittest.TestCase):
             self.assertEqual("development_race_log_loss", result.objective_name)
             self.assertTrue(np.isfinite(result.objective_value))
             self.assertEqual(2, len(result.metrics["folds"]))
+            self.assertEqual(2, result.metrics["metric_contract_version"])
+            self.assertIn("selected", result.metrics["summary"])
+            self.assertIn(
+                "race_log_loss", result.metrics["summary"]["selected"]
+            )
             output = Path(directory) / result.recipe_hash
             stored = json.loads((output / "result.json").read_text(encoding="utf-8"))
             self.assertEqual(result.lineage["protocol_id"], stored["lineage"]["protocol_id"])
@@ -156,6 +161,21 @@ class ResearchExecutorTests(unittest.TestCase):
                     result = self._run(Path(directory), recipe)
                     self.assertEqual("completed", result.status, result.error)
                     self.assertIn("shuffled_control", result.metrics["folds"][0])
+                    self.assertIn("model", result.metrics["summary"])
+                    self.assertIn("baseline", result.metrics["summary"])
+                    if recipe.target.kind == "ranking_strength":
+                        self.assertEqual(
+                            "negative_development_race_ndcg_at_3",
+                            result.objective_name,
+                        )
+                        self.assertAlmostEqual(
+                            -result.metrics["summary"]["model"]["race_ndcg_at_3"]["mean"],
+                            result.objective_value,
+                        )
+                    elif recipe.target.kind == "placing_top_k":
+                        self.assertEqual("development_race_brier", result.objective_name)
+                    else:
+                        self.assertEqual("development_race_mae", result.objective_name)
                     package = load_research_package(Path(result.artifacts["package"]))
                     predictions = pd.read_csv(result.artifacts["predictions"])
                     source = pd.read_csv(FIXTURE)

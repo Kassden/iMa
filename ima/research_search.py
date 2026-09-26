@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import os
+import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -21,7 +24,7 @@ except Exception:  # pragma: no cover - minimal remote canary without research d
     TrialState = None
 
 from .feature_sets import feature_families_for_schema
-from .research_specs import PipelineRecipe
+from .research_specs import PipelineRecipe, ResearchProposal, SearchDimension
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,8 @@ class RecipeSuggestion:
     recipe: PipelineRecipe
     hypothesis: str
     changed_axes: tuple[str, ...]
+    program_id: str | None = None
+    proposal_id: str | None = None
 
     def serializable(self) -> dict[str, Any]:
         return {
@@ -40,6 +45,8 @@ class RecipeSuggestion:
             "recipe_hash": self.recipe.recipe_hash(),
             "hypothesis": self.hypothesis,
             "changed_axes": list(self.changed_axes),
+            "program_id": self.program_id,
+            "proposal_id": self.proposal_id,
         }
 
 
@@ -288,6 +295,206 @@ class RecipeSearchController:
         if not path.exists():
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+class ProgramSearchController:
+    """A planner-owned set of bounded, comparable Optuna studies."""
+
+    def __init__(self, campaign_dir: Path, *, seed: int = 42) -> None:
+        if optuna is None:
+            raise RuntimeError("Executable research programs require Optuna")
+        self.campaign_dir = Path(campaign_dir)
+        self.search_dir = self.campaign_dir / "search"
+        self.search_dir.mkdir(parents=True, exist_ok=True)
+        self.index_path = self.search_dir / "programs.jsonl"
+        self.storage = JournalStorage(
+            JournalFileBackend(str(self.search_dir / "program-journal.log"))
+        )
+        self.seed = seed
+        self.programs: dict[str, ResearchProposal] = {}
+        self.studies: dict[str, Any] = {}
+        if self.index_path.exists():
+            for line in self.index_path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    row = json.loads(line)
+                    self._open(row["program_id"], ResearchProposal.model_validate(row["proposal"]))
+
+    def _open(self, program_id: str, proposal: ResearchProposal) -> None:
+        self.programs[program_id] = proposal
+        self.studies[program_id] = optuna.create_study(
+            study_name=f"ima-program-{program_id}",
+            storage=self.storage,
+            sampler=TPESampler(
+                seed=self.seed ^ int(program_id[:8], 16), constant_liar=True
+            ),
+            direction="minimize",
+            load_if_exists=True,
+        )
+
+    def register(self, proposal: ResearchProposal) -> str:
+        payload = {
+            "recipe": proposal.recipe.canonical_payload(),
+            "search_space": {k: v.model_dump(mode="json") for k, v in proposal.search_space.items()},
+            "evidence_ids": proposal.evidence_ids,
+            "target_kind": proposal.recipe.target.kind,
+        }
+        program_id = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:16]
+        if program_id in self.programs:
+            return program_id
+        with self.index_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "program_id": program_id,
+                "proposal": proposal.model_dump(mode="json"),
+            }, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        self._open(program_id, proposal)
+        return program_id
+
+    def bootstrap(self, batch_size: int) -> list[str]:
+        if self.programs:
+            return []
+        seeds = _seed_recipes()[:3]
+        budget = min(32, max(3, math.ceil(batch_size / len(seeds))))
+        return [self.register(ResearchProposal(
+            proposal_id=f"bootstrap-{index}",
+            hypothesis=hypothesis,
+            changed_axes=axes,
+            recipe=recipe,
+            expected_observation="Establish a comparable development baseline.",
+            falsification_rule="Retire this direction if it cannot match the market baseline.",
+            max_trials=budget,
+        )) for index, (recipe, hypothesis, axes) in enumerate(seeds)]
+
+    def has_capacity(self) -> bool:
+        return self.remaining_capacity() > 0
+
+    def remaining_capacity(self) -> int:
+        return sum(
+            max(0, proposal.max_trials - len(self.studies[program_id].get_trials(deepcopy=False)))
+            for program_id, proposal in self.programs.items()
+        )
+
+    def ask(
+        self, count: int, *, preferred_program_ids: list[str] | None = None
+    ) -> list[RecipeSuggestion]:
+        if count <= 0:
+            raise ValueError("count must be positive")
+        suggestions: list[RecipeSuggestion] = []
+        preferred = [program_id for program_id in preferred_program_ids or [] if program_id in self.programs]
+        program_order = preferred + [program_id for program_id in self.programs if program_id not in preferred]
+        seen = {
+            str(trial.user_attrs["recipe_hash"])
+            for study in self.studies.values()
+            for trial in study.get_trials(deepcopy=False)
+            if "recipe_hash" in trial.user_attrs
+        }
+        attempts = 0
+        while len(suggestions) < count and self.has_capacity() and attempts < count * 20:
+            for program_id in program_order:
+                if len(suggestions) >= count:
+                    break
+                proposal = self.programs[program_id]
+                study = self.studies[program_id]
+                if len(study.get_trials(deepcopy=False)) >= proposal.max_trials:
+                    continue
+                attempts += 1
+                trial = study.ask()
+                space = proposal.search_space or _default_space(proposal.recipe.model.kind)
+                parameters = dict(proposal.recipe.model.parameters)
+                for name, dimension in space.items():
+                    if dimension.kind == "float":
+                        value = trial.suggest_float(name, float(dimension.low), float(dimension.high), log=dimension.log)
+                    elif dimension.kind == "int":
+                        value = trial.suggest_int(name, int(dimension.low), int(dimension.high))
+                    else:
+                        value = trial.suggest_categorical(name, list(dimension.choices))
+                    parameters[name] = value
+                try:
+                    recipe = proposal.recipe.model_copy(update={
+                        "model": proposal.recipe.model.model_copy(update={"parameters": parameters})
+                    })
+                    recipe = PipelineRecipe.model_validate(recipe.model_dump(mode="json"))
+                except Exception:
+                    study.tell(trial, state=TrialState.FAIL)
+                    continue
+                recipe_hash = recipe.recipe_hash()
+                trial.set_user_attr("recipe", recipe.canonical_payload())
+                trial.set_user_attr("recipe_hash", recipe_hash)
+                trial.set_user_attr("program_id", program_id)
+                if recipe_hash in seen:
+                    study.tell(trial, state=TrialState.PRUNED)
+                    continue
+                seen.add(recipe_hash)
+                suggestions.append(RecipeSuggestion(
+                    trial_id=f"{program_id}-{trial.number:06d}",
+                    trial_number=trial.number,
+                    recipe=recipe,
+                    hypothesis=proposal.hypothesis,
+                    changed_axes=proposal.changed_axes,
+                    program_id=program_id,
+                    proposal_id=proposal.proposal_id,
+                ))
+            if attempts >= count * 20:
+                break
+        return suggestions
+
+    def trial_state(self, program_id: str, trial_number: int) -> str:
+        return self.studies[program_id].trials[trial_number].state.name.lower()
+
+    def tell(
+        self, program_id: str, trial_number: int, value: float,
+        metrics: dict[str, Any] | None = None,
+    ) -> None:
+        study = self.studies[program_id]
+        if metrics is not None:
+            trial = study.trials[trial_number]
+            study._storage.set_trial_user_attr(trial._trial_id, "metrics", metrics)
+        study.tell(trial_number, float(value))
+
+    def tell_failed(self, program_id: str, trial_number: int) -> None:
+        study = self.studies[program_id]
+        if study.trials[trial_number].state == TrialState.RUNNING:
+            study.tell(trial_number, state=TrialState.FAIL)
+
+    def snapshot(self) -> dict[str, Any]:
+        trials = [trial for study in self.studies.values() for trial in study.get_trials(deepcopy=False)]
+        return {
+            "search_space_version": "program-space-v1",
+            "program_count": len(self.programs),
+            "programs": {
+                program_id: {
+                    "proposal_id": proposal.proposal_id,
+                    "target_kind": proposal.recipe.target.kind,
+                    "model_kind": proposal.recipe.model.kind,
+                    "budget": proposal.max_trials,
+                    "trials": len(self.studies[program_id].trials),
+                    "completed": sum(t.state == TrialState.COMPLETE for t in self.studies[program_id].trials),
+                }
+                for program_id, proposal in self.programs.items()
+            },
+            "trials": len(trials),
+            "completed": sum(t.state == TrialState.COMPLETE for t in trials),
+            "running": sum(t.state == TrialState.RUNNING for t in trials),
+            "pruned": sum(t.state == TrialState.PRUNED for t in trials),
+            "recipe_hashes": sorted(
+                str(t.user_attrs["recipe_hash"]) for t in trials if "recipe_hash" in t.user_attrs
+            ),
+        }
+
+
+def _default_space(model_kind: str) -> dict[str, SearchDimension]:
+    if model_kind == "logit":
+        return {"C": SearchDimension(kind="float", low=0.003, high=80.0, log=True)}
+    if model_kind == "ridge_regressor":
+        return {"alpha": SearchDimension(kind="float", low=0.001, high=100.0, log=True)}
+    return {
+        "learning_rate": SearchDimension(kind="float", low=0.015, high=0.12, log=True),
+        "max_iter": SearchDimension(kind="int", low=80, high=260),
+        "l2_regularization": SearchDimension(kind="float", low=0.0, high=10.0),
+    }
 
 
 def _seed_recipes() -> tuple[tuple[PipelineRecipe, str, tuple[str, ...]], ...]:

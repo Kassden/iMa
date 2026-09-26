@@ -17,6 +17,14 @@ from typing import Any
 DEFAULT_EXPERIMENT_NAME = "ima-racing"
 DEFAULT_REGISTERED_MODEL_NAME = "ima-racing-candidates"
 
+RESEARCH_IDENTITY_PARAM_PATHS = {
+    "feature_schema": "recipe.feature_schema",
+    "model_kind": "recipe.model.kind",
+    "train_window": "recipe.train_window",
+    "calibration_kind": "recipe.calibration.kind",
+    "blend_kind": "recipe.blend.kind",
+}
+
 
 class MLflowUnavailableError(RuntimeError):
     """Raised when MLflow-backed behavior is requested but MLflow is unavailable."""
@@ -109,9 +117,15 @@ def research_run_parameters(
     recipe = json.loads((package_dir / "recipe.json").read_text(encoding="utf-8"))
     params: dict[str, str | int | float | bool] = {
         "attempt_id": attempt_id,
+        "trial_id": str(result.get("trial_id", "")),
+        "program_id": str(result.get("program_id", "")),
+        "proposal_id": str(result.get("proposal_id", "")),
         "recipe_hash": str(result.get("recipe_hash", "")),
         "target_kind": str(result.get("target_kind", "")),
         "objective_name": str(result.get("objective_name", "")),
+        "metric_contract_version": int(
+            result.get("metrics", {}).get("metric_contract_version", 1)
+        ),
     }
 
     def add(prefix: str, value: Any) -> None:
@@ -129,7 +143,22 @@ def research_run_parameters(
             params[key] = str(value)
 
     add("recipe", recipe)
+    for alias, nested_key in RESEARCH_IDENTITY_PARAM_PATHS.items():
+        value: Any = recipe
+        for part in nested_key.removeprefix("recipe.").split("."):
+            value = value.get(part) if isinstance(value, dict) else None
+        if value is not None:
+            params[alias] = value if isinstance(value, str | int | float | bool) else str(value)
     return params
+
+
+def research_identity_tags(params: dict[str, Any]) -> dict[str, str]:
+    """Return concise, filterable MLflow tags for a research recipe."""
+    return {
+        f"ima.{alias}": str(params[alias])
+        for alias in RESEARCH_IDENTITY_PARAM_PATHS
+        if params.get(alias) is not None
+    }
 
 
 def research_run_metrics(result: dict[str, Any]) -> dict[str, float]:
@@ -139,6 +168,7 @@ def research_run_metrics(result: dict[str, Any]) -> dict[str, float]:
         "objective": result.get("objective_value"),
         "duration_seconds": result.get("duration_seconds"),
         "mean_selected_minus_market": source.get("mean_selected_minus_market"),
+        "summary": source.get("summary", {}),
         "dataset_exclusions": source.get("dataset_exclusions", {}),
         "fold_count": len(source.get("folds") or []),
     }
@@ -155,6 +185,226 @@ def research_run_metrics(result: dict[str, Any]) -> dict[str, float]:
             "unavailable_feature_count": len(training.get("unavailable_features") or []),
         }
     return flatten_numeric_metrics(payload)
+
+
+def log_optimizer_cycle_trace(
+    campaign_dir: Path,
+    decision: dict[str, Any],
+    results: list[dict[str, Any]],
+    config: MLflowConfig,
+) -> dict[str, Any] | None:
+    """Log one idempotent decision-to-outcome trace for an optimizer cycle."""
+    if not config.enabled:
+        return None
+    cycle = int(decision["cycle"])
+    linkage_path = campaign_dir / "traces" / f"cycle-{cycle:04d}.json"
+    if linkage_path.is_file():
+        return json.loads(linkage_path.read_text(encoding="utf-8"))
+
+    mlflow = _mlflow()
+    if config.tracking_uri:
+        mlflow.set_tracking_uri(config.tracking_uri)
+    experiment = mlflow.set_experiment(config.experiment_name)
+    usage = decision.get("planner_usage") or {
+        "input_tokens": None,
+        "output_tokens": None,
+        "total_tokens": None,
+        "total_cost_usd": None,
+        "cost_status": "unavailable",
+    }
+    trace_name = f"optimizer-cycle-{cycle:04d}"
+    cycle_id = f"{campaign_dir.resolve()}:{cycle}"
+    summary = _cycle_result_summary(results)
+    with mlflow.start_span(
+        name=trace_name,
+        span_type="AGENT",
+        attributes={
+            "ima.cycle": cycle,
+            "ima.source": str(decision.get("source", "unknown")),
+            "ima.evidence_id": str(decision.get("evidence_id") or ""),
+            "ima.result_count": len(results),
+            "ima.cost_status": str(usage.get("cost_status", "unavailable")),
+        },
+    ) as root:
+        trace_id = root.trace_id
+        mlflow.update_current_trace(
+            tags={
+                "ima.campaign_cycle_id": cycle_id,
+                "ima.cycle": str(cycle),
+                "ima.source": str(decision.get("source", "unknown")),
+                "ima.cost_status": str(usage.get("cost_status", "unavailable")),
+                "mlflow.traceName": trace_name,
+            },
+            session_id=str(campaign_dir.resolve()),
+            request_preview=_trace_preview(decision),
+            response_preview=_trace_result_preview(summary),
+        )
+        root.set_inputs({
+            "cycle": cycle,
+            "source": decision.get("source"),
+            "evidence_id": decision.get("evidence_id"),
+            "completed_trial_count": decision.get("completed_trial_count", 0),
+        })
+        with mlflow.start_span(
+            name="planner-decision",
+            span_type="LLM" if decision.get("source") == "openrouter" else "AGENT",
+            attributes={
+                "ima.planner_model": str(decision.get("planner_model") or ""),
+                "ima.service_tier": str(decision.get("service_tier") or ""),
+                "ima.cost_status": str(usage.get("cost_status", "unavailable")),
+            },
+        ) as planner:
+            planner.set_inputs({
+                "evidence_id": decision.get("evidence_id"),
+                "evidence_trial_ids": decision.get("evidence_trial_ids", []),
+                "requested_proposals": len(decision.get("suggestions") or []),
+            })
+            planner.set_outputs({
+                "proposals": _trace_proposals(decision),
+                "rejected_proposals": decision.get("rejected_proposals", []),
+                "local_refill_trial_ids": decision.get("local_refill_trial_ids", []),
+            })
+            token_usage = {
+                key: usage.get(key)
+                for key in ("input_tokens", "output_tokens", "total_tokens")
+                if usage.get(key) is not None
+            }
+            if token_usage:
+                planner.set_attribute("mlflow.chat.tokenUsage", token_usage)
+            if usage.get("total_cost_usd") is not None:
+                planner.set_attribute(
+                    "mlflow.llm.cost",
+                    {"total_cost": float(usage["total_cost_usd"])},
+                )
+        suggestions = {
+            str(item.get("trial_id")): item
+            for item in decision.get("suggestions") or []
+            if isinstance(item, dict)
+        }
+        for result in results:
+            proposal_id = str(result.get("proposal_id", "unknown"))
+            trial_id = str(result.get("trial_id") or proposal_id)
+            suggestion = suggestions.get(trial_id, {})
+            with mlflow.start_span(
+                name=f"trial-{trial_id}"[:250],
+                span_type="TOOL",
+                attributes={
+                    "ima.attempt_id": str(result.get("attempt_id", "")),
+                    "ima.proposal_id": proposal_id,
+                    "ima.trial_id": trial_id,
+                    "ima.program_id": str(result.get("program_id") or ""),
+                    "ima.status": str(result.get("status", "unknown")),
+                    "ima.target_kind": str(result.get("target_kind", "")),
+                },
+            ) as trial:
+                trial.set_inputs({
+                    "hypothesis": suggestion.get("hypothesis"),
+                    "changed_axes": suggestion.get("changed_axes", []),
+                    "recipe_hash": result.get("recipe_hash"),
+                    "recipe": suggestion.get("recipe"),
+                })
+                trial.set_outputs(_trace_trial_output(result))
+        root.set_outputs(summary)
+    mlflow.flush_trace_async_logging()
+    linkage = {
+        "trace_id": trace_id,
+        "experiment_id": str(experiment.experiment_id),
+        "cycle": cycle,
+        "cost_status": str(usage.get("cost_status", "unavailable")),
+        "total_cost_usd": usage.get("total_cost_usd"),
+    }
+    _write_json_atomic(linkage_path, linkage)
+    return linkage
+
+
+def _cycle_result_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    completed = [
+        result for result in results
+        if result.get("status") == "completed" and result.get("objective_value") is not None
+    ]
+    def objective_key(item: dict[str, Any]) -> str:
+        return ":".join((
+            str(item.get("target_kind")),
+            str(item.get("objective_name")),
+            json.dumps(item.get("target_parameters") or {}, sort_keys=True),
+        ))
+
+    objective_names = {objective_key(item) for item in completed}
+    best = min(completed, key=lambda item: float(item["objective_value"])) if len(objective_names) == 1 else None
+    best_by_objective = {
+        name: {
+            "attempt_id": winner.get("attempt_id"),
+            "objective_value": winner.get("objective_value"),
+        }
+        for name in sorted(objective_names)
+        for winner in [min(
+            (item for item in completed if objective_key(item) == name),
+            key=lambda item: float(item["objective_value"]),
+        )]
+    }
+    return {
+        "trial_count": len(results),
+        "completed_count": len(completed),
+        "failed_count": sum(result.get("status") != "completed" for result in results),
+        "best_attempt_id": best.get("attempt_id") if best else None,
+        "best_objective_name": best.get("objective_name") if best else None,
+        "best_objective_value": best.get("objective_value") if best else None,
+        "best_by_objective": best_by_objective,
+        "attempt_ids": [result.get("attempt_id") for result in results],
+    }
+
+
+def _trace_proposals(decision: dict[str, Any]) -> list[dict[str, Any]]:
+    proposals = decision.get("proposals") or []
+    if proposals:
+        return [{
+            "proposal_id": item.get("proposal_id"),
+            "hypothesis": item.get("hypothesis"),
+            "changed_axes": item.get("changed_axes", []),
+            "expected_observation": item.get("expected_observation"),
+            "falsification_rule": item.get("falsification_rule"),
+            "recipe_hash": (item.get("recipe") or {}).get("recipe_hash"),
+        } for item in proposals]
+    return [{
+        "proposal_id": item.get("trial_id"),
+        "hypothesis": item.get("hypothesis"),
+        "changed_axes": item.get("changed_axes", []),
+        "recipe_hash": item.get("recipe_hash"),
+    } for item in decision.get("suggestions") or []]
+
+
+def _trace_trial_output(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": result.get("status"),
+        "objective_name": result.get("objective_name"),
+        "objective_value": result.get("objective_value"),
+        "duration_seconds": result.get("duration_seconds"),
+        "metric_summary": result.get("metrics", {}).get("summary", {}),
+        "error": result.get("error"),
+    }
+
+
+def _trace_preview(decision: dict[str, Any]) -> str:
+    hypotheses = [
+        str(item.get("hypothesis"))
+        for item in decision.get("suggestions") or []
+        if item.get("hypothesis")
+    ]
+    return f"cycle {decision.get('cycle')} {decision.get('source')}: " + "; ".join(hypotheses[:3])
+
+
+def _trace_result_preview(summary: dict[str, Any]) -> str:
+    return (
+        f"{summary['completed_count']}/{summary['trial_count']} completed; "
+        f"best {summary['best_objective_name']}={summary['best_objective_value']}"
+    )
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(temporary, path)
 
 
 def _model_artifact_source(artifact_uri: str, model_path: Path) -> str:
@@ -325,6 +575,7 @@ def log_research_package_version(
                 return self.package.predict_proba(model_input)
             return self.package.predict(model_input)
 
+    params = research_run_parameters(package_dir, result, attempt_id=attempt_id)
     tags = {
         "ima.attempt_id": attempt_id,
         "ima.recipe_hash": str(result.get("recipe_hash", "")),
@@ -333,11 +584,10 @@ def log_research_package_version(
         "ima.dataset_hash": str(result.get("lineage", {}).get("dataset_hash", "")),
         "ima.code_revision": str(result.get("lineage", {}).get("code_revision", "")),
         "ima.environment_hash": str(result.get("lineage", {}).get("environment_hash", "")),
+        **research_identity_tags(params),
     }
     with mlflow.start_run(run_name=attempt_id, tags=tags) as active:
-        mlflow.log_params(research_run_parameters(
-            package_dir, result, attempt_id=attempt_id
-        ))
+        mlflow.log_params(params)
         mlflow.log_metrics(research_run_metrics(result))
         mlflow.log_dict(result, "result.json")
         mlflow.pyfunc.log_model(

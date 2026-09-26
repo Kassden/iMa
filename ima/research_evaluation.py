@@ -9,6 +9,8 @@ from typing import Iterable
 
 import numpy as np
 import pandas as pd
+from scipy.stats import kendalltau, spearmanr
+from sklearn.metrics import ndcg_score
 
 from .modeling import evaluate_probabilities, race_log_loss
 from .research_targets import TargetContract, apply_target_contract, target_contract
@@ -201,12 +203,219 @@ def evaluate_research_probabilities(
     label: str,
 ) -> dict:
     _validate_probability_vector(probabilities, frame)
+    metrics = evaluate_probabilities(probabilities, frame)
+    race_scores = _probability_race_scores(probabilities, frame)
+    metrics.update({
+        "race_log_loss_std": _safe_std(race_scores["race_log_loss"]),
+        "worst_race_log_loss": float(race_scores["race_log_loss"].max()),
+        "race_brier_std": _safe_std(race_scores["race_brier"]),
+        "worst_race_brier": float(race_scores["race_brier"].max()),
+        "winner_mrr": float(race_scores["winner_reciprocal_rank"].mean()),
+    })
     return {
         "label": label,
-        "metrics": evaluate_probabilities(probabilities, frame),
+        "metrics": metrics,
         "race_weighted_log_loss": race_log_loss(probabilities, frame),
         "per_race_losses": per_race_log_losses(probabilities, frame, label=label).to_dict("records"),
     }
+
+
+def placing_metrics(
+    predictions: np.ndarray,
+    frame: pd.DataFrame,
+    *,
+    label_column: str,
+    top_k: int,
+    calibration_bins: int = 10,
+) -> dict[str, float]:
+    """Evaluate top-k probabilities with equal weight for every race."""
+    actual, predicted = _validated_metric_vectors(predictions, frame, label_column)
+    clipped = np.clip(predicted, 1e-12, 1.0 - 1e-12)
+    rows: list[dict[str, float]] = []
+    for indices in frame.groupby("race_id", sort=False).indices.values():
+        idx = np.asarray(indices)
+        race_actual = actual[idx]
+        race_predicted = clipped[idx]
+        selected = np.argsort(-race_predicted, kind="stable")[:min(top_k, len(idx))]
+        true_positives = float(race_actual[selected].sum())
+        predicted_positives = float(len(selected))
+        actual_positives = float(race_actual.sum())
+        precision = true_positives / predicted_positives if predicted_positives else 0.0
+        recall = true_positives / actual_positives if actual_positives else 0.0
+        f1 = 2.0 * precision * recall / (precision + recall) if precision + recall else 0.0
+        rows.append({
+            "binary_log_loss": float(np.mean(
+                -(race_actual * np.log(race_predicted)
+                  + (1.0 - race_actual) * np.log(1.0 - race_predicted))
+            )),
+            "brier": float(np.mean(np.square(race_predicted - race_actual))),
+            "precision_at_k": precision,
+            "recall_at_k": recall,
+            "f1_at_k": f1,
+            "top_pick_place_rate": float(race_actual[selected[0]]) if len(selected) else 0.0,
+        })
+    metrics = _mean_rows(rows)
+    metrics["ece"] = _binary_ece(clipped, actual, calibration_bins)
+    return metrics
+
+
+def ranking_metrics(
+    predictions: np.ndarray,
+    frame: pd.DataFrame,
+    *,
+    label_column: str,
+    ndcg_k: int = 3,
+) -> dict[str, float]:
+    """Evaluate ordering only within races, never across unrelated fields."""
+    actual, predicted = _validated_metric_vectors(predictions, frame, label_column)
+    rows: list[dict[str, float]] = []
+    for indices in frame.groupby("race_id", sort=False).indices.values():
+        idx = np.asarray(indices)
+        race_actual = actual[idx]
+        race_predicted = predicted[idx]
+        winner = int(np.argmax(race_actual))
+        predicted_ranks = pd.Series(race_predicted).rank(
+            method="average", ascending=False
+        ).to_numpy(dtype=float)
+        rows.append({
+            "ndcg_at_3": float(ndcg_score(
+                race_actual.reshape(1, -1),
+                race_predicted.reshape(1, -1),
+                k=min(ndcg_k, len(idx)),
+            )),
+            "ndcg": float(ndcg_score(
+                race_actual.reshape(1, -1), race_predicted.reshape(1, -1)
+            )),
+            "pairwise_accuracy": _pairwise_accuracy(race_actual, race_predicted),
+            "spearman": _rank_correlation(race_actual, race_predicted, "spearman"),
+            "kendall": _rank_correlation(race_actual, race_predicted, "kendall"),
+            "winner_rank": float(predicted_ranks[winner]),
+            "winner_reciprocal_rank": float(1.0 / predicted_ranks[winner]),
+        })
+    return _mean_rows(rows, prefixes={"winner_rank": "mean_winner_rank",
+                                     "winner_reciprocal_rank": "winner_mrr"})
+
+
+def regression_metrics(
+    predictions: np.ndarray,
+    frame: pd.DataFrame,
+    *,
+    label_column: str,
+    include_rank_metrics: bool = True,
+) -> dict[str, float]:
+    """Evaluate continuous predictions per race with equal race weights."""
+    actual, predicted = _validated_metric_vectors(predictions, frame, label_column)
+    rows: list[dict[str, float]] = []
+    for indices in frame.groupby("race_id", sort=False).indices.values():
+        idx = np.asarray(indices)
+        race_actual = actual[idx]
+        race_predicted = predicted[idx]
+        errors = race_predicted - race_actual
+        row = {
+            "mae": float(np.mean(np.abs(errors))),
+            "rmse": float(np.sqrt(np.mean(np.square(errors)))),
+        }
+        if include_rank_metrics:
+            row.update({
+                "spearman": _rank_correlation(race_actual, race_predicted, "spearman"),
+                "kendall": _rank_correlation(race_actual, race_predicted, "kendall"),
+            })
+        rows.append(row)
+    return _mean_rows(rows)
+
+
+def _probability_race_scores(probabilities: np.ndarray, frame: pd.DataFrame) -> pd.DataFrame:
+    predicted = np.clip(np.asarray(probabilities, dtype=float), 1e-12, 1.0)
+    target = frame["target_probability"].to_numpy(dtype=float)
+    winner = frame["target_win"].to_numpy(dtype=float)
+    rows: list[dict[str, float]] = []
+    for indices in frame.groupby("race_id", sort=False).indices.values():
+        idx = np.asarray(indices)
+        race_probability = predicted[idx]
+        race_target = target[idx]
+        ranks = pd.Series(race_probability).rank(method="average", ascending=False).to_numpy()
+        winner_indices = np.flatnonzero(winner[idx] == 1)
+        winner_rank = float(ranks[winner_indices[0]])
+        rows.append({
+            "race_log_loss": float(-np.sum(race_target * np.log(race_probability))),
+            "race_brier": float(np.sum(np.square(race_probability - race_target))),
+            "winner_reciprocal_rank": 1.0 / winner_rank,
+        })
+    return pd.DataFrame(rows)
+
+
+def _validated_metric_vectors(
+    predictions: np.ndarray, frame: pd.DataFrame, label_column: str
+) -> tuple[np.ndarray, np.ndarray]:
+    if "race_id" not in frame or label_column not in frame:
+        raise ResearchEvaluationError(
+            f"Metric evaluation requires race_id and {label_column}"
+        )
+    predicted = np.asarray(predictions, dtype=float)
+    actual = pd.to_numeric(frame[label_column], errors="coerce").to_numpy(dtype=float)
+    if len(predicted) != len(frame):
+        raise ResearchEvaluationError("Prediction vector length does not match frame")
+    if not np.isfinite(predicted).all() or not np.isfinite(actual).all():
+        raise ResearchEvaluationError("Metric inputs must be finite")
+    return actual, predicted
+
+
+def _mean_rows(
+    rows: list[dict[str, float]], *, prefixes: dict[str, str] | None = None
+) -> dict[str, float]:
+    if not rows:
+        raise ResearchEvaluationError("Metric evaluation requires at least one race")
+    names = prefixes or {}
+    frame = pd.DataFrame(rows)
+    return {
+        names.get(column, f"race_{column}"): float(frame[column].mean())
+        for column in frame.columns
+    }
+
+
+def _pairwise_accuracy(actual: np.ndarray, predicted: np.ndarray) -> float:
+    correct = 0.0
+    comparable = 0
+    for left in range(len(actual)):
+        for right in range(left + 1, len(actual)):
+            actual_delta = actual[left] - actual[right]
+            if np.isclose(actual_delta, 0.0):
+                continue
+            predicted_delta = predicted[left] - predicted[right]
+            comparable += 1
+            if np.isclose(predicted_delta, 0.0):
+                correct += 0.5
+            elif np.sign(actual_delta) == np.sign(predicted_delta):
+                correct += 1.0
+    return correct / comparable if comparable else 0.0
+
+
+def _binary_ece(predicted: np.ndarray, actual: np.ndarray, bins: int) -> float:
+    bucket = np.minimum((predicted * bins).astype(int), bins - 1)
+    error = 0.0
+    for index in range(bins):
+        mask = bucket == index
+        if mask.any():
+            error += float(mask.mean()) * abs(
+                float(predicted[mask].mean()) - float(actual[mask].mean())
+            )
+    return float(error)
+
+
+def _safe_correlation(value: float) -> float:
+    return float(value) if np.isfinite(value) else 0.0
+
+
+def _rank_correlation(actual: np.ndarray, predicted: np.ndarray, kind: str) -> float:
+    if len(actual) < 2 or np.allclose(actual, actual[0]) or np.allclose(predicted, predicted[0]):
+        return 0.0
+    if kind == "spearman":
+        return _safe_correlation(spearmanr(actual, predicted).correlation)
+    return _safe_correlation(kendalltau(actual, predicted).correlation)
+
+
+def _safe_std(values: pd.Series) -> float:
+    return float(values.std(ddof=0))
 
 
 def _validate_probability_vector(probabilities: np.ndarray, frame: pd.DataFrame) -> None:

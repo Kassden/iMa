@@ -233,7 +233,12 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
             "role": "system",
             "content": (
                 "You are the iMa research optimizer planner. Return strict JSON only. "
-                "Propose registered PipelineRecipe v2 objects. Do not request raw runner rows, "
+                "Propose bounded research programs: one structural PipelineRecipe v2 and a small "
+                "typed model-parameter search space per program. Optuna will select parameters "
+                "within each program; you select hypotheses, targets, features, transforms, models "
+                "and budgets from the registered capabilities. Cite the development evidence, "
+                "compare only compatible objectives, and avoid transform columns listed as "
+                "unavailable in feature_profile. Do not request raw runner rows, "
                 "labels, credentials, promotion, final odds or live betting. Every recipe must "
                 "obey the supplied target/model/calibration/blend compatibility matrix exactly."
             ),
@@ -242,7 +247,7 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
             "role": "user",
             "content": json.dumps(
                 {
-                    "task": "propose_agentic_research_recipes",
+                    "task": "propose_agentic_research_programs",
                     "proposal_count": proposal_count,
                     "allowed_changed_axes": [
                         "hyperparameters",
@@ -301,6 +306,12 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                         },
                     },
                     "allowed_model_parameters": MODEL_PARAMETER_CONTRACTS,
+                    "search_space_rules": {
+                        "parameters": "Only parameters registered for the recipe model kind.",
+                        "numeric": {"kind": "float or int", "low": "valid bound", "high": "valid bound", "log": False},
+                        "categorical": {"kind": "categorical", "choices": ["at least two valid values"]},
+                        "budget": "3 to 8 trials per program; keep the batch small and falsifiable",
+                    },
                     "evidence_bundle": evidence_bundle,
                     "output_schema": {
                         "proposals": [{
@@ -310,9 +321,17 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                             "hypothesis": "short falsifiable reason",
                             "changed_axes": ["one or more allowed axes"],
                             "recipe": "PipelineRecipe v2 object",
+                            "search_space": {
+                                "model_parameter_name": {
+                                    "kind": "float, int, or categorical",
+                                    "low": "numeric lower bound when applicable",
+                                    "high": "numeric upper bound when applicable",
+                                    "choices": "valid choices when categorical",
+                                }
+                            },
                             "expected_observation": "what should improve",
                             "falsification_rule": "what result rejects the idea",
-                            "max_trials": 1,
+                            "max_trials": "integer from 3 through 8",
                         }]
                     },
                 },
@@ -380,7 +399,53 @@ def choose_research_proposals(
         "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
         "rejected_proposals": rejected,
         "service_tier": response.get("service_tier"),
+        "usage": normalize_openrouter_usage(response),
     }
+
+
+def normalize_openrouter_usage(response: dict[str, Any]) -> dict[str, Any]:
+    """Return stable token/cost fields without estimating unreported spend."""
+    usage = response.get("usage") if isinstance(response, dict) else None
+    usage = usage if isinstance(usage, dict) else {}
+    input_tokens = _optional_non_negative_int(
+        usage.get("prompt_tokens", usage.get("input_tokens"))
+    )
+    output_tokens = _optional_non_negative_int(
+        usage.get("completion_tokens", usage.get("output_tokens"))
+    )
+    total_tokens = _optional_non_negative_int(usage.get("total_tokens"))
+    if total_tokens is None and input_tokens is not None and output_tokens is not None:
+        total_tokens = input_tokens + output_tokens
+    total_cost = _optional_non_negative_float(
+        usage.get("cost", usage.get("total_cost"))
+    )
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "total_cost_usd": total_cost,
+        "cost_status": "reported" if total_cost is not None else "unavailable",
+    }
+
+
+def _optional_non_negative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _optional_non_negative_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def submit_proposal_batch(

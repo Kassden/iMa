@@ -7,6 +7,7 @@ from ima.openrouter_orchestrator import (
     OpenRouterError,
     batch_is_terminal,
     get_batch,
+    normalize_openrouter_usage,
     submit_proposal_batch,
 )
 
@@ -56,6 +57,39 @@ class OpenRouterOrchestratorTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(OpenRouterError, "slow flex response"):
                 get_batch("batch_123", OpenRouterConfig("key", "openai/test"))
+
+    def test_usage_normalization_preserves_reported_tokens_and_exact_cost(self):
+        usage = normalize_openrouter_usage({"usage": {
+            "prompt_tokens": 120,
+            "completion_tokens": 30,
+            "total_tokens": 150,
+            "cost": 0.0042,
+        }})
+        self.assertEqual(120, usage["input_tokens"])
+        self.assertEqual(30, usage["output_tokens"])
+        self.assertEqual(150, usage["total_tokens"])
+        self.assertEqual(0.0042, usage["total_cost_usd"])
+        self.assertEqual("reported", usage["cost_status"])
+
+    def test_usage_normalization_supports_responses_names_and_missing_cost(self):
+        usage = normalize_openrouter_usage({"usage": {
+            "input_tokens": 10,
+            "output_tokens": 5,
+        }})
+        self.assertEqual(15, usage["total_tokens"])
+        self.assertIsNone(usage["total_cost_usd"])
+        self.assertEqual("unavailable", usage["cost_status"])
+
+    def test_usage_normalization_rejects_malformed_or_negative_values(self):
+        usage = normalize_openrouter_usage({"usage": {
+            "prompt_tokens": "not-a-number",
+            "completion_tokens": -2,
+            "cost": -1,
+        }})
+        self.assertIsNone(usage["input_tokens"])
+        self.assertIsNone(usage["output_tokens"])
+        self.assertIsNone(usage["total_cost_usd"])
+        self.assertEqual("unavailable", usage["cost_status"])
 
 
 if __name__ == "__main__":

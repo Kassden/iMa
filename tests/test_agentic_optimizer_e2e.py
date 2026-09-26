@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pandas as pd
 
@@ -71,11 +72,19 @@ class AgenticOptimizerE2ETests(unittest.TestCase):
                 for line in (campaign / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             self.assertEqual(9, len(trials))
+            self.assertTrue(all(trial["program_id"] and trial["trial_id"] for trial in trials))
             self.assertEqual(["bootstrap", "fixture", "fixture"], [
                 decision["source"] for decision in decisions
             ])
             self.assertEqual(3, decisions[1]["completed_trial_count"])
             self.assertEqual(6, decisions[2]["completed_trial_count"])
+            for decision in decisions[1:]:
+                approved = set(decision["approved_program_ids"])
+                self.assertTrue(approved)
+                self.assertTrue(any(
+                    suggestion["program_id"] in approved
+                    for suggestion in decision["suggestions"]
+                ))
             cycle_one_ids = {trial["attempt_id"] for trial in trials[:6]}
             self.assertTrue(
                 set(decisions[2]["evidence_trial_ids"]).issubset(cycle_one_ids)
@@ -83,6 +92,23 @@ class AgenticOptimizerE2ETests(unittest.TestCase):
             executed_hashes = {trial["recipe_hash"] for trial in trials}
             for suggestion in decisions[2]["suggestions"]:
                 self.assertIn(suggestion["recipe_hash"], executed_hashes)
+            from ima.research_search import ProgramSearchController
+
+            search = ProgramSearchController(campaign)
+            self.assertEqual(9, search.snapshot()["completed"])
+            self.assertTrue(all(
+                trial.params
+                for study in search.studies.values()
+                for trial in study.trials
+                if trial.state.name == "COMPLETE"
+            ))
+            second_evidence = json.loads(
+                (campaign / "evidence" / "cycle-0002.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(second_evidence["program_outcomes"])
+            self.assertTrue(any(
+                item["completed"] > 0 for item in second_evidence["program_outcomes"]
+            ))
 
             status = self.run_cli("status", "--campaign", str(campaign))
             self.assertEqual(0, status.returncode, status.stderr)
@@ -103,6 +129,43 @@ class AgenticOptimizerE2ETests(unittest.TestCase):
             payload = json.loads((campaign / "dry-run.json").read_text(encoding="utf-8"))
             self.assertEqual("dry_run", payload["mode"])
             self.assertEqual(0, payload["resolved_concurrency"])
+
+    def test_terminal_campaign_exposes_run_metrics_and_cycle_trace_in_mlflow(self):
+        import mlflow
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = self.fixture(root)
+            values = json.loads(config.read_text(encoding="utf-8"))
+            values.update({
+                "max_trials": 1,
+                "proposal_batch_size": 1,
+                "max_concurrent_trials": 1,
+                "mlflow_tracking_uri": f"sqlite:///{root / 'mlflow.db'}",
+            })
+            config.write_text(json.dumps(values), encoding="utf-8")
+            campaign = root / "tracked-campaign"
+            run = self.run_cli(
+                "run", "--campaign", str(campaign), "--config", str(config)
+            )
+            self.assertEqual(0, run.returncode, run.stderr)
+            self.assertIn("Mode: complete", run.stdout)
+
+            trace_files = list((campaign / "traces").glob("cycle-*.json"))
+            self.assertEqual(1, len(trace_files))
+            linkage = json.loads(trace_files[0].read_text(encoding="utf-8"))
+            with mock.patch.dict("os.environ", {}, clear=False):
+                mlflow.set_tracking_uri(values["mlflow_tracking_uri"])
+                trace = mlflow.get_trace(linkage["trace_id"], flush=True)
+                self.assertEqual("optimizer-cycle-0000", trace.info.tags["mlflow.traceName"])
+                experiment = mlflow.get_experiment_by_name("ima-agentic-v2")
+                runs = mlflow.search_runs([experiment.experiment_id])
+                self.assertEqual(1, len(runs))
+                self.assertIn(
+                    "metrics.summary.selected.race_log_loss.mean", runs.columns
+                )
+                self.assertTrue(runs.iloc[0]["params.program_id"])
+                self.assertTrue(runs.iloc[0]["params.trial_id"])
 
 
 if __name__ == "__main__":
