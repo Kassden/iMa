@@ -47,6 +47,8 @@ class AgenticPlannerTests(unittest.TestCase):
         user_content = messages[1]["content"]
         self.assertIn("propose_agentic_research_programs", user_content)
         self.assertIn("search_space", user_content)
+        self.assertIn("not the batch size or concurrency limit", user_content)
+        self.assertNotIn("3 to 8 trials per program", user_content)
         self.assertNotIn("raw_runner_rows", user_content)
         self.assertNotIn('"model.kind"', user_content)
         self.assertNotIn('"target.kind"', user_content)

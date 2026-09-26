@@ -24,6 +24,10 @@ class ResearchSpecTests(unittest.TestCase):
             **base, search_space={"C": {"kind": "float", "low": 0.1, "high": 1.0}}
         )
         self.assertEqual(4, proposal.max_trials)
+        large = ResearchProposal(**(base | {"max_trials": 128}))
+        self.assertEqual(128, large.max_trials)
+        with self.assertRaisesRegex(ValidationError, "max_trials must be positive"):
+            ResearchProposal(**(base | {"max_trials": 0}))
 
     def test_recipe_hash_is_stable_and_families_are_sorted(self):
         first = PipelineRecipe(

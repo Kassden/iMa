@@ -310,7 +310,12 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                         "parameters": "Only parameters registered for the recipe model kind.",
                         "numeric": {"kind": "float or int", "low": "valid bound", "high": "valid bound", "log": False},
                         "categorical": {"kind": "categorical", "choices": ["at least two valid values"]},
-                        "budget": "3 to 8 trials per program; keep the batch small and falsifiable",
+                        "budget": (
+                            "Choose a positive total trial count for this program from the evidence. "
+                            "This is not the batch size or concurrency limit. The controller runs "
+                            "the program across as many bounded batches as needed; request more "
+                            "trials only when the hypothesis and search space justify them."
+                        ),
                     },
                     "evidence_bundle": evidence_bundle,
                     "output_schema": {
@@ -331,7 +336,7 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                             },
                             "expected_observation": "what should improve",
                             "falsification_rule": "what result rejects the idea",
-                            "max_trials": "integer from 3 through 8",
+                            "max_trials": "positive integer total for this program, chosen from evidence",
                         }]
                     },
                 },
