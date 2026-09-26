@@ -18,6 +18,13 @@ planner does not compete with Optuna for individual parameter values. Evidence
 files contain the recent recipes, comparable target leaders, program outcomes,
 failures, and transform-input coverage. A failed planner call falls back to a
 bounded local direction without changing the frozen dataset or protocol.
+The planner chooses each program's total `max_trials` from the evidence; the
+controller spends that budget across as many `proposal_batch_size` cycles as
+needed before replanning. `max_concurrent_trials` only caps simultaneous jobs
+and may be lower than the batch size. Program budgets count attempted Optuna
+trials, including failed or pruned attempts; campaign `max_trials` counts
+completed trials. The legacy `replan_every_terminal_trials` config field is
+ignored by agentic programs, which replan when their approved capacity ends.
 
 ## Local Dry Run
 
