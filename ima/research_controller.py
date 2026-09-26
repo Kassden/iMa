@@ -126,7 +126,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
         profile = DatasetFeatureProfile(dataset_path, protocol_parameters)
         ledger.recover_running()
         _reconcile_tells(ledger, search)
-        tracking_errors = _reconcile_tracking(config, ledger)
+        tracking_errors = _reconcile_tracking(config, ledger, dataset_path)
         cycles = 0
         cycle = _next_cycle_number(campaign_dir)
         new_results: list[dict[str, Any]] = []
@@ -220,7 +220,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 ))
             if not requests:
                 _reconcile_tells(ledger, search)
-                tracking_errors.extend(_reconcile_tracking(config, ledger))
+                tracking_errors.extend(_reconcile_tracking(config, ledger, dataset_path))
                 cycles += 1
                 cycle += 1
                 continue
@@ -237,7 +237,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 _append_jsonl(campaign_dir / "trials.jsonl", row)
                 new_results.append(row)
                 _reconcile_tells(ledger, search)
-                tracking_errors.extend(_reconcile_tracking(config, ledger))
+                tracking_errors.extend(_reconcile_tracking(config, ledger, dataset_path))
             trace_error = _trace_completed_cycle(
                 config, campaign_dir, decision, cycle_results
             )
@@ -667,7 +667,9 @@ def _reconcile_tells(ledger: ResearchLedger, search: ProgramSearchController) ->
         ledger.mark_told(effect["attempt_id"])
 
 
-def _reconcile_tracking(config: Any, ledger: ResearchLedger) -> list[str]:
+def _reconcile_tracking(
+    config: Any, ledger: ResearchLedger, dataset_path: Path
+) -> list[str]:
     if not config.mlflow_tracking_uri:
         return []
     errors: list[str] = []
@@ -687,6 +689,7 @@ def _reconcile_tracking(config: Any, ledger: ResearchLedger) -> list[str]:
                 Path(package), tracking,
                 attempt_id=item["attempt_id"],
                 result=result,
+                dataset_path=dataset_path,
             )
             if linkage is not None:
                 ledger.mark_uploaded(item["attempt_id"], json.dumps(linkage, sort_keys=True))

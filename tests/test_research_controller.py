@@ -128,6 +128,13 @@ class ResearchControllerTests(unittest.TestCase):
                 self.assertIn(
                     "metrics.summary.selected.race_log_loss.mean", runs.iloc[0]
                 )
+                logged_run = mlflow.get_run(runs.iloc[0]["run_id"])
+                self.assertEqual(1, len(logged_run.inputs.dataset_inputs))
+                self.assertEqual("dataset.csv", logged_run.inputs.dataset_inputs[0].dataset.name)
+                self.assertEqual(
+                    logged_run.data.tags["ima.dataset_hash"][:32],
+                    logged_run.inputs.dataset_inputs[0].dataset.digest,
+                )
 
     def test_trace_failure_is_reported_without_raising(self):
         config = CampaignConfig(

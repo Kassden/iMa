@@ -544,6 +544,7 @@ def log_research_package_version(
     *,
     attempt_id: str,
     result: dict[str, Any],
+    dataset_path: Path | None = None,
 ) -> dict[str, str] | None:
     """Idempotently log and register a loadable target-aware research package."""
     if not config.enabled:
@@ -588,7 +589,18 @@ def log_research_package_version(
     }
     with mlflow.start_run(run_name=attempt_id, tags=tags) as active:
         mlflow.log_params(params)
-        mlflow.log_metrics(research_run_metrics(result))
+        dataset = None
+        if dataset_path is not None:
+            from mlflow.data.dataset_source_registry import resolve_dataset_source
+            from mlflow.data.meta_dataset import MetaDataset
+
+            dataset = MetaDataset(
+                source=resolve_dataset_source(str(dataset_path.resolve())),
+                name=dataset_path.name,
+                digest=str(result["lineage"]["dataset_hash"])[:32],
+            )
+            mlflow.log_input(dataset, context="training")
+        mlflow.log_metrics(research_run_metrics(result), dataset=dataset)
         mlflow.log_dict(result, "result.json")
         mlflow.pyfunc.log_model(
             name="model",

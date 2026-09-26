@@ -151,6 +151,8 @@ class MLflowTrackingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            dataset_path = root / "rich-history.csv.gz"
+            dataset_path.write_bytes(b"research dataset fixture")
             package = ResearchModelPackage(
                 DummyProbabilityModel(),
                 PipelineRecipe(),
@@ -172,16 +174,18 @@ class MLflowTrackingTests(unittest.TestCase):
                 "objective_value": 1.0,
                 "lineage": {
                     "protocol_id": "protocol-1",
-                    "dataset_hash": "dataset-1",
+                    "dataset_hash": "a" * 64,
                     "code_revision": "abc123",
                     "environment_hash": "environment-1",
                 },
             }
             first = log_research_package_version(
-                package_dir, config, attempt_id="attempt-1", result=result
+                package_dir, config, attempt_id="attempt-1", result=result,
+                dataset_path=dataset_path,
             )
             second = log_research_package_version(
-                package_dir, config, attempt_id="attempt-1", result=result
+                package_dir, config, attempt_id="attempt-1", result=result,
+                dataset_path=dataset_path,
             )
             self.assertEqual(first, second)
             self.assertIn("model_version", first)
@@ -191,7 +195,11 @@ class MLflowTrackingTests(unittest.TestCase):
             self.assertEqual("logit", run.data.params["model_kind"])
             self.assertEqual("baseline-v1", run.data.tags["ima.feature_schema"])
             self.assertEqual("logit", run.data.tags["ima.model_kind"])
+            self.assertEqual("a" * 64, run.data.tags["ima.dataset_hash"])
             self.assertEqual(1.0, run.data.metrics["objective"])
+            self.assertEqual(1, len(run.inputs.dataset_inputs))
+            self.assertEqual("rich-history.csv.gz", run.inputs.dataset_inputs[0].dataset.name)
+            self.assertEqual("a" * 32, run.inputs.dataset_inputs[0].dataset.digest)
             loaded = mlflow.pyfunc.load_model(first["registered_model_uri"])
             frame = pd.DataFrame({
                 "race_id": ["R1", "R1", "R2", "R2"],
