@@ -144,6 +144,30 @@ class AgenticPlannerTests(unittest.TestCase):
         self.assertEqual("flex", result["service_tier"])
         self.assertEqual("boosted", result["proposals"][0]["recipe"]["model"]["kind"])
 
+    def test_model_only_request_omits_provider_and_service_tier(self):
+        response = {
+            "choices": [{"message": {"content": json.dumps({"proposals": [{
+                "proposal_id": "model-only",
+                "hypothesis": "Try a valid classifier.",
+                "changed_axes": ["hyperparameters"],
+                "recipe": {"schema_version": 2},
+                "expected_observation": "Development loss changes.",
+                "falsification_rule": "Reject if loss worsens.",
+            }]})}}],
+        }
+
+        def fake_post(url, payload, config):
+            self.assertEqual("deepseek/deepseek-v4-pro-0813", payload["model"])
+            self.assertNotIn("provider", payload)
+            self.assertNotIn("service_tier", payload)
+            return response
+
+        with mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"}, clear=True):
+            config = OpenRouterConfig.from_env(model="deepseek/deepseek-v4-pro-0813")
+        with mock.patch("ima.openrouter_orchestrator._post_json", fake_post):
+            result = choose_research_proposals({"evidence_id": "e1"}, 1, config)
+        self.assertEqual("model-only", result["proposals"][0]["proposal_id"])
+
     def test_choose_research_proposals_pins_exact_provider_endpoint(self):
         response = {
             "choices": [{"message": {"content": json.dumps({"proposals": [{

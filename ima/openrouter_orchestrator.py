@@ -32,7 +32,7 @@ class OpenRouterError(RuntimeError):
 class OpenRouterConfig:
     api_key: str
     model: str
-    service_tier: str = "flex"
+    service_tier: str | None = None
     timeout_seconds: int = 60
     max_output_tokens: int = 2400
     base_url: str = OPENROUTER_BASE_URL
@@ -58,7 +58,7 @@ class OpenRouterConfig:
         return cls(
             api_key=api_key,
             model=chosen_model,
-            service_tier=service_tier or os.environ.get("IMA_OPTIMIZER_SERVICE_TIER") or "flex",
+            service_tier=service_tier or os.environ.get("IMA_OPTIMIZER_SERVICE_TIER"),
             max_output_tokens=max_output_tokens,
             timeout_seconds=timeout_seconds,
             provider_endpoint=(
@@ -81,6 +81,10 @@ def _provider_route(config: OpenRouterConfig) -> dict[str, Any]:
             "allow_fallbacks": False,
         }
     }
+
+
+def _service_tier_option(config: OpenRouterConfig) -> dict[str, str]:
+    return {"service_tier": config.service_tier} if config.service_tier else {}
 
 
 def _reasoning_options(config: OpenRouterConfig) -> dict[str, Any]:
@@ -216,8 +220,7 @@ def choose_proposals(
         "temperature": 0,
         "max_tokens": 1200,
         "response_format": {"type": "json_object"},
-        "service_tier": config.service_tier,
-    } | _provider_route(config) | _reasoning_options(config)
+    } | _service_tier_option(config) | _provider_route(config) | _reasoning_options(config)
     response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
     parsed = _proposal_payload_from_response(response)
     return {
@@ -385,8 +388,7 @@ def choose_research_proposals(
         "temperature": 0,
         "max_tokens": config.max_output_tokens,
         "response_format": {"type": "json_object"},
-        "service_tier": config.service_tier,
-    } | _provider_route(config) | _reasoning_options(config)
+    } | _service_tier_option(config) | _provider_route(config) | _reasoning_options(config)
     response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
     try:
         proposals, rejected = _validated_research_proposals(response)
@@ -464,8 +466,7 @@ def submit_proposal_batch(
         "temperature": 0,
         "max_tokens": 1200,
         "response_format": {"type": "json_object"},
-        "service_tier": config.service_tier,
-    } | _provider_route(config) | _reasoning_options(config)
+    } | _service_tier_option(config) | _provider_route(config) | _reasoning_options(config)
     payload = {
         "endpoint": "/v1/chat/completions",
         "model": config.model,
