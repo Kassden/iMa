@@ -39,6 +39,7 @@ def enrich_once(
     client: MlflowClient,
     experiment_name: str,
     *,
+    include_tags: bool = False,
     progress_every: int = 100,
 ) -> dict[str, int]:
     experiment = client.get_experiment_by_name(experiment_name)
@@ -62,11 +63,13 @@ def enrich_once(
     tags_added = 0
     for run in runs:
         aliases, desired_tags = identity_updates(run.data.params)
-        tags = {
-            key: value
-            for key, value in desired_tags.items()
-            if run.data.tags.get(key) != value
-        }
+        tags = {}
+        if include_tags:
+            tags = {
+                key: value
+                for key, value in desired_tags.items()
+                if run.data.tags.get(key) != value
+            }
         if not aliases and not tags:
             continue
         client.log_batch(
@@ -97,10 +100,15 @@ def main() -> int:
     parser.add_argument("--tracking-uri", required=True)
     parser.add_argument("--experiment", default="ima-agentic-v2")
     parser.add_argument("--interval-seconds", type=float, default=0)
+    parser.add_argument(
+        "--include-tags",
+        action="store_true",
+        help="Also backfill filter tags; new logger versions add them automatically",
+    )
     args = parser.parse_args()
     client = MlflowClient(tracking_uri=args.tracking_uri)
     while True:
-        print(enrich_once(client, args.experiment), flush=True)
+        print(enrich_once(client, args.experiment, include_tags=args.include_tags), flush=True)
         if args.interval_seconds <= 0:
             return 0
         time.sleep(args.interval_seconds)
