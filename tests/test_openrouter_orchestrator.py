@@ -1,11 +1,14 @@
-import unittest
+import http.client
+import io
 import socket
+import unittest
 from unittest import mock
 
 from ima.openrouter_orchestrator import (
     OpenRouterConfig,
     OpenRouterError,
     batch_is_terminal,
+    choose_research_proposals,
     get_batch,
     normalize_openrouter_usage,
     submit_proposal_batch,
@@ -57,6 +60,25 @@ class OpenRouterOrchestratorTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(OpenRouterError, "slow flex response"):
                 get_batch("batch_123", OpenRouterConfig("key", "openai/test"))
+
+    def test_remote_disconnect_is_wrapped_for_controller_fallback(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=http.client.RemoteDisconnected("peer closed"),
+        ):
+            with self.assertRaisesRegex(OpenRouterError, "peer closed"):
+                choose_research_proposals(
+                    {"evidence_id": "e1"}, 1,
+                    OpenRouterConfig("key", "deepseek/deepseek-v4-pro-0813"),
+                )
+
+    def test_malformed_provider_body_is_wrapped(self):
+        with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(b"{")):
+            with self.assertRaisesRegex(OpenRouterError, "OpenRouter request failed"):
+                choose_research_proposals(
+                    {"evidence_id": "e1"}, 1,
+                    OpenRouterConfig("key", "deepseek/deepseek-v4-pro-0813"),
+                )
 
     def test_usage_normalization_preserves_reported_tokens_and_exact_cost(self):
         usage = normalize_openrouter_usage({"usage": {

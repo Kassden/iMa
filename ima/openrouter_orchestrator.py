@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
-import socket
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -113,7 +113,7 @@ def _post_json(url: str, payload: dict[str, Any], config: OpenRouterConfig) -> d
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise OpenRouterError(f"OpenRouter HTTP {exc.code}: {detail}") from exc
-    except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+    except (OSError, http.client.HTTPException, ValueError) as exc:
         detail = getattr(exc, "reason", str(exc))
         raise OpenRouterError(f"OpenRouter request failed: {detail}") from exc
 
@@ -131,7 +131,7 @@ def _get_json(url: str, config: OpenRouterConfig) -> dict[str, Any]:
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise OpenRouterError(f"OpenRouter HTTP {exc.code}: {detail}") from exc
-    except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
+    except (OSError, http.client.HTTPException, ValueError) as exc:
         detail = getattr(exc, "reason", str(exc))
         raise OpenRouterError(f"OpenRouter request failed: {detail}") from exc
 
