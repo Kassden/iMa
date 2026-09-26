@@ -295,9 +295,7 @@ def _next_suggestions(
     evidence = _build_evidence(terminal, search, profile)
     evidence_path = campaign_dir / "evidence" / f"cycle-{cycle:04d}.json"
     _write_json_atomic(evidence_path, evidence)
-    if config.planner_mode in {"fixture", "openrouter"} and search.has_capacity() and not _planner_due(
-        campaign_dir, len(successes), config.replan_every_terminal_trials
-    ):
+    if search.has_capacity():
         suggestions = search.ask(count)
         decision = {
             "cycle": cycle,
@@ -956,25 +954,6 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {"status": "not_started"}
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _planner_due(campaign_dir: Path, completed: int, interval: int) -> bool:
-    decisions_path = campaign_dir / "decisions.jsonl"
-    last_completed = 0
-    if decisions_path.exists():
-        for line in decisions_path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            if row.get("source") in {"fixture", "openrouter"}:
-                last_completed = max(
-                    last_completed,
-                    int(row.get("completed_trial_count", len(row.get("evidence_trial_ids", ())))),
-                )
-    first_threshold = min(3, interval)
-    if last_completed == 0:
-        return completed >= first_threshold
-    return completed - last_completed >= interval
 
 
 def _controller_lock_held(path: Path) -> bool:

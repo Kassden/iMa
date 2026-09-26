@@ -73,14 +73,14 @@ class AgenticOptimizerE2ETests(unittest.TestCase):
             ]
             self.assertEqual(9, len(trials))
             self.assertTrue(all(trial["program_id"] and trial["trial_id"] for trial in trials))
-            self.assertEqual(["bootstrap", "fixture", "fixture"], [
+            self.assertEqual(["bootstrap", "fixture", "approved_space_optuna"], [
                 decision["source"] for decision in decisions
             ])
             self.assertEqual(3, decisions[1]["completed_trial_count"])
             self.assertEqual(6, decisions[2]["completed_trial_count"])
+            approved = set(decisions[1]["approved_program_ids"])
+            self.assertTrue(approved)
             for decision in decisions[1:]:
-                approved = set(decision["approved_program_ids"])
-                self.assertTrue(approved)
                 self.assertTrue(any(
                     suggestion["program_id"] in approved
                     for suggestion in decision["suggestions"]

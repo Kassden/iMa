@@ -8,6 +8,36 @@ from ima.research_specs import PipelineRecipe, ResearchProposal
 
 
 class ResearchSearchTests(unittest.TestCase):
+    def test_planner_budget_is_dispatched_across_bounded_batches(self):
+        with tempfile.TemporaryDirectory() as directory:
+            search = ProgramSearchController(Path(directory))
+            program_id = search.register(ResearchProposal(
+                proposal_id="long-program", hypothesis="Explore a broad regularization range.",
+                changed_axes=("hyperparameters",),
+                recipe=PipelineRecipe(),
+                search_space={"C": {"kind": "float", "low": 0.001, "high": 100.0, "log": True}},
+                expected_observation="Find a lower development loss.",
+                falsification_rule="No improvement after the chosen budget.",
+                max_trials=128,
+            ))
+            sizes = []
+            while search.has_capacity():
+                suggestions = search.ask(26)
+                sizes.append(len(suggestions))
+                for suggestion in suggestions:
+                    self.assertEqual(program_id, suggestion.program_id)
+                    search.tell(program_id, suggestion.trial_number, 1.0)
+            self.assertEqual([26, 26, 26, 26, 24], sizes)
+            self.assertEqual(128, search.snapshot()["completed"])
+
+    def test_bootstrap_consumes_exactly_one_batch_before_planning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            search = ProgramSearchController(Path(directory))
+            search.bootstrap(26)
+            suggestions = search.ask(26)
+            self.assertEqual(26, len(suggestions))
+            self.assertFalse(search.has_capacity())
+
     def test_program_trials_have_parameters_and_separate_studies(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
