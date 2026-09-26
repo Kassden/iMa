@@ -17,6 +17,14 @@ from typing import Any
 DEFAULT_EXPERIMENT_NAME = "ima-racing"
 DEFAULT_REGISTERED_MODEL_NAME = "ima-racing-candidates"
 
+RESEARCH_IDENTITY_PARAM_PATHS = {
+    "feature_schema": "recipe.feature_schema",
+    "model_kind": "recipe.model.kind",
+    "train_window": "recipe.train_window",
+    "calibration_kind": "recipe.calibration.kind",
+    "blend_kind": "recipe.blend.kind",
+}
+
 
 class MLflowUnavailableError(RuntimeError):
     """Raised when MLflow-backed behavior is requested but MLflow is unavailable."""
@@ -132,7 +140,22 @@ def research_run_parameters(
             params[key] = str(value)
 
     add("recipe", recipe)
+    for alias, nested_key in RESEARCH_IDENTITY_PARAM_PATHS.items():
+        value: Any = recipe
+        for part in nested_key.removeprefix("recipe.").split("."):
+            value = value.get(part) if isinstance(value, dict) else None
+        if value is not None:
+            params[alias] = value if isinstance(value, str | int | float | bool) else str(value)
     return params
+
+
+def research_identity_tags(params: dict[str, Any]) -> dict[str, str]:
+    """Return concise, filterable MLflow tags for a research recipe."""
+    return {
+        f"ima.{alias}": str(params[alias])
+        for alias in RESEARCH_IDENTITY_PARAM_PATHS
+        if params.get(alias) is not None
+    }
 
 
 def research_run_metrics(result: dict[str, Any]) -> dict[str, float]:
@@ -526,6 +549,7 @@ def log_research_package_version(
                 return self.package.predict_proba(model_input)
             return self.package.predict(model_input)
 
+    params = research_run_parameters(package_dir, result, attempt_id=attempt_id)
     tags = {
         "ima.attempt_id": attempt_id,
         "ima.recipe_hash": str(result.get("recipe_hash", "")),
@@ -534,11 +558,10 @@ def log_research_package_version(
         "ima.dataset_hash": str(result.get("lineage", {}).get("dataset_hash", "")),
         "ima.code_revision": str(result.get("lineage", {}).get("code_revision", "")),
         "ima.environment_hash": str(result.get("lineage", {}).get("environment_hash", "")),
+        **research_identity_tags(params),
     }
     with mlflow.start_run(run_name=attempt_id, tags=tags) as active:
-        mlflow.log_params(research_run_parameters(
-            package_dir, result, attempt_id=attempt_id
-        ))
+        mlflow.log_params(params)
         mlflow.log_metrics(research_run_metrics(result))
         mlflow.log_dict(result, "result.json")
         mlflow.pyfunc.log_model(

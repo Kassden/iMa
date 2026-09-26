@@ -12,6 +12,7 @@ from ima.mlflow_tracking import (
     log_optimizer_cycle_trace,
     log_research_package,
     log_research_package_version,
+    research_identity_tags,
     research_run_metrics,
     research_run_parameters,
     run_parameters,
@@ -125,7 +126,15 @@ class MLflowTrackingTests(unittest.TestCase):
             metrics = research_run_metrics(result)
 
             self.assertEqual("benter-rich-v1", params["recipe.feature_schema"])
+            self.assertEqual("benter-rich-v1", params["feature_schema"])
             self.assertEqual("logit", params["recipe.model.kind"])
+            self.assertEqual("logit", params["model_kind"])
+            self.assertEqual("all_history", params["train_window"])
+            self.assertEqual("temperature", params["calibration_kind"])
+            self.assertEqual("market_softmax", params["blend_kind"])
+            self.assertEqual(
+                "benter-rich-v1", research_identity_tags(params)["ima.feature_schema"]
+            )
             self.assertEqual(0.25, params["recipe.model.parameters.C"])
             self.assertEqual(2, params["metric_contract_version"])
             self.assertEqual(2.01, metrics["objective"])
@@ -178,6 +187,10 @@ class MLflowTrackingTests(unittest.TestCase):
             self.assertIn("model_version", first)
             run = mlflow.get_run(first["run_id"])
             self.assertEqual("baseline-v1", run.data.params["recipe.feature_schema"])
+            self.assertEqual("baseline-v1", run.data.params["feature_schema"])
+            self.assertEqual("logit", run.data.params["model_kind"])
+            self.assertEqual("baseline-v1", run.data.tags["ima.feature_schema"])
+            self.assertEqual("logit", run.data.tags["ima.model_kind"])
             self.assertEqual(1.0, run.data.metrics["objective"])
             loaded = mlflow.pyfunc.load_model(first["registered_model_uri"])
             frame = pd.DataFrame({
