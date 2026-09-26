@@ -83,12 +83,15 @@ class AgenticPlannerTests(unittest.TestCase):
                     },
                     "expected_observation": "Lower development loss.",
                     "falsification_rule": "Reject if paired score loss worsens.",
-                    "max_trials": 1,
+                    "search_space": {"C": {"kind": "float", "low": 0.01, "high": 1.0, "log": True}},
+                    "max_trials": 4,
                 }]})}
             }]
         }
         proposals = research_proposals_from_response(response)
         self.assertEqual("benter-rich-v1", proposals[0].recipe.feature_schema)
+        self.assertEqual(4, proposals[0].max_trials)
+        self.assertTrue(proposals[0].search_space["C"].log)
 
     def test_forbidden_agentic_proposal_terms_are_rejected(self):
         response = {
