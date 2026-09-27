@@ -5,8 +5,10 @@ import numpy as np
 import pandas as pd
 
 from ima.feature_sets import FeatureSchema
+from ima.modeling import RaceConditionalLogitModel, conditional_loss_gradient
 from ima.research_models import (
     RaceSoftmaxOffsetModel,
+    ResearchClassifier,
     ResearchRegressor,
     offset_gradient_check,
     secondary_target_diagnostics,
@@ -70,6 +72,54 @@ class ResearchModelTests(unittest.TestCase):
         )
         self.assertGreater(ranking["spearman"], 0.9)
         self.assertIn("brier", placing)
+
+    def test_conditional_logit_gradient_and_race_probabilities(self):
+        x = np.array([[1.0], [0.0], [-1.0], [0.0], [1.0], [-1.0]])
+        y = np.array([1.0, 0, 0, 0, 1.0, 0])
+        codes = np.array([0, 0, 0, 1, 1, 1])
+        coefficients = np.array([0.3])
+        loss, gradient = conditional_loss_gradient(coefficients, x, y, codes, 2, 0.1)
+        delta = 1e-6
+        plus = conditional_loss_gradient(coefficients + delta, x, y, codes, 2, 0.1)[0]
+        minus = conditional_loss_gradient(coefficients - delta, x, y, codes, 2, 0.1)[0]
+        self.assertAlmostEqual(float(gradient[0]), (plus - minus) / (2 * delta), places=6)
+        schema = FeatureSchema("conditional-test", ("horse_rating",), ())
+        model = RaceConditionalLogitModel(l2=0.1, feature_schema=schema).fit(self.frame)
+        probabilities = model.predict_proba(self.frame)
+        totals = pd.Series(probabilities).groupby(self.frame["race_id"]).sum()
+        np.testing.assert_allclose(totals.to_numpy(), 1.0)
+        shuffled = self.frame.sample(frac=1, random_state=5)
+        shuffled_probabilities = pd.Series(model.predict_proba(shuffled), index=shuffled.index)
+        np.testing.assert_allclose(shuffled_probabilities.loc[self.frame.index], probabilities)
+        self.assertGreater(loss, 0)
+
+    def test_recorded_final_odds_are_label_only(self):
+        from ima.research_targets import TargetContractError, validate_no_forbidden_label_features
+
+        contract = target_contract("recorded_final_win_odds")
+        self.frame["win_odds"] = 1.0 / self.frame["market_probability"]
+        labelled = apply_target_contract(self.frame, contract)
+        np.testing.assert_allclose(
+            labelled[contract.label_column], np.log(self.frame["win_odds"])
+        )
+        with self.assertRaises(TargetContractError):
+            validate_no_forbidden_label_features(contract, ["win_odds"])
+
+    def test_catboost_place_and_odds_models(self):
+        self.frame["win_odds"] = 1.0 / self.frame["market_probability"]
+        schema = FeatureSchema("native-test", ("horse_rating",), ())
+        place = apply_target_contract(self.frame, target_contract("placing_top_k", {"top_k": 2}))
+        classifier = ResearchClassifier(
+            "catboost_classifier", {"iterations": 20, "depth": 2}
+        ).fit(place, schema, "target_top_2")
+        values = classifier.predict(place)
+        self.assertTrue(np.isfinite(values).all())
+        self.assertTrue(((values >= 0) & (values <= 1)).all())
+        odds = apply_target_contract(self.frame, target_contract("recorded_final_win_odds"))
+        regressor = ResearchRegressor(
+            "catboost_regressor", {"iterations": 20, "depth": 2}
+        ).fit(odds, schema, "target_log_final_win_odds")
+        self.assertTrue(np.isfinite(regressor.predict(odds)).all())
 
 
 if __name__ == "__main__":

@@ -56,7 +56,10 @@ class AgenticPlannerTests(unittest.TestCase):
         self.assertIsInstance(schema["feature_schema"], str)
         self.assertIsInstance(schema["train_window"], str)
         compatibility = json.loads(user_content)["target_recipe_compatibility"]
-        self.assertEqual("pairwise_ranker", compatibility["ranking_strength"]["model"])
+        self.assertEqual(
+            "one of: pairwise_ranker, lightgbm_lambdarank",
+            compatibility["ranking_strength"]["model"],
+        )
         self.assertEqual("none", compatibility["placing_top_k"]["blend"])
         parameters = json.loads(user_content)["allowed_model_parameters"]
         self.assertIn("max_iter", parameters["boosted"])
