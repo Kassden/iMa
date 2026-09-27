@@ -12,9 +12,10 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from sklearn.isotonic import IsotonicRegression
 
 from .feature_sets import FEATURE_SCHEMAS, FeatureSchema, drop_feature_families
-from .modeling import MarketBlend, RaceProbabilityModel, TemperatureCalibrator
+from .modeling import MarketBlend, RaceProbabilityModel, TemperatureCalibrator, normalize_by_race
 from .research_evaluation import (
     ProtocolManifest,
     baseline_probabilities,
@@ -65,6 +66,7 @@ class RecipeExecutionRequest:
     dataset_hash: str | None = None
     code_revision: str = "unknown"
     environment_hash: str = "unknown"
+    portfolio_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -116,11 +118,26 @@ class FittedSecondaryRecipeModel:
     model: ResearchClassifier | ResearchRegressor
     transforms: FittedResearchTransforms
     feature_schema: FeatureSchema
+    calibrator: IsotonicRegression | None = None
+    win_calibrator: TemperatureCalibrator | None = None
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
         transformed = self.transforms.transform(frame)
         transformed = _ensure_feature_columns(transformed, self.feature_schema)
-        return self.model.predict(transformed)
+        predictions = self.model.predict(transformed)
+        if self.calibrator is not None:
+            predictions = self.calibrator.predict(predictions)
+        return np.asarray(predictions, dtype=float)
+
+    def predict_win_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.win_calibrator is None:
+            raise TypeError("This secondary model has no calibrated win-probability endpoint")
+        transformed = self.transforms.transform(frame)
+        transformed = _ensure_feature_columns(transformed, self.feature_schema)
+        raw = _ranking_scores_to_probabilities(
+            self.model.predict(transformed), transformed["race_id"]
+        )
+        return self.win_calibrator.transform(raw, transformed["race_id"])
 
 
 def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
@@ -247,6 +264,17 @@ def _execute_frame(
             transformed_score,
             label="raw_market",
         )
+        market_calibrator = TemperatureCalibrator.fit(
+            transformed_calibration["market_probability"].to_numpy(dtype=float),
+            transformed_calibration,
+        )
+        calibrated_market_probabilities = market_calibrator.transform(
+            transformed_score["market_probability"].to_numpy(dtype=float),
+            transformed_score["race_id"],
+        )
+        calibrated_market = evaluate_research_probabilities(
+            calibrated_market_probabilities, transformed_score, label="calibrated_market"
+        )
         uniform = evaluate_research_probabilities(
             baseline_probabilities(transformed_score, "uniform"),
             transformed_score,
@@ -257,16 +285,24 @@ def _execute_frame(
             "model": standalone["metrics"],
             "selected": selected["metrics"],
             "raw_market": market["metrics"],
+            "calibrated_market": calibrated_market["metrics"],
             "uniform": uniform["metrics"],
             "selected_minus_market": (
                 selected["race_weighted_log_loss"] - market["race_weighted_log_loss"]
             ),
+            "selected_minus_calibrated_market": (
+                selected["race_weighted_log_loss"] - calibrated_market["race_weighted_log_loss"]
+            ),
+            "market_temperature": market_calibrator.temperature,
+            "blend_fundamental_weight": blend.fundamental_weight if blend else None,
+            "blend_market_weight": blend.market_weight if blend else None,
         })
         predictions = transformed_score[["race_id", "date", "race_no", "horse_no", "target_win"]].copy()
         predictions["fold_id"] = fold.fold_id
         predictions["model_probability"] = score_probabilities
         predictions["selected_probability"] = selected_probabilities
         predictions["market_probability"] = transformed_score["market_probability"].to_numpy()
+        predictions["calibrated_market_probability"] = calibrated_market_probabilities
         prediction_rows.append(predictions)
         effective_training.append({
             "fold_id": fold.fold_id,
@@ -305,6 +341,13 @@ def _execute_frame(
         "mean_selected_minus_market": float(np.mean([
             row["selected_minus_market"] for row in folds
         ])),
+        "mean_selected_minus_calibrated_market": float(np.mean([
+            row["selected_minus_calibrated_market"] for row in folds
+        ])),
+        "zero_fundamental_weight_fold_fraction": float(np.mean([
+            row["blend_fundamental_weight"] is not None
+            and row["blend_fundamental_weight"] <= 1e-6 for row in folds
+        ])),
     }
     request.output_dir.mkdir(parents=True, exist_ok=True)
     protocol_path = request.output_dir / "protocol.json"
@@ -317,6 +360,7 @@ def _execute_frame(
         recipe,
         protocol_id=protocol.protocol_id,
         code_revision=request.code_revision,
+        portfolio_version=request.portfolio_version,
     )
     package.save(package_path)
     result = RecipeExecutionResult(
@@ -381,9 +425,10 @@ def _execute_secondary_frame(
     final_model: FittedSecondaryRecipeModel | None = None
     effective_training: list[dict[str, Any]] = []
     for fold in protocol.folds:
+        calibration = select_fold(labelled, fold.calibration_race_ids)
         train = _apply_training_window(
             select_fold(labelled, fold.train_race_ids),
-            select_fold(labelled, fold.calibration_race_ids),
+            calibration,
             recipe.train_window,
         )
         score = select_fold(labelled, fold.score_race_ids)
@@ -392,9 +437,11 @@ def _execute_secondary_frame(
         )
         fitted_transforms = FittedResearchTransforms.fit(train, runtime_specs)
         transformed_train = fitted_transforms.transform(train)
+        transformed_calibration = fitted_transforms.transform(calibration)
         transformed_score = fitted_transforms.transform(score)
         fold_schema = _schema_with_transform_features(schema, recipe)
         transformed_train = _ensure_feature_columns(transformed_train, fold_schema)
+        transformed_calibration = _ensure_feature_columns(transformed_calibration, fold_schema)
         transformed_score = _ensure_feature_columns(transformed_score, fold_schema)
 
         if contract.model_task == "classifier":
@@ -410,8 +457,45 @@ def _execute_secondary_frame(
                 transformed_train, fold_schema, contract.label_column
             )
             shuffled_model = ResearchRegressor(model_kind, dict(recipe.model.parameters))
+        calibrator = None
+        if contract.kind == "placing_top_k":
+            calibration_labels = transformed_calibration[contract.label_column].to_numpy()
+            if len(np.unique(calibration_labels)) == 2:
+                calibrator = IsotonicRegression(out_of_bounds="clip").fit(
+                    model.predict(transformed_calibration), calibration_labels,
+                )
         predictions = model.predict(transformed_score)
+        if calibrator is not None:
+            predictions = calibrator.predict(predictions)
         metrics = secondary_target_diagnostics(transformed_score, contract, predictions)
+        win_calibrator = None
+        rank_win_metrics = None
+        market_win_metrics = None
+        rank_win_probabilities = None
+        if contract.kind == "ranking_strength":
+            calibration_win = _ranking_scores_to_probabilities(
+                model.predict(transformed_calibration), transformed_calibration["race_id"]
+            )
+            win_calibrator = TemperatureCalibrator.fit(
+                calibration_win, transformed_calibration
+            )
+            rank_win_probabilities = win_calibrator.transform(
+                _ranking_scores_to_probabilities(predictions, transformed_score["race_id"]),
+                transformed_score["race_id"],
+            )
+            rank_win_metrics = evaluate_research_probabilities(
+                rank_win_probabilities, transformed_score, label="ranker_calibrated_win"
+            )["metrics"]
+            market_win_calibrator = TemperatureCalibrator.fit(
+                transformed_calibration["market_probability"].to_numpy(dtype=float),
+                transformed_calibration,
+            )
+            market_win_metrics = evaluate_research_probabilities(
+                market_win_calibrator.transform(
+                    transformed_score["market_probability"].to_numpy(dtype=float),
+                    transformed_score["race_id"],
+                ), transformed_score, label="calibrated_market_win"
+            )["metrics"]
         baseline = _secondary_baseline(transformed_train, transformed_score, contract.kind, contract.parameters)
         baseline_metrics = secondary_target_diagnostics(transformed_score, contract, baseline)
 
@@ -431,12 +515,21 @@ def _execute_secondary_frame(
             "baseline": baseline_metrics,
             "shuffled_control": shuffled_metrics,
             "objective": objective,
+            **({
+                "calibrated_win": rank_win_metrics,
+                "calibrated_market_win": market_win_metrics,
+                "win_log_loss_delta_vs_calibrated_market": (
+                    rank_win_metrics["race_log_loss"] - market_win_metrics["race_log_loss"]
+                ),
+            } if rank_win_metrics is not None and market_win_metrics is not None else {}),
         })
         output = transformed_score[["race_id", "date", "race_no", "horse_no"]].copy()
         output["fold_id"] = fold.fold_id
         output["label"] = transformed_score[contract.label_column].to_numpy()
         output["prediction"] = predictions
         output["baseline_prediction"] = baseline
+        if rank_win_probabilities is not None:
+            output["calibrated_win_probability"] = rank_win_probabilities
         prediction_rows.append(output)
         effective_training.append({
             "fold_id": fold.fold_id,
@@ -455,7 +548,9 @@ def _execute_secondary_frame(
                 key: list(value) for key, value in fitted_transforms.clip_bounds.items()
             },
         })
-        final_model = FittedSecondaryRecipeModel(model, fitted_transforms, fold_schema)
+        final_model = FittedSecondaryRecipeModel(
+            model, fitted_transforms, fold_schema, calibrator, win_calibrator
+        )
 
     if not folds or final_model is None:
         raise ValueError("protocol produced no executable folds")
@@ -471,6 +566,7 @@ def _execute_secondary_frame(
         recipe,
         protocol_id=protocol.protocol_id,
         code_revision=request.code_revision,
+        portfolio_version=request.portfolio_version,
     ).save(package_path)
     result = RecipeExecutionResult(
         schema_version=RESULT_SCHEMA_VERSION,
@@ -521,8 +617,23 @@ def _secondary_baseline(
         if "market_probability" in score:
             return score["market_probability"].to_numpy(dtype=float)
         return np.full(len(score), 0.5)
+    if target_kind == "recorded_final_win_odds":
+        return np.full(
+            len(score),
+            float(pd.to_numeric(train["target_log_final_win_odds"], errors="raise").median()),
+        )
     label = target_contract(target_kind, parameters).label_column
     return np.full(len(score), float(pd.to_numeric(train[label], errors="coerce").mean()))
+
+
+def _ranking_scores_to_probabilities(
+    scores: np.ndarray, race_ids: pd.Series | np.ndarray,
+) -> np.ndarray:
+    values = np.asarray(scores, dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("Ranking scores must be finite")
+    maxima = pd.Series(values).groupby(np.asarray(race_ids)).transform("max").to_numpy()
+    return normalize_by_race(np.exp(values - maxima), race_ids)
 
 
 def _shuffle_labels_by_race(frame: pd.DataFrame, column: str, seed: int) -> np.ndarray:
@@ -538,6 +649,8 @@ def _secondary_objective(target_kind: str, metrics: dict[str, float]) -> float:
         return -float(metrics["race_ndcg_at_3"])
     if target_kind == "placing_top_k":
         return float(metrics["race_brier"])
+    if target_kind == "recorded_final_win_odds":
+        return float(metrics["race_mae"])
     return float(metrics["race_mae"])
 
 
@@ -671,6 +784,7 @@ def _objective_name(target_kind: str) -> str:
         "placing_top_k": "development_race_brier",
         "adjusted_finish_time_or_speed": "development_race_mae",
         "market_odds_forecast": "development_race_mae",
+        "recorded_final_win_odds": "development_log_final_odds_mae",
     }[target_kind]
 
 

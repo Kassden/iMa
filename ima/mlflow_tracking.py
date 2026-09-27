@@ -122,6 +122,9 @@ def research_run_parameters(
         "proposal_id": str(result.get("proposal_id", "")),
         "recipe_hash": str(result.get("recipe_hash", "")),
         "target_kind": str(result.get("target_kind", "")),
+        "research_lane": str(result.get("lane", "legacy")),
+        "experiment_id": str(result.get("experiment_id", "")),
+        "portfolio_version": str(result.get("portfolio_version", "")),
         "objective_name": str(result.get("objective_name", "")),
         "metric_contract_version": int(
             result.get("metrics", {}).get("metric_contract_version", 1)
@@ -247,7 +250,7 @@ def log_optimizer_cycle_trace(
         })
         with mlflow.start_span(
             name="planner-decision",
-            span_type="LLM" if decision.get("source") == "openrouter" else "AGENT",
+            span_type="LLM" if decision.get("planner_model") else "AGENT",
             attributes={
                 "ima.planner_model": str(decision.get("planner_model") or ""),
                 "ima.service_tier": str(decision.get("service_tier") or ""),
@@ -295,6 +298,9 @@ def log_optimizer_cycle_trace(
                     "ima.program_id": str(result.get("program_id") or ""),
                     "ima.status": str(result.get("status", "unknown")),
                     "ima.target_kind": str(result.get("target_kind", "")),
+                    "ima.research_lane": str(result.get("lane", "legacy")),
+                    "ima.experiment_id": str(result.get("experiment_id", "")),
+                    "ima.portfolio_version": str(result.get("portfolio_version", "")),
                 },
             ) as trial:
                 trial.set_inputs({
