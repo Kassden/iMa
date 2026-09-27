@@ -12,7 +12,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from .research_specs import PipelineRecipe
+from .research_specs import FUNDAMENTAL_FIRST_PORTFOLIO_VERSION, PipelineRecipe
 
 
 @dataclass(frozen=True)
@@ -57,7 +57,10 @@ class ResearchModelPackage:
             model_kind=self.recipe.model.kind,
             target_kind=self.recipe.target.kind,
             prediction_method=(
-                "predict_proba" if self.recipe.target.kind == "win_probability" else "predict"
+                "predict_fundamental_proba"
+                if self.recipe.target.kind == "win_probability"
+                and self.portfolio_version == FUNDAMENTAL_FIRST_PORTFOLIO_VERSION
+                else "predict_proba" if self.recipe.target.kind == "win_probability" else "predict"
             ),
             portfolio_version=self.portfolio_version,
             created_by="ima-research-v3" if self.portfolio_version else "ima-research-v2",
@@ -68,7 +71,12 @@ class ResearchModelPackage:
             raise TypeError("predict_proba is only valid for win_probability packages")
         if not hasattr(self.model, "predict_proba"):
             raise TypeError("Packaged model does not expose predict_proba")
-        probabilities = np.asarray(self.model.predict_proba(frame), dtype=float)
+        predict = (
+            self.model.predict_fundamental_proba
+            if self.portfolio_version == FUNDAMENTAL_FIRST_PORTFOLIO_VERSION
+            else self.model.predict_proba
+        )
+        probabilities = np.asarray(predict(frame), dtype=float)
         _validate_complete_races(frame, probabilities)
         return probabilities
 

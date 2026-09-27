@@ -32,7 +32,11 @@ from .research_executor import RecipeExecutionRequest, execute_recipe
 from .research_evaluation import build_expanding_folds
 from .research_resources import admission_slots, observe_resources, resource_report
 from .research_search import ProgramSearchController, RecipeSuggestion
-from .research_specs import PipelineRecipe, ResearchProposal
+from .research_specs import (
+    FUNDAMENTAL_FIRST_PORTFOLIO_VERSION,
+    PipelineRecipe,
+    ResearchProposal,
+)
 from .research_store import ResearchLedger, utc_now
 from .feature_sets import FEATURE_SCHEMAS, drop_feature_families
 
@@ -338,7 +342,9 @@ def request_campaign_stop(campaign_dir: Path) -> Path:
     return marker
 
 
-V3_PORTFOLIO_VERSION = "benter-portfolio-v3-1"
+V3_PORTFOLIO_VERSION = FUNDAMENTAL_FIRST_PORTFOLIO_VERSION
+V3_MLFLOW_EXPERIMENT = "ima-agentic-v3-fundamental"
+V3_REGISTERED_MODEL_PREFIX = "ima-agentic-v3-fundamental-candidates"
 V3_EXPERIMENTS = ("E1", "E2", "E3")
 V3_CONTRACTS = {
     "B": ("win_probability", "benter_conditional_logit"),
@@ -952,10 +958,13 @@ def _reconcile_tracking(
     errors: list[str] = []
     tracking = MLflowConfig.from_values(
         tracking_uri=config.mlflow_tracking_uri,
-        experiment_name="ima-agentic-v3" if config.research_policy == "benter_v3" else "ima-agentic-v2",
+        experiment_name=(
+            V3_MLFLOW_EXPERIMENT if config.research_policy == "benter_v3"
+            else "ima-agentic-v2"
+        ),
         register_models=True,
         registered_model_name=(
-            "ima-agentic-v3-candidates" if config.research_policy == "benter_v3"
+            V3_REGISTERED_MODEL_PREFIX if config.research_policy == "benter_v3"
             else "ima-agentic-candidates"
         ),
     )
@@ -988,10 +997,13 @@ def _trace_completed_cycle(
         return None
     tracking = MLflowConfig.from_values(
         tracking_uri=config.mlflow_tracking_uri,
-        experiment_name="ima-agentic-v3" if config.research_policy == "benter_v3" else "ima-agentic-v2",
+        experiment_name=(
+            V3_MLFLOW_EXPERIMENT if config.research_policy == "benter_v3"
+            else "ima-agentic-v2"
+        ),
         register_models=True,
         registered_model_name=(
-            "ima-agentic-v3-candidates" if config.research_policy == "benter_v3"
+            V3_REGISTERED_MODEL_PREFIX if config.research_policy == "benter_v3"
             else "ima-agentic-candidates"
         ),
     )
@@ -1089,7 +1101,7 @@ def _validate_campaign_identity(
         identity["research_policy"] = research_policy
         identity["portfolio_version"] = V3_PORTFOLIO_VERSION
         identity["target_contract_version"] = "research-targets-v3"
-        identity["metric_version"] = "protected-development-v3"
+        identity["metric_version"] = "protected-development-v3-fundamental-v1"
     path = campaign_dir / "campaign-identity.json"
     if path.exists():
         stored = _read_json(path)

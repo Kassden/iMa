@@ -23,6 +23,9 @@ class RecipeValidationError(ValueError):
     """Raised when a recipe is invalid for the registered pipeline capabilities."""
 
 
+FUNDAMENTAL_FIRST_PORTFOLIO_VERSION = "benter-portfolio-v3-2-fundamental"
+
+
 FORBIDDEN_RESEARCH_TERMS = {
     "final_odds",
     "dividend",

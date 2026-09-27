@@ -25,7 +25,7 @@ from .research_evaluation import (
 )
 from .research_model_package import ResearchModelPackage
 from .research_models import ResearchClassifier, ResearchRegressor, secondary_target_diagnostics
-from .research_specs import PipelineRecipe
+from .research_specs import FUNDAMENTAL_FIRST_PORTFOLIO_VERSION, PipelineRecipe
 from .research_targets import apply_target_contract, target_contract
 from .research_transforms import (
     FittedResearchTransforms,
@@ -98,17 +98,21 @@ class FittedWinRecipeModel:
     blend: MarketBlend | None
     feature_schema: FeatureSchema
 
-    def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+    def predict_fundamental_proba(self, frame: pd.DataFrame) -> np.ndarray:
         transformed = self.transforms.transform(frame)
         transformed = _ensure_feature_columns(transformed, self.feature_schema)
         probabilities = self.model.predict_proba(transformed)
         if self.calibrator is not None:
             probabilities = self.calibrator.transform(probabilities, transformed["race_id"])
+        return probabilities
+
+    def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        probabilities = self.predict_fundamental_proba(frame)
         if self.blend is not None:
             probabilities = self.blend.transform(
                 probabilities,
-                transformed["market_probability"].to_numpy(dtype=float),
-                transformed["race_id"],
+                frame["market_probability"].to_numpy(dtype=float),
+                frame["race_id"],
             )
         return probabilities
 
@@ -329,12 +333,15 @@ def _execute_frame(
 
     if not folds or final_model is None:
         raise ValueError("protocol produced no executable folds")
-    objective = float(np.mean([row["selected"]["race_log_loss"] for row in folds]))
+    fundamental_first = request.portfolio_version == FUNDAMENTAL_FIRST_PORTFOLIO_VERSION
+    objective_source = "model" if fundamental_first else "selected"
+    objective = float(np.mean([row[objective_source]["race_log_loss"] for row in folds]))
     metrics = {
         "objective": objective,
+        "objective_source": objective_source,
         "folds": folds,
         "summary": _aggregate_fold_metrics(folds),
-        "metric_contract_version": METRIC_CONTRACT_VERSION,
+        "metric_contract_version": 3 if fundamental_first else METRIC_CONTRACT_VERSION,
         "metric_directions": _metric_directions(folds),
         "effective_training": effective_training,
         "dataset_exclusions": exclusions,
@@ -371,7 +378,10 @@ def _execute_frame(
         recipe_hash=recipe.recipe_hash(),
         target_kind=recipe.target.kind,
         status="completed",
-        objective_name=_objective_name(recipe.target.kind),
+        objective_name=(
+            "development_fundamental_race_log_loss"
+            if fundamental_first else _objective_name(recipe.target.kind)
+        ),
         objective_value=objective,
         metrics=metrics,
         artifacts={
