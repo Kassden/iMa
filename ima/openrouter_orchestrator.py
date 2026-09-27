@@ -242,7 +242,9 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                 "and budgets from the registered capabilities. Cite the development evidence, "
                 "compare only compatible objectives, and avoid transform columns listed as "
                 "unavailable in feature_profile. Do not request raw runner rows, "
-                "labels, credentials, promotion, final odds or live betting. Every recipe must "
+                "labels, credentials, promotion, same-race final odds as features, or live betting. "
+                "When v3_assignment is present, propose exactly its target and model; the "
+                "controller rejects other contracts. Every recipe must "
                 "obey the supplied target/model/calibration/blend compatibility matrix exactly."
             ),
         },
@@ -252,6 +254,7 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                 {
                     "task": "propose_agentic_research_programs",
                     "proposal_count": proposal_count,
+                    "v3_assignment": evidence_bundle.get("v3_assignment"),
                     "allowed_changed_axes": [
                         "hyperparameters",
                         "feature_schema",
@@ -266,13 +269,13 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                     "required_recipe_object_shape": {
                         "schema_version": 2,
                         "target": {
-                            "kind": "one of: win_probability, ranking_strength, placing_top_k, adjusted_finish_time_or_speed, market_odds_forecast",
+                            "kind": "one of: win_probability, ranking_strength, placing_top_k, adjusted_finish_time_or_speed, market_odds_forecast, recorded_final_win_odds",
                             "parameters": {},
                         },
                         "feature_schema": "one of: baseline-v1, benter-rich-v1, notebook-rich-v2",
                         "train_window": "one of: all_history, trailing_3_years",
                         "model": {
-                            "kind": "one of: logit, boosted, pairwise_ranker, hist_gradient_regressor, ridge_regressor",
+                            "kind": "one of: logit, boosted, benter_conditional_logit, pairwise_ranker, lightgbm_lambdarank, catboost_classifier, catboost_regressor, hist_gradient_regressor, ridge_regressor",
                             "parameters": {},
                         },
                         "drop_feature_families": [],
@@ -283,17 +286,17 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                     },
                     "target_recipe_compatibility": {
                         "win_probability": {
-                            "model": "one of: logit, boosted",
+                            "model": "one of: logit, boosted, benter_conditional_logit",
                             "calibration": "one of: temperature, none",
                             "blend": "one of: market_softmax, none",
                         },
                         "placing_top_k": {
-                            "model": "one of: logit, boosted",
+                            "model": "one of: logit, boosted, catboost_classifier",
                             "calibration": "none",
                             "blend": "none",
                         },
                         "ranking_strength": {
-                            "model": "pairwise_ranker",
+                            "model": "one of: pairwise_ranker, lightgbm_lambdarank",
                             "calibration": "none",
                             "blend": "none",
                         },
@@ -304,6 +307,11 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                         },
                         "market_odds_forecast": {
                             "model": "one of: hist_gradient_regressor, ridge_regressor",
+                            "calibration": "none",
+                            "blend": "none",
+                        },
+                        "recorded_final_win_odds": {
+                            "model": "catboost_regressor",
                             "calibration": "none",
                             "blend": "none",
                         },
