@@ -29,6 +29,7 @@ SUPPORTED_TARGETS = {
     "placing_top_k",
     "adjusted_finish_time_or_speed",
     "market_odds_forecast",
+    "recorded_final_win_odds",
 }
 
 
@@ -60,6 +61,13 @@ def target_contract(kind: str, parameters: dict[str, Any] | None = None) -> Targ
             "regression_and_rank",
             "regressor",
             ("target is physical speed; condition adjustment is train-fitted by the executor",),
+        )
+    if kind == "recorded_final_win_odds":
+        if params:
+            raise TargetContractError("recorded_final_win_odds takes no parameters")
+        return TargetContract(
+            kind, {}, "target_log_final_win_odds", "recorded_final_odds", "regressor",
+            ("Final odds are labels only; no bet-time availability claim.",),
         )
     return TargetContract(kind, params, "target_future_market_probability", "odds_forecast", "regressor")
 
@@ -117,6 +125,13 @@ def apply_target_contract(frame: pd.DataFrame, contract: TargetContract) -> pd.D
         _require_race_probability_totals(work, "future_market_probability")
         work["target_future_market_probability"] = work["future_market_probability"]
         return work
+    if contract.kind == "recorded_final_win_odds":
+        _require_columns(work, ("race_id", "win_odds"))
+        odds = pd.to_numeric(work["win_odds"], errors="coerce")
+        if odds.isna().any() or not np.isfinite(odds.to_numpy()).all() or not odds.gt(0).all():
+            raise TargetContractError("recorded_final_win_odds requires positive finite win_odds")
+        work[contract.label_column] = np.log(odds)
+        return work
     raise TargetContractError(f"Unsupported target kind: {contract.kind}")
 
 
@@ -131,6 +146,11 @@ def validate_no_forbidden_label_features(
         "won",
         "finish_time",
         contract.label_column,
+        "win_odds",
+        "market_probability",
+        "market_raw",
+        "final_win_odds",
+        "future_market_probability",
     }
     leaked = sorted(set(feature_columns) & forbidden)
     if leaked:

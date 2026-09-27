@@ -77,8 +77,16 @@ class RaceProbabilityModel:
     parameters: dict[str, Any] | None = None
     pipeline: Pipeline | None = None
     feature_schema: FeatureSchema = BASELINE_SCHEMA
+    conditional: "RaceConditionalLogitModel | None" = None
 
     def fit(self, frame: pd.DataFrame) -> "RaceProbabilityModel":
+        if self.kind == "benter_conditional_logit":
+            self.conditional = RaceConditionalLogitModel(
+                l2=float((self.parameters or {}).get("l2", 1.0)),
+                max_iter=int((self.parameters or {}).get("max_iter", 300)),
+                feature_schema=self.feature_schema,
+            ).fit(frame)
+            return self
         if self.kind == "logit":
             parameters = {"max_iter": 1000, "C": 0.5, "class_weight": "balanced"}
             parameters.update(self.parameters or {})
@@ -100,10 +108,87 @@ class RaceProbabilityModel:
         return self
 
     def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.kind == "benter_conditional_logit":
+            if self.conditional is None:
+                raise RuntimeError("Model has not been fitted")
+            return self.conditional.predict_proba(frame)
         if self.pipeline is None:
             raise RuntimeError("Model has not been fitted")
         raw = self.pipeline.predict_proba(frame[list(self.feature_schema.features)])[:, 1]
         return normalize_by_race(raw, frame["race_id"])
+
+
+@dataclass
+class RaceConditionalLogitModel:
+    """Race-level multinomial likelihood with no intercept or market features."""
+
+    l2: float = 1.0
+    max_iter: int = 300
+    feature_schema: FeatureSchema = BASELINE_SCHEMA
+    preprocessor: ColumnTransformer | None = None
+    coefficients: np.ndarray | None = None
+
+    def fit(self, frame: pd.DataFrame) -> "RaceConditionalLogitModel":
+        if self.l2 < 0 or self.max_iter < 1:
+            raise ValueError("Invalid conditional-logit regularization or iteration count")
+        winners = frame.groupby("race_id")["target_win"].sum()
+        if len(winners) == 0 or not np.allclose(winners.to_numpy(dtype=float), 1.0):
+            raise ValueError("Conditional logit requires exactly one winner per race")
+        numeric = Pipeline([
+            ("impute", SimpleImputer(strategy="median", add_indicator=True)),
+            ("scale", StandardScaler()),
+        ])
+        categorical = Pipeline([
+            ("impute", SimpleImputer(strategy="most_frequent")),
+            ("encode", OneHotEncoder(handle_unknown="ignore", min_frequency=20)),
+        ])
+        self.preprocessor = ColumnTransformer([
+            ("numeric", numeric, list(self.feature_schema.numeric)),
+            ("categorical", categorical, list(self.feature_schema.categorical)),
+        ], sparse_threshold=1.0)
+        x = self.preprocessor.fit_transform(frame[list(self.feature_schema.features)])
+        race_codes = pd.factorize(frame["race_id"], sort=False)[0]
+        y = frame["target_win"].to_numpy(dtype=float)
+        race_count = len(winners)
+
+        def objective(coef: np.ndarray) -> tuple[float, np.ndarray]:
+            return conditional_loss_gradient(coef, x, y, race_codes, race_count, self.l2)
+
+        result = minimize(
+            objective, np.zeros(x.shape[1], dtype=float), jac=True,
+            method="L-BFGS-B", options={"maxiter": self.max_iter},
+        )
+        if not result.success and result.status != 1:
+            raise RuntimeError(f"Conditional-logit fit failed: {result.message}")
+        self.coefficients = np.asarray(result.x, dtype=float)
+        return self
+
+    def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.preprocessor is None or self.coefficients is None:
+            raise RuntimeError("Conditional-logit model has not been fitted")
+        x = self.preprocessor.transform(frame[list(self.feature_schema.features)])
+        codes, races = pd.factorize(frame["race_id"], sort=False)
+        return _conditional_softmax(np.asarray(x @ self.coefficients).ravel(), codes, len(races))
+
+
+def _conditional_softmax(scores: np.ndarray, race_codes: np.ndarray, race_count: int) -> np.ndarray:
+    maxima = np.full(race_count, -np.inf)
+    np.maximum.at(maxima, race_codes, scores)
+    weights = np.exp(scores - maxima[race_codes])
+    totals = np.bincount(race_codes, weights=weights, minlength=race_count)
+    return weights / totals[race_codes]
+
+
+def conditional_loss_gradient(
+    coefficients: np.ndarray, x: Any, target: np.ndarray,
+    race_codes: np.ndarray, race_count: int, l2: float,
+) -> tuple[float, np.ndarray]:
+    scores = np.asarray(x @ coefficients).ravel()
+    probabilities = _conditional_softmax(scores, race_codes, race_count)
+    loss = -float(target @ np.log(np.clip(probabilities, 1e-12, 1.0))) / race_count
+    loss += 0.5 * l2 * float(coefficients @ coefficients)
+    gradient = np.asarray(x.T @ (probabilities - target)).ravel() / race_count
+    return loss, gradient + l2 * coefficients
 
 
 @dataclass(frozen=True)
