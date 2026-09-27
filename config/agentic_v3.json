@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "policy": "agentic",
+  "research_policy": "benter_v3",
+  "planner_mode": "openrouter",
+  "model": "deepseek/deepseek-v4-pro-0813",
+  "planner_reasoning_effort": "none",
+  "max_total_cost_usd": 5.0,
+  "max_output_tokens": 12000,
+  "planner_timeout_seconds": 300,
+  "max_trials": null,
+  "proposal_batch_size": 26,
+  "max_concurrent_trials": 8,
+  "max_consecutive_failed_trials": 26,
+  "dataset_path": "/home/imaopt/research-v2/campaigns/feedback-canary/inputs/rich-history.csv.gz",
+  "protocol_path": "/home/imaopt/research-v2/config/feedback-canary-protocol.json",
+  "mlflow_tracking_uri": "http://100.95.24.121:5000"
+}
