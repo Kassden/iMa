@@ -72,6 +72,11 @@ class ResearchControllerTests(unittest.TestCase):
             self.assertEqual("B", result["payload"]["experiment_id"])
             self.assertEqual("benter_conditional_logit", result["payload"]["recipe"]["model"]["kind"])
             self.assertEqual("completed", result["status"])
+            self.assertEqual(
+                "development_fundamental_race_log_loss",
+                result["result"]["objective_name"],
+            )
+            self.assertEqual("model", result["result"]["metrics"]["objective_source"])
 
     def test_v3_five_attempts_include_one_experimental_ranker(self):
         with tempfile.TemporaryDirectory() as directory:
