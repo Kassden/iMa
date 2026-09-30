@@ -13,6 +13,7 @@ to race-day use automatically.
 - Tracking: `ima-agentic-v4-features` MLflow experiment; registered models are research candidates only.
 - The OpenRouter route is direct HTTPS from the server. Verify a real authenticated completion, not only DNS or a GET, before claiming independence from the laptop.
 - Server DNS has shown a transient resolution failure. The supervisor retries a paused planner every five minutes; inspect `decisions/cycle-*.json` and `ops/supervisor.log` if no new trials appear.
+- Keep the initial 16-worker ceiling until measured memory headroom justifies more. The first 25-trial v4 wave used 16 active workers, left about 44 GiB available at peak, and did not increase swap use.
 
 ## Preflight
 
