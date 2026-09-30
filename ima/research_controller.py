@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import subprocess
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -20,12 +21,14 @@ import pandas as pd
 from .openrouter_orchestrator import (
     OpenRouterConfig,
     OpenRouterError,
+    choose_cycle_trial_budget,
     choose_research_proposals,
     normalize_openrouter_usage,
 )
 from .mlflow_tracking import (
     MLflowConfig,
     log_optimizer_cycle_trace,
+    log_optimizer_planner_trace,
     log_research_package_version,
 )
 from .research_executor import RecipeExecutionRequest, execute_recipe
@@ -33,6 +36,7 @@ from .research_evaluation import build_expanding_folds
 from .research_resources import admission_slots, observe_resources, resource_report
 from .research_search import ProgramSearchController, RecipeSuggestion
 from .research_specs import (
+    FEATURE_DISCOVERY_PORTFOLIO_VERSION,
     FUNDAMENTAL_FIRST_PORTFOLIO_VERSION,
     PipelineRecipe,
     ResearchProposal,
@@ -53,7 +57,7 @@ class DatasetFeatureProfile:
 
     def __init__(self, dataset_path: Path, protocol: dict[str, Any]) -> None:
         numeric = set().union(*(schema.numeric for schema in FEATURE_SCHEMAS.values()))
-        required = {"race_id", "race_no", "date"}
+        required = {"race_id", "race_no", "date", "target_win"}
         if dataset_path.suffix == ".parquet":
             frame = pd.read_parquet(dataset_path)
             frame = frame[[column for column in frame if column in numeric | required]]
@@ -62,11 +66,22 @@ class DatasetFeatureProfile:
                 dataset_path, usecols=lambda column: column in numeric | required,
                 low_memory=False,
             )
+        if "target_win" in frame:
+            winners = pd.to_numeric(frame["target_win"], errors="coerce").groupby(
+                frame["race_id"]
+            ).sum(min_count=1)
+            valid_races = winners.index[winners.eq(1)]
+            frame = frame[frame["race_id"].isin(valid_races)].copy()
         self.present_columns = set(frame.columns)
         frame["date"] = pd.to_datetime(frame["date"], errors="raise")
         present_numeric = sorted(numeric & self.present_columns)
         values = frame[present_numeric].apply(pd.to_numeric, errors="coerce")
         folds = build_expanding_folds(frame, **protocol)
+        scored_races = set().union(*(set(fold.score_race_ids) for fold in folds))
+        score_rows = frame["race_id"].astype(str).isin(scored_races)
+        score_coverage = values.loc[score_rows].notna().mean()
+        full_coverage = values.notna().mean()
+        coverage_drift = (score_coverage - full_coverage).sort_values()
         self.unavailable: dict[str, set[str]] = {}
         for window in ("all_history", "trailing_3_years"):
             unavailable = set(numeric - self.present_columns)
@@ -89,6 +104,16 @@ class DatasetFeatureProfile:
                 window: sorted(columns) for window, columns in self.unavailable.items()
             },
             "unavailable_transform_column_count": len(self.unavailable["all_history"]),
+            "score_era_coverage": {
+                column: round(float(value), 3)
+                for column, value in score_coverage.items()
+                if value < 0.75
+            },
+            "largest_coverage_declines": {
+                column: round(float(value), 3)
+                for column, value in coverage_drift.head(25).items()
+                if value < -0.05
+            },
             "rule": "Transforms need numeric observations in every protected training fold.",
         }
 
@@ -162,7 +187,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                     code_revision=code_revision,
                     environment_hash=environment_hash,
                     portfolio_version=(
-                        V3_PORTFOLIO_VERSION if config.research_policy == "benter_v3" else None
+                        _portfolio_version(config.research_policy)
                     ),
                 ))
             resumed_results = []
@@ -172,8 +197,11 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 row["trial_id"] = original["payload"]["trial_id"]
                 row["program_id"] = original["payload"]["program_id"]
                 row["target_parameters"] = original["payload"]["recipe"]["target"]["parameters"]
-                if config.research_policy == "benter_v3":
-                    row.update(_v3_identity(PipelineRecipe.model_validate(original["payload"]["recipe"])))
+                if _is_portfolio_policy(config.research_policy):
+                    row.update(_portfolio_identity(
+                        PipelineRecipe.model_validate(original["payload"]["recipe"]),
+                        config.research_policy,
+                    ))
                 ledger.complete_attempt(result.attempt_id, row, status=result.status)
                 _append_jsonl(campaign_dir / "trials.jsonl", row)
                 resumed_results.append(row)
@@ -221,7 +249,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 _write_json_atomic(campaign_dir / "status.json", payload)
                 return payload
             try:
-                if config.research_policy == "benter_v3":
+                if _is_portfolio_policy(config.research_policy):
                     suggestions, decision = _next_v3_suggestions(
                         config, campaign_dir, ledger, search, profile, batch_size, cycle
                     )
@@ -243,6 +271,10 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                     campaign_dir, ledger, search, cycles, new_results, "paused",
                     tracking_errors,
                 )
+            slots = min(slots, len(suggestions))
+            planner_trace_error = _trace_planner_decision(config, campaign_dir, decision)
+            if planner_trace_error:
+                tracking_errors.append(planner_trace_error)
             _write_json_atomic(campaign_dir / "status.json", {
                 "status": "training" if slots else "paused_admission",
                 "updated_at": utc_now(),
@@ -266,8 +298,8 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                     "code_revision": code_revision,
                     "environment_hash": environment_hash,
                 }
-                if config.research_policy == "benter_v3":
-                    payload.update(_v3_identity(suggestion.recipe))
+                if _is_portfolio_policy(config.research_policy):
+                    payload.update(_portfolio_identity(suggestion.recipe, config.research_policy))
                 attempt = ledger.reserve_attempt(signature, payload)
                 if attempt.status == "completed":
                     continue
@@ -285,7 +317,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                     code_revision=code_revision,
                     environment_hash=environment_hash,
                     portfolio_version=(
-                        V3_PORTFOLIO_VERSION if config.research_policy == "benter_v3" else None
+                        _portfolio_version(config.research_policy)
                     ),
                 ))
             if not requests:
@@ -302,8 +334,8 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 row["trial_id"] = lineage.trial_id
                 row["program_id"] = lineage.program_id
                 row["target_parameters"] = lineage.recipe.target.model_dump(mode="json")["parameters"]
-                if config.research_policy == "benter_v3":
-                    row.update(_v3_identity(lineage.recipe))
+                if _is_portfolio_policy(config.research_policy):
+                    row.update(_portfolio_identity(lineage.recipe, config.research_policy))
                 cycle_results.append(row)
                 ledger.complete_attempt(result.attempt_id, row, status=result.status)
                 _append_jsonl(campaign_dir / "trials.jsonl", row)
@@ -345,6 +377,9 @@ def request_campaign_stop(campaign_dir: Path) -> Path:
 V3_PORTFOLIO_VERSION = FUNDAMENTAL_FIRST_PORTFOLIO_VERSION
 V3_MLFLOW_EXPERIMENT = "ima-agentic-v3-fundamental"
 V3_REGISTERED_MODEL_PREFIX = "ima-agentic-v3-fundamental-candidates"
+V4_PORTFOLIO_VERSION = FEATURE_DISCOVERY_PORTFOLIO_VERSION
+V4_MLFLOW_EXPERIMENT = "ima-agentic-v4-features"
+V4_REGISTERED_MODEL_PREFIX = "ima-agentic-v4-feature-candidates"
 V3_EXPERIMENTS = ("E1", "E2", "E3")
 V3_CONTRACTS = {
     "B": ("win_probability", "benter_conditional_logit"),
@@ -352,6 +387,60 @@ V3_CONTRACTS = {
     "E2": ("placing_top_k", "catboost_classifier"),
     "E3": ("recorded_final_win_odds", "catboost_regressor"),
 }
+V4_EXPERIMENTS = ("E1", "E2", "E3", "E4")
+V4_CONTRACTS = {
+    "B": ("win_probability", "benter_conditional_logit"),
+    "E1": ("win_probability", "boosted"),
+    "E2": ("ranking_strength", "lightgbm_lambdarank"),
+    "E3": ("placing_top_k", "catboost_classifier"),
+    "E4": ("recorded_final_win_odds", "catboost_regressor"),
+}
+
+
+def _is_portfolio_policy(policy: str) -> bool:
+    return policy in {"benter_v3", "feature_v4"}
+
+
+def _portfolio_version(policy: str) -> str | None:
+    return {
+        "benter_v3": V3_PORTFOLIO_VERSION,
+        "feature_v4": V4_PORTFOLIO_VERSION,
+    }.get(policy)
+
+
+def _portfolio_identity(recipe: PipelineRecipe, policy: str) -> dict[str, str]:
+    if policy == "benter_v3":
+        return _v3_identity(recipe)
+    pair = (recipe.target.kind, recipe.model.kind)
+    for experiment_id, contract in V4_CONTRACTS.items():
+        if pair == contract:
+            return {
+                "lane": "benter" if experiment_id == "B" else "experimental",
+                "experiment_id": experiment_id,
+                "portfolio_version": V4_PORTFOLIO_VERSION,
+            }
+    raise ValueError(f"Recipe is outside the v4 portfolio: {pair}")
+
+
+def _portfolio_slot(index: int, policy: str) -> str:
+    if policy == "benter_v3":
+        return _v3_slot(index)
+    if round(4 * (index + 1) / 5) > round(4 * index / 5):
+        return "B"
+    experimental_ordinal = index - round(4 * index / 5)
+    return V4_EXPERIMENTS[experimental_ordinal % len(V4_EXPERIMENTS)]
+
+
+def _portfolio_contracts(policy: str) -> dict[str, tuple[str, str]]:
+    return V3_CONTRACTS if policy == "benter_v3" else V4_CONTRACTS
+
+
+def _tracking_names(policy: str) -> tuple[str, str]:
+    if policy == "feature_v4":
+        return V4_MLFLOW_EXPERIMENT, V4_REGISTERED_MODEL_PREFIX
+    if policy == "benter_v3":
+        return V3_MLFLOW_EXPERIMENT, V3_REGISTERED_MODEL_PREFIX
+    return "ima-agentic-v2", "ima-agentic-candidates"
 
 
 def _v3_slot(index: int) -> str:
@@ -409,6 +498,51 @@ def _v3_seed_proposals() -> tuple[ResearchProposal, ...]:
     ) for experiment_id, recipe, space, budget in choices)
 
 
+def _v4_seed_proposals() -> tuple[ResearchProposal, ...]:
+    choices = (
+        ("B", PipelineRecipe(
+            feature_schema="notebook-rich-v2",
+            model={"kind": "benter_conditional_logit", "parameters": {"l2": 0.006}},
+            transforms=({"kind": "race_relative_center", "parameters": {
+                "columns": ["last_speed_ratio", "prior_win_rate"],
+            }},),
+        ), {"l2": {"kind": "float", "low": 0.001, "high": 0.05, "log": True}}, 4),
+        ("E1", PipelineRecipe(
+            feature_schema="benter-rich-v1",
+            model={"kind": "boosted", "parameters": {"max_iter": 160}},
+        ), {"l2_regularization": {"kind": "float", "low": 0.01,
+                                      "high": 10.0, "log": True}}, 8),
+        ("E2", PipelineRecipe(
+            target={"kind": "ranking_strength"}, feature_schema="benter-rich-v1",
+            model={"kind": "lightgbm_lambdarank", "parameters": {"n_estimators": 120}},
+            calibration={"kind": "none"}, blend={"kind": "none"},
+        ), {"learning_rate": {"kind": "float", "low": 0.02,
+                               "high": 0.12, "log": True}}, 8),
+        ("E3", PipelineRecipe(
+            target={"kind": "placing_top_k", "parameters": {"top_k": 3}},
+            feature_schema="benter-rich-v1",
+            model={"kind": "catboost_classifier", "parameters": {"iterations": 120}},
+            calibration={"kind": "none"}, blend={"kind": "none"},
+        ), {"depth": {"kind": "int", "low": 3, "high": 7}}, 8),
+        ("E4", PipelineRecipe(
+            target={"kind": "recorded_final_win_odds"},
+            feature_schema="benter-rich-v1",
+            model={"kind": "catboost_regressor", "parameters": {"iterations": 120}},
+            calibration={"kind": "none"}, blend={"kind": "none"},
+        ), {"depth": {"kind": "int", "low": 3, "high": 7}}, 8),
+    )
+    return tuple(ResearchProposal(
+        proposal_id=f"v4-seed-{experiment_id}",
+        hypothesis=f"Test the registered v4 {experiment_id} contract on matched folds.",
+        changed_axes=("feature_schema", "transform", "hyperparameters")
+        if experiment_id == "B" else ("model_family", "hyperparameters"),
+        recipe=recipe, search_space=space,
+        expected_observation="Measure target-specific development metrics and feature coverage.",
+        falsification_rule="Reject if the comparable objective does not improve.",
+        max_trials=budget,
+    ) for experiment_id, recipe, space, budget in choices)
+
+
 def _suggestion_from_payload(payload: dict[str, Any]) -> RecipeSuggestion:
     return RecipeSuggestion(
         trial_id=str(payload["trial_id"]),
@@ -426,15 +560,48 @@ def _next_v3_suggestions(
     search: ProgramSearchController, profile: DatasetFeatureProfile,
     count: int, cycle: int,
 ) -> tuple[list[RecipeSuggestion], dict[str, Any]]:
+    policy = config.research_policy
+    version = _portfolio_version(policy)
+    contracts = _portfolio_contracts(policy)
     if not search.programs:
-        for proposal in _v3_seed_proposals():
+        for proposal in (_v3_seed_proposals() if policy == "benter_v3"
+                         else _v4_seed_proposals()):
+            if policy == "feature_v4" and profile is not None:
+                admission_error = profile.admission_error(proposal.recipe)
+                if admission_error:
+                    raise ValueError(
+                        f"v4 seed {proposal.proposal_id} is unavailable: {admission_error}"
+                    )
             search.register(proposal)
     suggestions: list[RecipeSuggestion] = []
     slot_decisions: list[dict[str, Any]] = []
+    budget_decision = None
+    if config.planner_mode == "openrouter":
+        spent = _planner_spend(campaign_dir)
+        if spent >= float(config.max_total_cost_usd):
+            raise PlannerSpendCapReached(spent, float(config.max_total_cost_usd))
+        evidence = _build_evidence(ledger.terminal_results(), search, profile)
+        remote = OpenRouterConfig.from_env(
+            model=config.model, service_tier=config.service_tier,
+            max_output_tokens=config.max_output_tokens,
+            timeout_seconds=config.planner_timeout_seconds,
+            provider_endpoint=config.provider_endpoint,
+            reasoning_effort=config.planner_reasoning_effort,
+        )
+        try:
+            budget_decision = choose_cycle_trial_budget(evidence, count, remote)
+        except OpenRouterError as exc:
+            decision = {
+                "cycle": cycle, "source": policy, "portfolio_version": version,
+                "budget_ceiling": count, "budget_error": str(exc), "suggestions": [],
+            }
+            _persist_decision(campaign_dir, cycle, decision)
+            return [], decision
+        count = budget_decision["trial_budget"]
     base = len(ledger.reserved_attempts())
     for offset in range(count):
-        experiment_id = _v3_slot(base + offset)
-        target_kind, model_kind = V3_CONTRACTS[experiment_id]
+        experiment_id = _portfolio_slot(base + offset, policy)
+        target_kind, model_kind = contracts[experiment_id]
         allowed = [program_id for program_id, proposal in reversed(list(search.programs.items()))
                    if proposal.recipe.target.kind == target_kind
                    and proposal.recipe.model.kind == model_kind]
@@ -449,11 +616,16 @@ def _next_v3_suggestions(
             break
         suggestions.extend(candidate)
     decision = {
-        "cycle": cycle, "source": "benter_v3", "portfolio_version": V3_PORTFOLIO_VERSION,
+        "cycle": cycle, "source": policy, "portfolio_version": version,
+        "trial_budget": count, "budget_ceiling": budget_decision["ceiling"] if budget_decision else count,
+        "budget_decision": budget_decision,
         "slot_decisions": slot_decisions,
-        "suggestions": [item.serializable() | _v3_identity(item.recipe) for item in suggestions],
+        "suggestions": [item.serializable() | _portfolio_identity(item.recipe, policy)
+                        for item in suggestions],
     }
     planner_calls = [row for row in slot_decisions if row.get("status") == "openrouter"]
+    if budget_decision:
+        planner_calls.insert(0, {"planner_usage": budget_decision["usage"]})
     if planner_calls:
         decision["planner_model"] = config.model
         decision["planner_usage"] = {
@@ -473,6 +645,26 @@ def _v3_replenish(
     search: ProgramSearchController, profile: DatasetFeatureProfile,
     experiment_id: str, cycle: int,
 ) -> tuple[list[RecipeSuggestion], dict[str, Any]]:
+    policy = config.research_policy
+    contracts = _portfolio_contracts(policy)
+    feature_reference = None
+    require_feature_change = False
+    if policy == "feature_v4" and experiment_id == "B":
+        benter_programs = sum(
+            proposal.recipe.target.kind == "win_probability"
+            and proposal.recipe.model.kind == "benter_conditional_logit"
+            for proposal in search.programs.values()
+        )
+        require_feature_change = benter_programs % 2 == 1
+        benter_results = [
+            row for row in ledger.terminal_results()
+            if row["status"] == "completed"
+            and row["payload"]["recipe"]["target"]["kind"] == "win_probability"
+            and row["payload"]["recipe"]["model"]["kind"] == "benter_conditional_logit"
+        ]
+        if benter_results:
+            best = min(benter_results, key=lambda row: row["result"]["objective_value"])
+            feature_reference = PipelineRecipe.model_validate(best["payload"]["recipe"])
     if config.planner_mode != "openrouter":
         return [], {"experiment_id": experiment_id, "status": "planner_not_configured"}
     spent = _planner_spend(campaign_dir)
@@ -481,10 +673,17 @@ def _v3_replenish(
     evidence = _build_evidence(ledger.terminal_results(), search, profile)
     evidence["v3_assignment"] = {
         "experiment_id": experiment_id,
-        "target_kind": V3_CONTRACTS[experiment_id][0],
-        "model_kind": V3_CONTRACTS[experiment_id][1],
-        "portfolio_version": V3_PORTFOLIO_VERSION,
+        "target_kind": contracts[experiment_id][0],
+        "model_kind": contracts[experiment_id][1],
+        "portfolio_version": _portfolio_version(policy),
         "rule": "Propose exactly this target/model; choose features, transforms, and bounds only.",
+        "required_feature_change": require_feature_change,
+        "reference_feature_recipe": {
+            "feature_schema": feature_reference.feature_schema,
+            "drop_feature_families": list(feature_reference.drop_feature_families),
+            "transforms": [spec.model_dump(mode="json") for spec in feature_reference.transforms],
+            "train_window": feature_reference.train_window,
+        } if feature_reference is not None else None,
     }
     remote = OpenRouterConfig.from_env(
         model=config.model, service_tier=config.service_tier,
@@ -507,7 +706,7 @@ def _v3_replenish(
     rejected = []
     for payload in response["proposals"]:
         proposal = ResearchProposal.model_validate(payload)
-        if (proposal.recipe.target.kind, proposal.recipe.model.kind) != V3_CONTRACTS[experiment_id]:
+        if (proposal.recipe.target.kind, proposal.recipe.model.kind) != contracts[experiment_id]:
             rejected.append("wrong_assigned_contract")
             continue
         if proposal.evidence_ids != (evidence["evidence_id"],):
@@ -518,6 +717,12 @@ def _v3_replenish(
             continue
         if profile.admission_error(proposal.recipe):
             rejected.append("unavailable_transform_input")
+            continue
+        if require_feature_change and feature_reference is not None and (
+            proposal.recipe.feature_program_id("same-dataset")
+            == feature_reference.feature_program_id("same-dataset")
+        ):
+            rejected.append("unchanged_feature_program")
             continue
         program_id = search.register(proposal)
         suggestion = search.ask(1, allowed_program_ids=[program_id])
@@ -804,6 +1009,7 @@ def _build_evidence(
             "attempt_id": row["attempt_id"],
             "program_id": row["payload"].get("program_id"),
             "recipe_hash": result["recipe_hash"],
+            "feature_program_id": result.get("lineage", {}).get("feature_program_id"),
             "target_kind": result["target_kind"],
             "target_parameters": recipe["target"]["parameters"],
             "objective_name": result["objective_name"],
@@ -956,17 +1162,12 @@ def _reconcile_tracking(
     if not config.mlflow_tracking_uri:
         return []
     errors: list[str] = []
+    experiment_name, registered_model_name = _tracking_names(config.research_policy)
     tracking = MLflowConfig.from_values(
         tracking_uri=config.mlflow_tracking_uri,
-        experiment_name=(
-            V3_MLFLOW_EXPERIMENT if config.research_policy == "benter_v3"
-            else "ima-agentic-v2"
-        ),
+        experiment_name=experiment_name,
         register_models=True,
-        registered_model_name=(
-            V3_REGISTERED_MODEL_PREFIX if config.research_policy == "benter_v3"
-            else "ima-agentic-candidates"
-        ),
+        registered_model_name=registered_model_name,
     )
     for item in ledger.pending_outbox():
         result = item["result"]
@@ -995,22 +1196,33 @@ def _trace_completed_cycle(
 ) -> str | None:
     if not config.mlflow_tracking_uri:
         return None
+    experiment_name, registered_model_name = _tracking_names(config.research_policy)
     tracking = MLflowConfig.from_values(
         tracking_uri=config.mlflow_tracking_uri,
-        experiment_name=(
-            V3_MLFLOW_EXPERIMENT if config.research_policy == "benter_v3"
-            else "ima-agentic-v2"
-        ),
+        experiment_name=experiment_name,
         register_models=True,
-        registered_model_name=(
-            V3_REGISTERED_MODEL_PREFIX if config.research_policy == "benter_v3"
-            else "ima-agentic-candidates"
-        ),
+        registered_model_name=registered_model_name,
     )
     try:
         log_optimizer_cycle_trace(campaign_dir, decision, results, tracking)
     except Exception as exc:  # tracing is retriable and must not stop training.
         return f"cycle-{decision.get('cycle')}: trace: {type(exc).__name__}: {exc}"
+    return None
+
+
+def _trace_planner_decision(
+    config: Any, campaign_dir: Path, decision: dict[str, Any]
+) -> str | None:
+    if not config.mlflow_tracking_uri or not decision.get("planner_model"):
+        return None
+    tracking = MLflowConfig.from_values(
+        tracking_uri=config.mlflow_tracking_uri,
+        experiment_name=_tracking_names(config.research_policy)[0],
+    )
+    try:
+        log_optimizer_planner_trace(campaign_dir, decision, tracking)
+    except Exception as exc:  # tracing is retriable and must not stop training.
+        return f"cycle-{decision.get('cycle')}: planner trace: {type(exc).__name__}: {exc}"
     return None
 
 
@@ -1097,9 +1309,9 @@ def _validate_campaign_identity(
         "target_contract_version": "research-targets-v2",
         "metric_version": "protected-development-v2",
     }
-    if research_policy == "benter_v3":
+    if _is_portfolio_policy(research_policy):
         identity["research_policy"] = research_policy
-        identity["portfolio_version"] = V3_PORTFOLIO_VERSION
+        identity["portfolio_version"] = _portfolio_version(research_policy)
         identity["target_contract_version"] = "research-targets-v3"
         identity["metric_version"] = "protected-development-v3-fundamental-v1"
     path = campaign_dir / "campaign-identity.json"
@@ -1183,10 +1395,10 @@ def _next_cycle_number(campaign_dir: Path) -> int:
             observed.add(cycle)
     for directory in ("decisions", "evidence", "planner"):
         for path in (campaign_dir / directory).glob("cycle-*.json"):
-            try:
-                observed.add(int(path.stem.removeprefix("cycle-")))
-            except ValueError as exc:
-                raise RuntimeError(f"Invalid cycle artifact name: {path}") from exc
+            match = re.fullmatch(r"cycle-(\d+)(?:-(?:B|E\d+)-\d+)?", path.stem)
+            if match is None:
+                raise RuntimeError(f"Invalid cycle artifact name: {path}")
+            observed.add(int(match.group(1)))
     return max(observed, default=-1) + 1
 
 
