@@ -38,7 +38,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--campaign", type=Path, required=True)
     run.add_argument("--config", type=Path)
     run.add_argument("--policy", choices=("local", "openrouter", "agentic"))
-    run.add_argument("--research-policy", choices=("legacy", "benter_v3"))
+    run.add_argument("--research-policy", choices=("legacy", "benter_v3", "feature_v4"))
     run.add_argument(
         "--max-trials",
         type=_parse_max_trials,
