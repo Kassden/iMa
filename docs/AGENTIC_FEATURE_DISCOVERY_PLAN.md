@@ -205,6 +205,8 @@
 - Planned Touch Files:
   - `docs/AGENTIC_V4_RUNBOOK.md`
   - `docs/AGENTIC_FEATURE_DISCOVERY_PLAN.md`
+  - `deploy/systemd/ima-v4-handoff`
+  - `deploy/systemd/ima-v4-handoff.service`
 - Checklist:
-  - [ ] Stop v3 only after the active cycle finishes and the v4 canary passes.
+  - [x] Stop v3 only after the active cycle finishes and the v4 canary passes.
   - [ ] Watch v4 for two cycles and read back MLflow; retain a rollback command but do not run it unless needed.

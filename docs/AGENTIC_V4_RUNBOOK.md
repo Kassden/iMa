@@ -28,6 +28,8 @@ to race-day use automatically.
 3. Poll until v3 `status.json` reports `stopped`, SQLite has zero running attempts, and `ima-fundamental-v3-supervisor.service` is inactive. Check for any rollover watcher before proceeding. Disable the v3 user unit only after those conditions hold.
 4. Enable and start `ima-feature-v4-supervisor.service`. Verify its PID, service log, and first completed trial and decision. Watch two decisions/cycles, the direct planner route, costs, CPU/RAM and Cortex/solar service health.
 
+For a long final v3 trial, `ima-v4-handoff.service` can perform steps 3-4 unattended. Its `--check` mode is read-only; the watcher requires v3 service inactive, `stopped` status, zero running/reserved attempts, and the pinned v4 revision before it switches units. Confirm its journal and the v4 run after it fires.
+
 ## Failure and Rollback
 
 - If a canary fails, keep v3 running. Preserve artifacts and planner rejection reasons; do not switch services.
