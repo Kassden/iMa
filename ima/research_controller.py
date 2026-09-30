@@ -213,7 +213,9 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 "suggestions": [item["payload"] for item in pending],
             }
             _persist_decision(campaign_dir, cycle, decision)
-            trace_error = _trace_completed_cycle(config, campaign_dir, decision, resumed_results)
+            trace_error = _trace_completed_cycle(
+                config, campaign_dir, decision, resumed_results, ledger=ledger,
+            )
             if trace_error:
                 tracking_errors.append(trace_error)
             cycles += 1
@@ -343,7 +345,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
                 _reconcile_tells(ledger, search)
                 tracking_errors.extend(_reconcile_tracking(config, ledger, dataset_path))
             trace_error = _trace_completed_cycle(
-                config, campaign_dir, decision, cycle_results
+                config, campaign_dir, decision, cycle_results, ledger=ledger,
             )
             if trace_error:
                 tracking_errors.append(trace_error)
@@ -1193,6 +1195,8 @@ def _trace_completed_cycle(
     campaign_dir: Path,
     decision: dict[str, Any],
     results: list[dict[str, Any]],
+    *,
+    ledger: ResearchLedger | None = None,
 ) -> str | None:
     if not config.mlflow_tracking_uri:
         return None
@@ -1204,7 +1208,13 @@ def _trace_completed_cycle(
         registered_model_name=registered_model_name,
     )
     try:
-        log_optimizer_cycle_trace(campaign_dir, decision, results, tracking)
+        log_optimizer_cycle_trace(
+            campaign_dir, decision, results, tracking,
+            campaign_results=(
+                [item["result"] for item in ledger.terminal_results()]
+                if ledger is not None else None
+            ),
+        )
     except Exception as exc:  # tracing is retriable and must not stop training.
         return f"cycle-{decision.get('cycle')}: trace: {type(exc).__name__}: {exc}"
     return None

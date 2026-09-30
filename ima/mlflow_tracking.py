@@ -270,6 +270,8 @@ def log_optimizer_cycle_trace(
     decision: dict[str, Any],
     results: list[dict[str, Any]],
     config: MLflowConfig,
+    *,
+    campaign_results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Log one idempotent decision-to-outcome trace for an optimizer cycle."""
     if not config.enabled:
@@ -292,7 +294,7 @@ def log_optimizer_cycle_trace(
     }
     trace_name = f"optimizer-cycle-{cycle:04d}"
     cycle_id = f"{campaign_dir.resolve()}:{cycle}"
-    summary = _cycle_result_summary(results)
+    summary = _cycle_result_summary(results, campaign_results=campaign_results)
     with mlflow.start_span(
         name=trace_name,
         span_type="AGENT",
@@ -398,7 +400,11 @@ def log_optimizer_cycle_trace(
     return linkage
 
 
-def _cycle_result_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+def _cycle_result_summary(
+    results: list[dict[str, Any]],
+    *,
+    campaign_results: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     completed = [
         result for result in results
         if result.get("status") == "completed" and result.get("objective_value") is not None
@@ -423,6 +429,31 @@ def _cycle_result_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
             key=lambda item: float(item["objective_value"]),
         )]
     }
+    campaign_best_by_objective = {}
+    new_campaign_best_by_objective = {}
+    if campaign_results is not None:
+        current_ids = {item.get("attempt_id") for item in results}
+        for name in sorted({objective_key(item) for item in campaign_results
+                            if item.get("status") == "completed"
+                            and item.get("objective_value") is not None}):
+            comparable = [
+                item for item in campaign_results
+                if item.get("status") == "completed"
+                and item.get("objective_value") is not None
+                and objective_key(item) == name
+            ]
+            winner = min(comparable, key=lambda item: float(item["objective_value"]))
+            campaign_best_by_objective[name] = {
+                "attempt_id": winner.get("attempt_id"),
+                "objective_value": winner["objective_value"],
+            }
+            previous = [item for item in comparable if item.get("attempt_id") not in current_ids]
+            if winner.get("attempt_id") in current_ids and (
+                not previous or float(winner["objective_value"]) < min(
+                    float(item["objective_value"]) for item in previous
+                )
+            ):
+                new_campaign_best_by_objective[name] = campaign_best_by_objective[name]
     return {
         "trial_count": len(results),
         "completed_count": len(completed),
@@ -431,6 +462,8 @@ def _cycle_result_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
         "best_objective_name": best.get("objective_name") if best else None,
         "best_objective_value": best.get("objective_value") if best else None,
         "best_by_objective": best_by_objective,
+        "campaign_best_by_objective": campaign_best_by_objective,
+        "new_campaign_best_by_objective": new_campaign_best_by_objective,
         "attempt_ids": [result.get("attempt_id") for result in results],
     }
 
@@ -475,10 +508,24 @@ def _trace_preview(decision: dict[str, Any]) -> str:
 
 
 def _trace_result_preview(summary: dict[str, Any]) -> str:
-    return (
-        f"{summary['completed_count']}/{summary['trial_count']} completed; "
-        f"best {summary['best_objective_name']}={summary['best_objective_value']}"
+    prefix = f"{summary['completed_count']}/{summary['trial_count']} completed"
+    campaign_bests = summary.get("campaign_best_by_objective") or {}
+    win_key = next((name for name in campaign_bests if name.startswith("win_probability:")), None)
+    if win_key is not None:
+        record = "NEW campaign best" if win_key in summary.get("new_campaign_best_by_objective", {}) else "campaign best"
+        prefix += f"; {record} win_probability={campaign_bests[win_key]['objective_value']:.6f}"
+    best_by_objective = summary["best_by_objective"]
+    if not best_by_objective:
+        return f"{prefix}; no scored trials"
+    ordered = sorted(
+        best_by_objective.items(),
+        key=lambda item: (not item[0].startswith("win_probability:"), item[0]),
     )
+    scores = "; ".join(
+        f"{name}={winner['objective_value']:.6f}"
+        for name, winner in ordered
+    )
+    return f"{prefix}; cycle best by objective: {scores}"
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:

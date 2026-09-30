@@ -8,6 +8,8 @@ from ima.mlflow_tracking import (
     DEFAULT_REGISTERED_MODEL_NAME,
     MLflowConfig,
     _model_artifact_source,
+    _cycle_result_summary,
+    _trace_result_preview,
     flatten_numeric_metrics,
     log_optimizer_cycle_trace,
     log_optimizer_planner_trace,
@@ -30,6 +32,46 @@ class DummyProbabilityModel:
 
 
 class MLflowTrackingTests(unittest.TestCase):
+    def test_cycle_trace_preview_keeps_mixed_objectives_separate(self):
+        summary = _cycle_result_summary([
+            {
+                "attempt_id": "win-1", "status": "completed",
+                "target_kind": "win_probability",
+                "objective_name": "development_fundamental_race_log_loss",
+                "objective_value": 2.1636051360490574,
+            },
+            {
+                "attempt_id": "rank-1", "status": "completed",
+                "target_kind": "ranking_strength",
+                "objective_name": "negative_development_race_ndcg_at_3",
+                "objective_value": -0.75,
+            },
+        ])
+        preview = _trace_result_preview(summary)
+        self.assertIn("win_probability:development_fundamental_race_log_loss:{}=2.163605", preview)
+        self.assertIn("ranking_strength:negative_development_race_ndcg_at_3:{}=-0.750000", preview)
+        self.assertNotIn("None=None", preview)
+
+    def test_cycle_trace_preview_has_no_false_best_for_empty_cycle(self):
+        self.assertEqual(
+            "0/0 completed; no scored trials",
+            _trace_result_preview(_cycle_result_summary([])),
+        )
+
+    def test_cycle_trace_preview_distinguishes_unchanged_campaign_best(self):
+        current = {
+            "attempt_id": "current", "status": "completed",
+            "target_kind": "win_probability",
+            "objective_name": "development_fundamental_race_log_loss",
+            "objective_value": 2.18,
+        }
+        prior = {**current, "attempt_id": "prior", "objective_value": 2.16}
+        summary = _cycle_result_summary([current], campaign_results=[prior, current])
+        preview = _trace_result_preview(summary)
+        self.assertIn("campaign best win_probability=2.160000", preview)
+        self.assertIn("cycle best by objective: win_probability", preview)
+        self.assertNotIn("NEW campaign best", preview)
+
     def test_config_is_disabled_without_uri(self):
         with mock.patch.dict("os.environ", {"MLFLOW_TRACKING_URI": ""}):
             config = MLflowConfig.from_values(tracking_uri=None, experiment_name="demo")
@@ -251,8 +293,25 @@ class MLflowTrackingTests(unittest.TestCase):
                 "objective_value": -0.72,
                 "duration_seconds": 2.5,
                 "metrics": {"summary": {"model": {"race_ndcg_at_3": {"mean": 0.72}}}},
+            }, {
+                "attempt_id": "attempt-2",
+                "proposal_id": "proposal-2",
+                "recipe_hash": "recipe-2",
+                "target_kind": "win_probability",
+                "status": "completed",
+                "objective_name": "development_fundamental_race_log_loss",
+                "objective_value": 2.1636051360490574,
+                "duration_seconds": 3.0,
+                "metrics": {"summary": {"model": {"race_log_loss": {"mean": 2.1636051360490574}}}},
             }]
-            first = log_optimizer_cycle_trace(root, decision, results, config)
+            prior = {
+                **results[1], "attempt_id": "prior-win",
+                "objective_value": 2.18,
+            }
+            first = log_optimizer_cycle_trace(
+                root, decision, results, config,
+                campaign_results=[prior, *results],
+            )
             second = log_optimizer_cycle_trace(root, decision, results, config)
 
             self.assertEqual(first, second)
@@ -263,6 +322,15 @@ class MLflowTrackingTests(unittest.TestCase):
             self.assertEqual(1, len(traces))
             trace = mlflow.get_trace(first["trace_id"], flush=True)
             spans = {span.name: span for span in trace.data.spans}
+            self.assertIn("NEW campaign best win_probability=2.163605", trace.info.response_preview)
+            self.assertIn("win_probability:development_fundamental_race_log_loss:{}=2.163605", trace.info.response_preview)
+            self.assertNotIn("None=None", trace.info.response_preview)
+            self.assertEqual(
+                "attempt-2",
+                spans["optimizer-cycle-0003"].outputs["new_campaign_best_by_objective"][
+                    "win_probability:development_fundamental_race_log_loss:{}"
+                ]["attempt_id"],
+            )
             self.assertIn("optimizer-cycle-0003", spans)
             self.assertIn("planner-decision", spans)
             self.assertIn("trial-proposal-1", spans)
