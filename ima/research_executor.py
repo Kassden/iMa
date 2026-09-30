@@ -25,7 +25,7 @@ from .research_evaluation import (
 )
 from .research_model_package import ResearchModelPackage
 from .research_models import ResearchClassifier, ResearchRegressor, secondary_target_diagnostics
-from .research_specs import FUNDAMENTAL_FIRST_PORTFOLIO_VERSION, PipelineRecipe
+from .research_specs import PipelineRecipe, is_fundamental_first_portfolio
 from .research_targets import apply_target_contract, target_contract
 from .research_transforms import (
     FittedResearchTransforms,
@@ -333,7 +333,7 @@ def _execute_frame(
 
     if not folds or final_model is None:
         raise ValueError("protocol produced no executable folds")
-    fundamental_first = request.portfolio_version == FUNDAMENTAL_FIRST_PORTFOLIO_VERSION
+    fundamental_first = is_fundamental_first_portfolio(request.portfolio_version)
     objective_source = "model" if fundamental_first else "selected"
     objective = float(np.mean([row[objective_source]["race_log_loss"] for row in folds]))
     metrics = {
@@ -370,6 +370,24 @@ def _execute_frame(
         portfolio_version=request.portfolio_version,
     )
     package.save(package_path)
+    conditional = final_model.model.conditional
+    if conditional is not None and conditional.preprocessor is not None:
+        weights = pd.DataFrame({
+            "feature": conditional.preprocessor.get_feature_names_out(),
+            "coefficient": conditional.coefficients,
+        })
+        weights.to_csv(package_path / "feature-weights.csv", index=False)
+    feature_program_id = recipe.feature_program_id(dataset_hash)
+    feature_program_path = request.output_dir / "feature-program.json"
+    _write_json_atomic(feature_program_path, {
+        "feature_program_id": feature_program_id,
+        "dataset_hash": dataset_hash,
+        "feature_schema": recipe.feature_schema,
+        "drop_feature_families": list(recipe.drop_feature_families),
+        "transforms": [spec.model_dump(mode="json") for spec in recipe.transforms],
+        "train_window": recipe.train_window,
+        "effective_training": effective_training,
+    })
     result = RecipeExecutionResult(
         schema_version=RESULT_SCHEMA_VERSION,
         attempt_id=request.attempt_id,
@@ -388,9 +406,11 @@ def _execute_frame(
             "protocol": str(protocol_path),
             "predictions": str(predictions_path),
             "package": str(package_path),
+            "feature_program": str(feature_program_path),
         },
         lineage={
             "dataset_hash": dataset_hash,
+            "feature_program_id": feature_program_id,
             "protocol_id": protocol.protocol_id,
             "code_revision": request.code_revision,
             "environment_hash": request.environment_hash,
@@ -735,6 +755,15 @@ def _schema_with_transform_features(
         if spec.kind == "race_relative_rank":
             suffix = str(spec.parameters.get("suffix", "_race_rank"))
             added.extend(f"{column}{suffix}" for column in spec.parameters["columns"])
+        elif spec.kind == "race_relative_center":
+            added.extend(f"{column}_race_centered" for column in spec.parameters["columns"])
+        elif spec.kind == "signed_log1p":
+            added.extend(f"{column}_signed_log1p" for column in spec.parameters["columns"])
+        elif spec.kind == "numeric_interaction":
+            left, right = spec.parameters["columns"]
+            added.append(f"{left}_x_{right}")
+    if len(added) != len(set(added)) or set(added) & set(schema.features):
+        raise ValueError("Generated feature names must be unique and must not replace source features")
     return FeatureSchema(schema.name, (*schema.numeric, *added), schema.categorical)
 
 

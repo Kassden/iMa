@@ -12,7 +12,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from .research_specs import FUNDAMENTAL_FIRST_PORTFOLIO_VERSION, PipelineRecipe
+from .research_specs import PipelineRecipe, is_fundamental_first_portfolio
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,7 @@ class ResearchModelPackage:
             prediction_method=(
                 "predict_fundamental_proba"
                 if self.recipe.target.kind == "win_probability"
-                and self.portfolio_version == FUNDAMENTAL_FIRST_PORTFOLIO_VERSION
+                and is_fundamental_first_portfolio(self.portfolio_version)
                 else "predict_proba" if self.recipe.target.kind == "win_probability" else "predict"
             ),
             portfolio_version=self.portfolio_version,
@@ -73,7 +73,7 @@ class ResearchModelPackage:
             raise TypeError("Packaged model does not expose predict_proba")
         predict = (
             self.model.predict_fundamental_proba
-            if self.portfolio_version == FUNDAMENTAL_FIRST_PORTFOLIO_VERSION
+            if is_fundamental_first_portfolio(self.portfolio_version)
             else self.model.predict_proba
         )
         probabilities = np.asarray(predict(frame), dtype=float)
