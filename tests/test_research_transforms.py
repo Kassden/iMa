@@ -49,6 +49,37 @@ class ResearchTransformTests(unittest.TestCase):
                 specs=(TransformSpec("magic", {}),),
             )
 
+    def test_feature_creation_uses_only_declared_pregame_columns(self):
+        train = pd.DataFrame({
+            "race_id": ["R1", "R1"], "horse_rating": [10.0, 20.0],
+            "last_speed_ratio": [0.9, 1.0],
+        })
+        score = pd.DataFrame({
+            "race_id": ["R2", "R2"], "horse_rating": [30.0, 50.0],
+            "last_speed_ratio": [0.8, 0.9],
+        })
+        _, transformed = apply_research_transforms(
+            train, score, specs=(
+                TransformSpec("race_relative_center", {"columns": ["horse_rating"]}),
+                TransformSpec("signed_log1p", {"columns": ["horse_rating"]}),
+                TransformSpec("numeric_interaction", {
+                    "columns": ["horse_rating", "last_speed_ratio"],
+                }),
+            ),
+        )
+        self.assertEqual([-10.0, 10.0], transformed["horse_rating_race_centered"].tolist())
+        self.assertEqual([24.0, 45.0], transformed["horse_rating_x_last_speed_ratio"].tolist())
+        self.assertTrue(transformed["horse_rating_signed_log1p"].iloc[1] > 0)
+
+    def test_interaction_rejects_duplicate_inputs(self):
+        with self.assertRaisesRegex(TransformError, "two distinct columns"):
+            apply_research_transforms(
+                pd.DataFrame({"race_id": ["R1"], "horse_rating": [10.0]}),
+                specs=(TransformSpec("numeric_interaction", {
+                    "columns": ["horse_rating", "horse_rating"],
+                }),),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

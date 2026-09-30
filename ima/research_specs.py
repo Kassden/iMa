@@ -24,6 +24,14 @@ class RecipeValidationError(ValueError):
 
 
 FUNDAMENTAL_FIRST_PORTFOLIO_VERSION = "benter-portfolio-v3-2-fundamental"
+FEATURE_DISCOVERY_PORTFOLIO_VERSION = "feature-discovery-v4-fundamental"
+
+
+def is_fundamental_first_portfolio(version: str | None) -> bool:
+    return version in {
+        FUNDAMENTAL_FIRST_PORTFOLIO_VERSION,
+        FEATURE_DISCOVERY_PORTFOLIO_VERSION,
+    }
 
 
 FORBIDDEN_RESEARCH_TERMS = {
@@ -118,7 +126,10 @@ class TargetSpec(StrictModel):
 
 
 class TransformSpec(StrictModel):
-    kind: Literal["clip_numeric_quantiles", "race_relative_rank"]
+    kind: Literal[
+        "clip_numeric_quantiles", "race_relative_rank", "race_relative_center",
+        "signed_log1p", "numeric_interaction",
+    ]
     parameters: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -193,6 +204,18 @@ class PipelineRecipe(StrictModel):
             separators=(",", ":"),
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+    def feature_program_id(self, dataset_hash: str) -> str:
+        payload = {
+            "dataset_hash": dataset_hash,
+            "feature_schema": self.feature_schema,
+            "drop_feature_families": self.drop_feature_families,
+            "transforms": [spec.model_dump(mode="json") for spec in self.transforms],
+            "train_window": self.train_window,
+        }
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:16]
 
 
 class SearchDimension(StrictModel):
