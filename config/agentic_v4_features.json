@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "policy": "agentic",
+  "research_policy": "feature_v4",
+  "planner_mode": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash:floor",
+  "planner_reasoning_effort": "high",
+  "max_total_cost_usd": 5.0,
+  "max_output_tokens": 8000,
+  "max_trials": null,
+  "proposal_batch_size": 260,
+  "max_concurrent_trials": 16,
+  "max_consecutive_failed_trials": 260,
+  "dataset_path": "/home/imaopt/research-v2/campaigns/agentic_v4_features/inputs/rich-history-v4.csv.gz",
+  "protocol_path": "/home/imaopt/research-v2/campaigns/agentic_v4_features/inputs/protocol.json",
+  "mlflow_tracking_uri": "http://100.95.24.121:5000"
+}

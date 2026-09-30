@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "policy": "agentic",
+  "research_policy": "feature_v4",
+  "planner_mode": "fixture",
+  "max_trials": 1,
+  "proposal_batch_size": 1,
+  "max_concurrent_trials": 1,
+  "max_consecutive_failed_trials": 3
+}
