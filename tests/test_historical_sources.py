@@ -109,6 +109,7 @@ class HistoricalSourceTests(unittest.TestCase):
                 "horse_page_id": "HK_2020_A001", "horse_id": "A001",
                 "race_date": "2023-01-01",
                 "horse_gear": "B/TT",
+                "rating": 67,
             }]).to_csv(form, index=False, compression="gzip")
             row = self.row("official:hkjc-results", 4.8)
             row.update({
@@ -127,8 +128,10 @@ class HistoricalSourceTests(unittest.TestCase):
         self.assertEqual(-3, enriched.iloc[0]["horse_age_year_offset"])
         self.assertEqual("horse-page-id-exact", enriched.iloc[0]["horse_age_identity_method"])
         self.assertEqual("B/TT", enriched.iloc[0]["gear"])
+        self.assertEqual(67, enriched.iloc[0]["rating"])
         self.assertEqual("AUS", enriched.iloc[1]["horse_country"])
         self.assertEqual("B/TT", enriched.iloc[1]["gear"])
+        self.assertTrue(pd.isna(enriched.iloc[1]["rating"]))
 
     def test_timestamped_age_reference_propagates_backward_and_forward(self):
         with TemporaryDirectory() as directory:
@@ -169,6 +172,27 @@ class HistoricalSourceTests(unittest.TestCase):
             enriched["horse_age_identity_method"].tolist(),
         )
         self.assertTrue(enriched["gear"].eq("NONE").all())
+
+    def test_form_rating_never_fills_another_race_date(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            profiles = root / "profiles.csv.gz"
+            form = root / "form.csv.gz"
+            pd.DataFrame([{
+                "horse_page_id": "HK_2020_A001", "horse_id": "A001",
+                "horse_age_at_capture": 8, "capture_year": 2026,
+            }]).to_csv(profiles, index=False, compression="gzip")
+            pd.DataFrame([{
+                "horse_page_id": "HK_2020_A001", "horse_id": "A001",
+                "race_date": "2023-02-01", "horse_gear": "B", "rating": 70,
+            }]).to_csv(form, index=False, compression="gzip")
+            earlier = self.row("official:hkjc-results", 4.8)
+            earlier.update({
+                "horse_page_id": "HK_2020_A001", "horse_id": "A001",
+                "race_date": pd.Timestamp("2023-01-01"),
+            })
+            enriched = enrich_horse_profiles(pd.DataFrame([earlier]), profiles, form)
+        self.assertTrue(pd.isna(enriched.iloc[0]["rating"]))
 
 
 if __name__ == "__main__":

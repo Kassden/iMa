@@ -8,6 +8,29 @@ from ima.research_specs import PipelineRecipe, RecipeValidationError, ResearchPr
 
 
 class ResearchSpecTests(unittest.TestCase):
+    def test_feature_program_identity_tracks_features_not_model_parameters(self):
+        first = PipelineRecipe(
+            feature_schema="benter-rich-v1",
+            model={"kind": "benter_conditional_logit", "parameters": {"l2": 0.01}},
+        )
+        tuned = PipelineRecipe(
+            feature_schema="benter-rich-v1",
+            model={"kind": "benter_conditional_logit", "parameters": {"l2": 0.1}},
+        )
+        transformed = PipelineRecipe(
+            feature_schema="benter-rich-v1",
+            model={"kind": "benter_conditional_logit", "parameters": {"l2": 0.01}},
+            transforms=({"kind": "signed_log1p", "parameters": {
+                "columns": ["last_speed_ratio"],
+            }},),
+        )
+        self.assertEqual(first.feature_program_id("source-a"),
+                         tuned.feature_program_id("source-a"))
+        self.assertNotEqual(first.feature_program_id("source-a"),
+                            transformed.feature_program_id("source-a"))
+        self.assertNotEqual(first.feature_program_id("source-a"),
+                            first.feature_program_id("source-b"))
+
     def test_proposal_search_space_rejects_invalid_bounds_and_parameters(self):
         base = dict(
             proposal_id="p", hypothesis="Tune C.", changed_axes=("hyperparameters",),

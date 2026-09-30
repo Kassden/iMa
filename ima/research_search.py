@@ -374,18 +374,27 @@ class ProgramSearchController:
 
     def remaining_capacity(self) -> int:
         return sum(
-            max(0, proposal.max_trials - len(self.studies[program_id].get_trials(deepcopy=False)))
+            max(0, proposal.max_trials - sum(
+                trial.state != TrialState.PRUNED
+                for trial in self.studies[program_id].get_trials(deepcopy=False)
+            ))
             for program_id, proposal in self.programs.items()
         )
 
     def ask(
-        self, count: int, *, preferred_program_ids: list[str] | None = None
+        self, count: int, *, preferred_program_ids: list[str] | None = None,
+        allowed_program_ids: list[str] | None = None,
     ) -> list[RecipeSuggestion]:
         if count <= 0:
             raise ValueError("count must be positive")
         suggestions: list[RecipeSuggestion] = []
         preferred = [program_id for program_id in preferred_program_ids or [] if program_id in self.programs]
-        program_order = preferred + [program_id for program_id in self.programs if program_id not in preferred]
+        allowed = set(allowed_program_ids) if allowed_program_ids is not None else set(self.programs)
+        program_order = [program_id for program_id in preferred if program_id in allowed]
+        program_order += [
+            program_id for program_id in self.programs
+            if program_id in allowed and program_id not in program_order
+        ]
         seen = {
             str(trial.user_attrs["recipe_hash"])
             for study in self.studies.values()
@@ -393,13 +402,16 @@ class ProgramSearchController:
             if "recipe_hash" in trial.user_attrs
         }
         attempts = 0
-        while len(suggestions) < count and self.has_capacity() and attempts < count * 20:
+        while len(suggestions) < count and any(
+            sum(trial.state != TrialState.PRUNED for trial in self.studies[program_id].get_trials(deepcopy=False))
+            < self.programs[program_id].max_trials for program_id in program_order
+        ) and attempts < count * 20:
             for program_id in program_order:
                 if len(suggestions) >= count:
                     break
                 proposal = self.programs[program_id]
                 study = self.studies[program_id]
-                if len(study.get_trials(deepcopy=False)) >= proposal.max_trials:
+                if sum(trial.state != TrialState.PRUNED for trial in study.get_trials(deepcopy=False)) >= proposal.max_trials:
                     continue
                 attempts += 1
                 trial = study.ask()
@@ -472,6 +484,10 @@ class ProgramSearchController:
                     "model_kind": proposal.recipe.model.kind,
                     "budget": proposal.max_trials,
                     "trials": len(self.studies[program_id].trials),
+                    "executable_trials": sum(
+                        trial.state != TrialState.PRUNED
+                        for trial in self.studies[program_id].trials
+                    ),
                     "completed": sum(t.state == TrialState.COMPLETE for t in self.studies[program_id].trials),
                 }
                 for program_id, proposal in self.programs.items()
@@ -487,6 +503,12 @@ class ProgramSearchController:
 
 
 def _default_space(model_kind: str) -> dict[str, SearchDimension]:
+    if model_kind == "benter_conditional_logit":
+        return {"l2": SearchDimension(kind="float", low=0.001, high=5.0, log=True)}
+    if model_kind == "lightgbm_lambdarank":
+        return {"learning_rate": SearchDimension(kind="float", low=0.02, high=0.12, log=True)}
+    if model_kind in {"catboost_classifier", "catboost_regressor"}:
+        return {"depth": SearchDimension(kind="int", low=3, high=7)}
     if model_kind == "logit":
         return {"C": SearchDimension(kind="float", low=0.003, high=80.0, log=True)}
     if model_kind == "ridge_regressor":

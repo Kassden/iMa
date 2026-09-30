@@ -189,6 +189,15 @@ def planner_messages(available_specs: list[ExperimentSpec], proposal_count: int)
 
 
 def _proposal_payload_from_response(response: dict[str, Any]) -> dict[str, Any]:
+    parsed = _json_message_from_response(response)
+    if isinstance(parsed, list):
+        return {"proposals": parsed}
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("proposals"), list):
+        raise OpenRouterError("OpenRouter planner JSON must contain a proposals list")
+    return parsed
+
+
+def _json_message_from_response(response: dict[str, Any]) -> Any:
     try:
         content = response["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
@@ -202,10 +211,6 @@ def _proposal_payload_from_response(response: dict[str, Any]) -> dict[str, Any]:
         parsed = json.loads(content)
     except json.JSONDecodeError as exc:
         raise OpenRouterError(f"OpenRouter planner returned non-JSON content: {content[:200]}") from exc
-    if isinstance(parsed, list):
-        return {"proposals": parsed}
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("proposals"), list):
-        raise OpenRouterError("OpenRouter planner JSON must contain a proposals list")
     return parsed
 
 
@@ -242,8 +247,24 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                 "and budgets from the registered capabilities. Cite the development evidence, "
                 "compare only compatible objectives, and avoid transform columns listed as "
                 "unavailable in feature_profile. Do not request raw runner rows, "
-                "labels, credentials, promotion, final odds or live betting. Every recipe must "
-                "obey the supplied target/model/calibration/blend compatibility matrix exactly."
+                "labels, credentials, promotion, same-race final odds as features, or live betting. "
+                "The entire proposal, including its explanatory text, is rejected if it contains "
+                "the literal token final_odds. For recorded odds prediction, describe the target "
+                "as 'recorded odds' and never propose it as an input feature. "
+                "When v3_assignment is present, propose exactly its target and model; the "
+                "controller rejects other contracts. Every recipe must "
+                "obey the supplied target/model/calibration/blend compatibility matrix exactly. "
+                "For feature-discovery-v4 proposals, you may choose feature schema, "
+                "drop_feature_families, train_window, and registered transforms: "
+                "clip_numeric_quantiles, race_relative_rank, race_relative_center, "
+                "signed_log1p, or numeric_interaction. Every transform requires a columns "
+                "array; numeric_interaction requires exactly two distinct numeric columns. "
+                "Propose only columns in the chosen schema with observations in all training folds. "
+                "Do not describe feature importance as a manually assigned feature weight. "
+                "If the assignment says required_feature_change=true, change at least one "
+                "of feature_schema, drop_feature_families, transforms, or train_window "
+                "relative to reference_feature_recipe. A narrative claim is not sufficient; "
+                "the controller compares the actual recipe and rejects identical feature programs."
             ),
         },
         {
@@ -252,6 +273,7 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                 {
                     "task": "propose_agentic_research_programs",
                     "proposal_count": proposal_count,
+                    "v3_assignment": evidence_bundle.get("v3_assignment"),
                     "allowed_changed_axes": [
                         "hyperparameters",
                         "feature_schema",
@@ -266,13 +288,13 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                     "required_recipe_object_shape": {
                         "schema_version": 2,
                         "target": {
-                            "kind": "one of: win_probability, ranking_strength, placing_top_k, adjusted_finish_time_or_speed, market_odds_forecast",
+                            "kind": "one of: win_probability, ranking_strength, placing_top_k, adjusted_finish_time_or_speed, market_odds_forecast, recorded_final_win_odds",
                             "parameters": {},
                         },
                         "feature_schema": "one of: baseline-v1, benter-rich-v1, notebook-rich-v2",
                         "train_window": "one of: all_history, trailing_3_years",
                         "model": {
-                            "kind": "one of: logit, boosted, pairwise_ranker, hist_gradient_regressor, ridge_regressor",
+                            "kind": "one of: logit, boosted, benter_conditional_logit, pairwise_ranker, lightgbm_lambdarank, catboost_classifier, catboost_regressor, hist_gradient_regressor, ridge_regressor",
                             "parameters": {},
                         },
                         "drop_feature_families": [],
@@ -283,17 +305,17 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                     },
                     "target_recipe_compatibility": {
                         "win_probability": {
-                            "model": "one of: logit, boosted",
+                            "model": "one of: logit, boosted, benter_conditional_logit",
                             "calibration": "one of: temperature, none",
                             "blend": "one of: market_softmax, none",
                         },
                         "placing_top_k": {
-                            "model": "one of: logit, boosted",
+                            "model": "one of: logit, boosted, catboost_classifier",
                             "calibration": "none",
                             "blend": "none",
                         },
                         "ranking_strength": {
-                            "model": "pairwise_ranker",
+                            "model": "one of: pairwise_ranker, lightgbm_lambdarank",
                             "calibration": "none",
                             "blend": "none",
                         },
@@ -304,6 +326,11 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                         },
                         "market_odds_forecast": {
                             "model": "one of: hist_gradient_regressor, ridge_regressor",
+                            "calibration": "none",
+                            "blend": "none",
+                        },
+                        "recorded_final_win_odds": {
+                            "model": "catboost_regressor",
                             "calibration": "none",
                             "blend": "none",
                         },
@@ -377,6 +404,101 @@ def _validated_research_proposals(
     return valid, rejected
 
 
+def choose_cycle_trial_budget(
+    evidence_bundle: dict[str, Any],
+    max_trials: int,
+    config: OpenRouterConfig,
+) -> dict[str, Any]:
+    """Let the planner choose this cycle's work; max_trials is only a ceiling."""
+    if max_trials < 1:
+        raise ValueError("max_trials must be positive")
+    summary = {
+        "evidence_id": evidence_bundle["evidence_id"],
+        "completed_trial_count": len(evidence_bundle.get("completed_trials", [])),
+        "best_by_target": {
+            key: [{
+                "objective_name": row.get("objective_name"),
+                "objective_value": row.get("objective_value"),
+            } for row in values]
+            for key, values in evidence_bundle.get("best_by_target", {}).items()
+        },
+        "program_outcomes": evidence_bundle.get("program_outcomes", [])[-12:],
+        "recent_failures": evidence_bundle.get("recent_failures", [])[-5:],
+    }
+    payload = {
+        "model": config.model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You choose the number of training trials for the next iMa research cycle. "
+                    "The ceiling is not a target. Choose a count justified by development "
+                    "evidence, program uncertainty, and diminishing returns. Optuna and the "
+                    "controller will schedule the work; concurrency is independent. "
+                    "Do not use holdout results. Return strict JSON only."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps({
+                    "task": "choose_cycle_trial_budget",
+                    "ceiling": max_trials,
+                    "evidence": summary,
+                    "output_schema": {
+                        "evidence_id": summary["evidence_id"],
+                        "trial_budget": "integer from 1 through ceiling",
+                        "rationale": "brief evidence-based reason for this count",
+                    },
+                }, sort_keys=True),
+            },
+        ],
+        "temperature": 0,
+        "max_tokens": config.max_output_tokens,
+        "response_format": {"type": "json_object"},
+    } | _service_tier_option(config) | _provider_route(config) | _reasoning_options(config)
+    usage_rows: list[dict[str, Any]] = []
+    for attempt in range(2):
+        response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
+        usage_rows.append(normalize_openrouter_usage(response))
+        try:
+            result = _json_message_from_response(response)
+            budget = result["trial_budget"]
+            if isinstance(budget, bool) or not isinstance(budget, int) or not 1 <= budget <= max_trials:
+                raise ValueError(f"trial_budget must be an integer from 1 through {max_trials}")
+            if result.get("evidence_id") != summary["evidence_id"]:
+                raise ValueError("stale evidence_id")
+            rationale = result.get("rationale")
+            if not isinstance(rationale, str) or not rationale.strip():
+                raise ValueError("rationale must be non-empty")
+        except (AttributeError, KeyError, TypeError, ValueError, OpenRouterError) as exc:
+            if attempt == 1:
+                raise OpenRouterError(f"OpenRouter returned an invalid cycle budget: {exc}") from exc
+            payload["messages"].append({
+                "role": "user",
+                "content": f"The budget response was invalid: {exc}. Correct the JSON within the ceiling.",
+            })
+            continue
+        return {
+            "trial_budget": budget,
+            "ceiling": max_trials,
+            "rationale": rationale.strip(),
+            "evidence_id": summary["evidence_id"],
+            "usage": _sum_planner_usage(usage_rows),
+            "retry_count": attempt,
+        }
+    raise AssertionError("cycle budget retry loop did not return")
+
+
+def _sum_planner_usage(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    usage = {
+        key: sum(row[key] for row in rows)
+        if all(row[key] is not None for row in rows) else None
+        for key in ("input_tokens", "output_tokens", "total_tokens", "total_cost_usd")
+    }
+    usage["cost_status"] = "reported" if usage["total_cost_usd"] is not None else "unavailable"
+    return usage
+
+
 def choose_research_proposals(
     evidence_bundle: dict[str, Any],
     proposal_count: int,
@@ -389,25 +511,37 @@ def choose_research_proposals(
         "max_tokens": config.max_output_tokens,
         "response_format": {"type": "json_object"},
     } | _service_tier_option(config) | _provider_route(config) | _reasoning_options(config)
-    response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
-    try:
-        proposals, rejected = _validated_research_proposals(response)
-    except Exception as exc:
-        raise OpenRouterError(
-            f"OpenRouter planner returned invalid research proposals: {exc}"
-        ) from exc
-    if not proposals:
-        detail = rejected[0]["reason"] if rejected else "no proposals"
-        raise OpenRouterError(
-            f"OpenRouter planner returned no valid research proposals: {detail}"
-        )
-    return {
-        "raw_response": response,
-        "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
-        "rejected_proposals": rejected,
-        "service_tier": response.get("service_tier"),
-        "usage": normalize_openrouter_usage(response),
-    }
+    usage_rows: list[dict[str, Any]] = []
+    all_rejected: list[dict[str, Any]] = []
+    for attempt in range(2):
+        response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
+        usage_rows.append(normalize_openrouter_usage(response))
+        try:
+            proposals, rejected = _validated_research_proposals(response)
+            detail = rejected[0]["reason"] if rejected else "no proposals"
+        except Exception as exc:
+            proposals, rejected = [], []
+            detail = f"{type(exc).__name__}: {exc}"
+        all_rejected.extend(rejected)
+        if proposals:
+            return {
+                "raw_response": response,
+                "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
+                "rejected_proposals": all_rejected,
+                "service_tier": response.get("service_tier"),
+                "usage": _sum_planner_usage(usage_rows),
+                "retry_count": attempt,
+            }
+        if attempt == 0:
+            payload["messages"].append({
+                "role": "user",
+                "content": (
+                    "Your last proposal was rejected by validation: " + detail[:1000] +
+                    ". Return a corrected proposal with the same assigned target/model. "
+                    "Do not use forbidden literal terms in any text or input features."
+                ),
+            })
+    raise OpenRouterError(f"OpenRouter planner returned no valid research proposals: {detail}")
 
 
 def normalize_openrouter_usage(response: dict[str, Any]) -> dict[str, Any]:

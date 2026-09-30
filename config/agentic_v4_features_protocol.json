@@ -1,0 +1,6 @@
+{
+  "min_train_races": 17000,
+  "calibration_races": 1000,
+  "score_races": 1000,
+  "max_folds": 3
+}

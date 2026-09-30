@@ -12,7 +12,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from .research_specs import PipelineRecipe
+from .research_specs import PipelineRecipe, is_fundamental_first_portfolio
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,7 @@ class ResearchPackageManifest:
     model_kind: str
     target_kind: str
     prediction_method: str
+    portfolio_version: str | None = None
     created_by: str = "ima-research-v2"
 
 
@@ -33,16 +34,20 @@ class ResearchModelPackage:
     recipe: PipelineRecipe
     protocol_id: str
     code_revision: str
+    portfolio_version: str | None = None
 
     def manifest(self) -> ResearchPackageManifest:
         recipe_hash = self.recipe.recipe_hash()
-        package_id = hashlib.sha256(
-            json.dumps({
+        identity = {
                 "recipe_hash": recipe_hash,
                 "protocol_id": self.protocol_id,
                 "code_revision": self.code_revision,
                 "model_kind": self.recipe.model.kind,
-            }, sort_keys=True).encode("utf-8")
+        }
+        if self.portfolio_version is not None:
+            identity["portfolio_version"] = self.portfolio_version
+        package_id = hashlib.sha256(
+            json.dumps(identity, sort_keys=True).encode("utf-8")
         ).hexdigest()[:16]
         return ResearchPackageManifest(
             package_id=package_id,
@@ -52,8 +57,13 @@ class ResearchModelPackage:
             model_kind=self.recipe.model.kind,
             target_kind=self.recipe.target.kind,
             prediction_method=(
-                "predict_proba" if self.recipe.target.kind == "win_probability" else "predict"
+                "predict_fundamental_proba"
+                if self.recipe.target.kind == "win_probability"
+                and is_fundamental_first_portfolio(self.portfolio_version)
+                else "predict_proba" if self.recipe.target.kind == "win_probability" else "predict"
             ),
+            portfolio_version=self.portfolio_version,
+            created_by="ima-research-v3" if self.portfolio_version else "ima-research-v2",
         )
 
     def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
@@ -61,7 +71,12 @@ class ResearchModelPackage:
             raise TypeError("predict_proba is only valid for win_probability packages")
         if not hasattr(self.model, "predict_proba"):
             raise TypeError("Packaged model does not expose predict_proba")
-        probabilities = np.asarray(self.model.predict_proba(frame), dtype=float)
+        predict = (
+            self.model.predict_fundamental_proba
+            if is_fundamental_first_portfolio(self.portfolio_version)
+            else self.model.predict_proba
+        )
+        probabilities = np.asarray(predict(frame), dtype=float)
         _validate_complete_races(frame, probabilities)
         return probabilities
 
@@ -74,6 +89,13 @@ class ResearchModelPackage:
         if len(frame) != len(predictions) or not np.isfinite(predictions).all():
             raise ValueError("Packaged predictions must be finite and match input rows")
         return predictions
+
+    def predict_auxiliary_win_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.recipe.target.kind != "ranking_strength":
+            raise TypeError("Auxiliary win probabilities require a ranking package")
+        probabilities = np.asarray(self.model.predict_win_proba(frame), dtype=float)
+        _validate_complete_races(frame, probabilities)
+        return probabilities
 
     def save(self, path: Path) -> Path:
         path.mkdir(parents=True, exist_ok=True)

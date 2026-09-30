@@ -1,0 +1,15 @@
+[Unit]
+Description=Start iMa feature v4 after fundamental v3 completes its current cycle
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/imaopt/.local/bin/ima-v4-handoff
+TimeoutStartSec=0
+Restart=on-failure
+RestartSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

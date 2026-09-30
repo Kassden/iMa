@@ -56,7 +56,10 @@ class AgenticPlannerTests(unittest.TestCase):
         self.assertIsInstance(schema["feature_schema"], str)
         self.assertIsInstance(schema["train_window"], str)
         compatibility = json.loads(user_content)["target_recipe_compatibility"]
-        self.assertEqual("pairwise_ranker", compatibility["ranking_strength"]["model"])
+        self.assertEqual(
+            "one of: pairwise_ranker, lightgbm_lambdarank",
+            compatibility["ranking_strength"]["model"],
+        )
         self.assertEqual("none", compatibility["placing_top_k"]["blend"])
         parameters = json.loads(user_content)["allowed_model_parameters"]
         self.assertIn("max_iter", parameters["boosted"])
@@ -143,6 +146,60 @@ class AgenticPlannerTests(unittest.TestCase):
             )
         self.assertEqual("flex", result["service_tier"])
         self.assertEqual("boosted", result["proposals"][0]["recipe"]["model"]["kind"])
+
+    def test_choose_research_proposals_reprompts_rejected_text_and_counts_both_calls(self):
+        calls = []
+
+        def fake_post(url, payload, config):
+            calls.append(payload["messages"][:])
+            return {
+                "usage": {"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.001},
+                "choices": [{"message": {"content": json.dumps({"proposals": [{
+                    "proposal_id": "proposal-1",
+                    "hypothesis": "Use final_odds." if len(calls) == 1 else "Predict recorded odds.",
+                    "changed_axes": ["hyperparameters"],
+                    "recipe": {"schema_version": 2},
+                    "expected_observation": "Development loss changes.",
+                    "falsification_rule": "Reject if loss worsens.",
+                }]})}}],
+            }
+
+        with mock.patch("ima.openrouter_orchestrator._post_json", fake_post):
+            result = choose_research_proposals(
+                {"evidence_id": "e1"}, 1, OpenRouterConfig("key", "test/model")
+            )
+        self.assertEqual(2, len(calls))
+        self.assertIn("rejected by validation", calls[1][-1]["content"])
+        self.assertEqual(1, result["retry_count"])
+        self.assertEqual(240, result["usage"]["total_tokens"])
+        self.assertEqual(0.002, result["usage"]["total_cost_usd"])
+
+    def test_cycle_budget_is_agent_choice_below_ceiling_and_retries_invalid_count(self):
+        from ima.openrouter_orchestrator import choose_cycle_trial_budget
+
+        calls = []
+
+        def fake_post(url, payload, config):
+            calls.append(payload["messages"][:])
+            return {
+                "usage": {"prompt_tokens": 50, "completion_tokens": 10, "cost": 0.0005},
+                "choices": [{"message": {"content": json.dumps({
+                    "evidence_id": "e1",
+                    "trial_budget": 300 if len(calls) == 1 else 37,
+                    "rationale": "Review the current uncertainty before expanding further.",
+                })}}],
+            }
+
+        evidence = {"evidence_id": "e1", "completed_trials": [], "best_by_target": {}}
+        with mock.patch("ima.openrouter_orchestrator._post_json", fake_post):
+            decision = choose_cycle_trial_budget(
+                evidence, 260, OpenRouterConfig("key", "test/model")
+            )
+        self.assertEqual(37, decision["trial_budget"])
+        self.assertEqual(260, decision["ceiling"])
+        self.assertEqual(1, decision["retry_count"])
+        self.assertEqual(0.001, decision["usage"]["total_cost_usd"])
+        self.assertIn("invalid", calls[1][-1]["content"])
 
     def test_model_only_request_omits_provider_and_service_tier(self):
         response = {

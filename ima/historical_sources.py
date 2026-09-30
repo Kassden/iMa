@@ -681,11 +681,15 @@ def enrich_horse_profiles(
             form_by_page = (
                 form.dropna(subset=["horse_page_id", "race_date"])
                 .drop_duplicates(["horse_page_id", "race_date"], keep="last")
-                [["horse_page_id", "race_date", "horse_gear"]]
+                .reindex(columns=["horse_page_id", "race_date", "horse_gear", "rating"])
+                .rename(columns={"rating": "form_rating"})
             )
             enriched["race_date"] = pd.to_datetime(enriched["race_date"]).dt.normalize()
             enriched = enriched.merge(form_by_page, on=["horse_page_id", "race_date"], how="left")
             enriched["gear"] = enriched["gear"].combine_first(enriched.pop("horse_gear"))
+            enriched["rating"] = pd.to_numeric(enriched["rating"], errors="coerce").combine_first(
+                pd.to_numeric(enriched.pop("form_rating"), errors="coerce")
+            )
 
             missing_gear = enriched["gear"].isna() & enriched["horse_id"].notna()
             if missing_gear.any() and gear_by_code is not None:

@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pandas as pd
@@ -12,6 +13,14 @@ from ima.research_controller import (
     _code_revision,
     _fixture_proposals,
     _trace_completed_cycle,
+    _v3_slot,
+    _v3_seed_proposals,
+    _next_v3_suggestions,
+    _v3_identity,
+    _portfolio_slot,
+    _v4_seed_proposals,
+    _v3_replenish,
+    _next_cycle_number,
     campaign_status,
     request_campaign_stop,
     run_research_campaign,
@@ -19,6 +28,8 @@ from ima.research_controller import (
 from ima.research_resources import ResourceSnapshot
 from ima.research_specs import PipelineRecipe
 from ima.research_store import ResearchLedger
+from ima.research_search import ProgramSearchController
+from ima.research_model_package import load_research_package
 
 
 class ResearchControllerTests(unittest.TestCase):
@@ -32,11 +43,325 @@ class ResearchControllerTests(unittest.TestCase):
     def tearDown(self):
         self.resource_patch.stop()
 
+    def test_v3_allocation_and_portfolio_are_deterministic(self):
+        slots = [_v3_slot(index) for index in range(52)]
+        for count, benter, experimental in (
+            (5, 4, 1), (10, 8, 2), (25, 20, 5),
+            (26, 21, 5), (50, 40, 10), (52, 42, 10),
+        ):
+            self.assertEqual(benter, slots[:count].count("B"))
+            self.assertEqual(experimental, count - slots[:count].count("B"))
+        self.assertEqual(["E1", "E2", "E3", "E1", "E2"],
+                         [slot for slot in slots[:26] if slot != "B"])
+        seeds = _v3_seed_proposals()
+        self.assertEqual(4, len(seeds))
+        self.assertEqual(
+            ["benter_conditional_logit", "lightgbm_lambdarank",
+             "catboost_classifier", "catboost_regressor"],
+            [proposal.recipe.model.kind for proposal in seeds],
+        )
+
+    def test_v4_allocation_includes_boosted_win_challenger(self):
+        slots = [_portfolio_slot(index, "feature_v4") for index in range(25)]
+        self.assertEqual(20, slots.count("B"))
+        self.assertEqual(["E1", "E2", "E3", "E4", "E1"],
+                         [slot for slot in slots if slot != "B"])
+        seeds = _v4_seed_proposals()
+        self.assertEqual(5, len(seeds))
+        self.assertEqual("boosted", seeds[1].recipe.model.kind)
+        self.assertEqual("win_probability", seeds[1].recipe.target.kind)
+        self.assertEqual("race_relative_center", seeds[0].recipe.transforms[0].kind)
+
+    def test_v4_replenishment_rejects_hyperparameter_only_feature_claim(self):
+        seed = _v4_seed_proposals()[0]
+        candidate = seed.model_copy(update={
+            "proposal_id": "same-features-new-regularization",
+            "parent_trial_ids": ("parent",),
+            "evidence_ids": ("evidence",),
+        })
+        ledger = mock.Mock()
+        ledger.terminal_results.return_value = [{
+            "status": "completed", "attempt_id": "parent",
+            "payload": {"recipe": seed.recipe.canonical_payload()},
+            "result": {"objective_value": 2.2},
+        }]
+        search = mock.Mock()
+        search.programs = {"seed": seed}
+        profile = mock.Mock()
+        profile.admission_error.return_value = None
+        config = SimpleNamespace(
+            research_policy="feature_v4", planner_mode="openrouter",
+            max_total_cost_usd=5.0, model="test/model", service_tier=None,
+            max_output_tokens=1000, planner_timeout_seconds=30,
+            provider_endpoint=None, planner_reasoning_effort=None,
+        )
+        with tempfile.TemporaryDirectory() as directory, mock.patch(
+            "ima.research_controller._planner_spend", return_value=0.0
+        ), mock.patch(
+            "ima.research_controller._build_evidence", return_value={"evidence_id": "evidence"}
+        ), mock.patch(
+            "ima.research_controller.OpenRouterConfig.from_env"
+        ), mock.patch(
+            "ima.research_controller.choose_research_proposals",
+            return_value={"proposals": [candidate.model_dump(mode="json")]},
+        ):
+            suggestions, decision = _v3_replenish(
+                config, Path(directory), ledger, search, profile, "B", 1
+            )
+        self.assertEqual([], suggestions)
+        self.assertEqual("rejected", decision["status"])
+        self.assertIn("unchanged_feature_program", decision["reasons"])
+        search.register.assert_not_called()
+
+    def test_resume_accepts_slot_specific_planner_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            campaign = Path(directory)
+            planner = campaign / "planner"
+            planner.mkdir()
+            (planner / "cycle-0003-B-1790759948244662361.json").write_text("{}")
+            self.assertEqual(4, _next_cycle_number(campaign))
+            (planner / "cycle-bad-B-123.json").write_text("{}")
+            with self.assertRaisesRegex(RuntimeError, "Invalid cycle artifact name"):
+                _next_cycle_number(campaign)
+
+    def test_v4_first_attempt_trains_new_feature_recipe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            frame = pd.read_csv(dataset)
+            frame["last_speed_ratio"] = 0.9 + frame["horse_no"] * 0.01
+            frame["prior_win_rate"] = frame["horse_no"] * 0.02
+            frame.to_csv(dataset, index=False)
+            campaign = root / "agentic_v4"
+            config = CampaignConfig(
+                campaign_dir=campaign, policy="agentic", research_policy="feature_v4",
+                planner_mode="fixture", dataset_path=dataset, protocol_path=protocol,
+                max_trials=1, proposal_batch_size=1, max_concurrent_trials=1,
+            )
+            payload = run_research_campaign(config)
+            self.assertEqual("complete", payload["mode"])
+            attempt = ResearchLedger(campaign / "ledger.sqlite").terminal_results()[0]
+            self.assertEqual("completed", attempt["status"], attempt["result"].get("error"))
+            self.assertEqual("B", attempt["payload"]["experiment_id"])
+            self.assertEqual("feature-discovery-v4-fundamental",
+                             attempt["payload"]["portfolio_version"])
+            self.assertEqual("development_fundamental_race_log_loss",
+                             attempt["result"]["objective_name"])
+            feature_program = json.loads(Path(
+                attempt["result"]["artifacts"]["feature_program"]
+            ).read_text(encoding="utf-8"))
+            self.assertEqual(feature_program["feature_program_id"],
+                             attempt["result"]["lineage"]["feature_program_id"])
+            package = load_research_package(Path(attempt["result"]["artifacts"]["package"]))
+            self.assertEqual("predict_fundamental_proba", package.manifest().prediction_method)
+            weights = pd.read_csv(Path(attempt["result"]["artifacts"]["package"]) / "feature-weights.csv")
+            self.assertEqual(len(weights), len(package.model.model.conditional.coefficients))
+            self.assertTrue(weights["feature"].str.len().gt(0).all())
+            frame = pd.read_csv(dataset)
+            probabilities = package.predict_proba(frame)
+            totals = pd.Series(probabilities).groupby(frame["race_id"]).sum()
+            self.assertTrue((totals - 1.0).abs().lt(1e-8).all())
+            scored = pd.read_csv(attempt["result"]["artifacts"]["predictions"])
+            aligned = frame.set_index(["race_id", "horse_no"]).loc[
+                pd.MultiIndex.from_frame(scored[["race_id", "horse_no"]])
+            ].reset_index()
+            self.assertLess(
+                abs(package.predict_proba(aligned) - scored["model_probability"].to_numpy()).max(),
+                1e-8,
+            )
+
+    def test_v4_five_attempts_include_boosted_win_model(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            frame = pd.read_csv(dataset)
+            frame["last_speed_ratio"] = 0.9 + frame["horse_no"] * 0.01
+            frame["prior_win_rate"] = frame["horse_no"] * 0.02
+            frame.to_csv(dataset, index=False)
+            campaign = root / "agentic_v4"
+            config = CampaignConfig(
+                campaign_dir=campaign, policy="agentic", research_policy="feature_v4",
+                planner_mode="fixture", dataset_path=dataset, protocol_path=protocol,
+                max_trials=5, proposal_batch_size=5, max_concurrent_trials=2,
+            )
+            payload = run_research_campaign(config)
+            self.assertEqual("complete", payload["mode"])
+            ledger = ResearchLedger(campaign / "ledger.sqlite")
+            attempts = ledger.terminal_results()
+            self.assertEqual(5, len(attempts))
+            self.assertEqual(["B", "B", "E1", "B", "B"],
+                             [row["payload"]["experiment_id"]
+                              for row in ledger.reserved_attempts()])
+            self.assertTrue(all(row["status"] == "completed" for row in attempts))
+            challenger = next(row for row in attempts if row["payload"]["experiment_id"] == "E1")
+            self.assertEqual("development_fundamental_race_log_loss",
+                             challenger["result"]["objective_name"])
+
+    def test_v3_first_attempt_trains_benter_without_touching_legacy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            config = CampaignConfig(
+                campaign_dir=root / "agentic_v3", policy="agentic",
+                research_policy="benter_v3", planner_mode="fixture",
+                dataset_path=dataset, protocol_path=protocol,
+                max_trials=1, proposal_batch_size=1, max_concurrent_trials=1,
+            )
+            payload = run_research_campaign(config)
+            self.assertEqual("complete", payload["mode"])
+            result = ResearchLedger(root / "agentic_v3" / "ledger.sqlite").terminal_results()[0]
+            self.assertEqual("B", result["payload"]["experiment_id"])
+            self.assertEqual("benter_conditional_logit", result["payload"]["recipe"]["model"]["kind"])
+            self.assertEqual("completed", result["status"])
+            self.assertEqual(
+                "development_fundamental_race_log_loss",
+                result["result"]["objective_name"],
+            )
+            self.assertEqual("model", result["result"]["metrics"]["objective_source"])
+
+    def test_v3_five_attempts_include_one_experimental_ranker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            config = CampaignConfig(
+                campaign_dir=root / "agentic_v3", policy="agentic",
+                research_policy="benter_v3", planner_mode="fixture",
+                dataset_path=dataset, protocol_path=protocol,
+                max_trials=5, proposal_batch_size=5, max_concurrent_trials=2,
+            )
+            payload = run_research_campaign(config)
+            self.assertEqual("complete", payload["mode"])
+            attempts = ResearchLedger(root / "agentic_v3" / "ledger.sqlite").reserved_attempts()
+            self.assertEqual(["B", "B", "E1", "B", "B"],
+                             [row["payload"]["experiment_id"] for row in attempts])
+            self.assertTrue(all(row["status"] == "completed" for row in attempts))
+
+    def test_v3_portfolio_trains_all_three_experiments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            frame = pd.read_csv(dataset)
+            extra = frame.groupby("race_id", sort=False).tail(1).copy()
+            extra["horse_no"] = 4
+            extra["horse_rating"] = 48
+            extra["result"] = 4
+            extra["target_win"] = 0
+            extra["target_probability"] = 0.0
+            extra["market_probability"] = 0.1
+            extra["win_odds"] = 10.0
+            frame["market_probability"] *= 0.9
+            frame["win_odds"] = 1.0 / frame["market_probability"]
+            frame = pd.concat([frame, extra], ignore_index=True)
+            frame["field_size"] = 4
+            frame.to_csv(dataset, index=False)
+            campaign = root / "agentic_v3"
+            config = CampaignConfig(
+                campaign_dir=campaign, policy="agentic", research_policy="benter_v3",
+                planner_mode="fixture", dataset_path=dataset, protocol_path=protocol,
+                max_trials=15, proposal_batch_size=5, max_concurrent_trials=2,
+            )
+            payload = run_research_campaign(config)
+            self.assertEqual("complete", payload["mode"])
+            attempts = ResearchLedger(campaign / "ledger.sqlite").terminal_results()
+            by_experiment = {row["payload"]["experiment_id"]: row for row in attempts}
+            self.assertEqual({"B", "E1", "E2", "E3"}, set(by_experiment))
+            for row in by_experiment.values():
+                self.assertEqual("completed", row["status"], row["result"].get("error"))
+                package = load_research_package(Path(row["result"]["artifacts"]["package"]))
+                self.assertEqual(row["result"]["target_kind"], package.recipe.target.kind)
+            ranker = by_experiment["E1"]
+            ranker_package = load_research_package(
+                Path(ranker["result"]["artifacts"]["package"])
+            )
+            self.assertIn("calibrated_win", ranker["result"]["metrics"]["folds"][0])
+            frame = pd.read_csv(dataset)
+            probabilities = ranker_package.predict_auxiliary_win_proba(frame)
+            totals = pd.Series(probabilities).groupby(frame["race_id"]).sum()
+            self.assertTrue((totals - 1.0).abs().lt(1e-8).all())
+
+    def test_v3_resume_uses_durable_reservation_counter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(campaign_dir=root, policy="agentic",
+                                    research_policy="benter_v3", planner_mode="fixture")
+            ledger = ResearchLedger(root / "ledger.sqlite")
+            search = ProgramSearchController(root)
+            suggestions, _ = _next_v3_suggestions(
+                config, root, ledger, search, None, 26, 1
+            )
+            self.assertEqual(26, len(suggestions))
+            for index, item in enumerate(suggestions):
+                ledger.reserve_attempt(f"fake-{index}", item.serializable() | _v3_identity(item.recipe))
+            resumed = ProgramSearchController(root)
+            next_suggestions, _ = _next_v3_suggestions(
+                config, root, ledger, resumed, None, 3, 2
+            )
+            self.assertEqual(3, len(next_suggestions), resumed.snapshot())
+            self.assertEqual(["B", "E3", "B"],
+                             [_v3_identity(item.recipe)["experiment_id"]
+                              for item in next_suggestions])
+
+    def test_v3_replays_reserved_attempt_before_new_slots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol = self.fixture(root)
+            campaign = root / "agentic_v3"
+            first = CampaignConfig(
+                campaign_dir=campaign, policy="agentic", research_policy="benter_v3",
+                planner_mode="fixture", dataset_path=dataset, protocol_path=protocol,
+                max_trials=1, proposal_batch_size=1, max_concurrent_trials=1,
+            )
+            self.assertEqual("complete", run_research_campaign(first)["mode"])
+            search = ProgramSearchController(campaign)
+            benter_program = next(pid for pid, proposal in search.programs.items()
+                                  if proposal.recipe.model.kind == "benter_conditional_logit")
+            pending = search.ask(1, allowed_program_ids=[benter_program])[0]
+            ledger = ResearchLedger(campaign / "ledger.sqlite")
+            ledger.reserve_attempt("interrupted-reservation", pending.serializable() | _v3_identity(pending.recipe))
+            resumed = CampaignConfig(**{**first.__dict__, "max_trials": 2})
+            self.assertEqual("complete", run_research_campaign(resumed)["mode"])
+            self.assertEqual(2, ledger.snapshot()["completed"])
+            self.assertEqual(2, len(ledger.reserved_attempts()))
+
+    def test_v3_openrouter_budget_is_a_ceiling_not_a_fill_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = CampaignConfig(
+                campaign_dir=root, policy="agentic", research_policy="benter_v3",
+                planner_mode="openrouter", model="test/model", max_total_cost_usd=1.0,
+                proposal_batch_size=260,
+            )
+            budget = {
+                "trial_budget": 7,
+                "ceiling": 260,
+                "rationale": "Seven trials are enough for the current uncertainty.",
+                "evidence_id": "e1",
+                "usage": {
+                    "input_tokens": 50, "output_tokens": 10,
+                    "total_tokens": 60, "total_cost_usd": 0.001,
+                    "cost_status": "reported",
+                },
+            }
+            with mock.patch.dict("os.environ", {"OPENROUTER_API_KEY": "key"}):
+                with mock.patch(
+                    "ima.research_controller.choose_cycle_trial_budget", return_value=budget
+                ) as planner:
+                    suggestions, decision = _next_v3_suggestions(
+                        config, root, ResearchLedger(root / "ledger.sqlite"),
+                        ProgramSearchController(root), mock.Mock(summary={}), 260, 0,
+                    )
+            self.assertEqual(7, len(suggestions))
+            self.assertEqual(7, decision["trial_budget"])
+            self.assertEqual(260, decision["budget_ceiling"])
+            self.assertEqual(0.001, decision["planner_usage"]["total_cost_usd"])
+            planner.assert_called_once()
+
     def fixture(self, root: Path) -> tuple[Path, Path]:
         frame = pd.read_csv("tests/fixtures/research_races.csv")
         frame["horse_rating"] = 60 + frame["horse_no"]
         frame["horse_age"] = 4 + (frame["horse_no"] % 3)
         frame["field_size"] = frame.groupby("race_id")["race_id"].transform("size")
+        frame["win_odds"] = 1.0 / frame["market_probability"]
         dataset = root / "dataset.csv"
         frame.to_csv(dataset, index=False)
         protocol = root / "protocol.json"

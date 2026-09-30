@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "policy": "agentic",
+  "research_policy": "benter_v3",
+  "planner_mode": "local",
+  "max_trials": 15,
+  "proposal_batch_size": 5,
+  "max_concurrent_trials": 4,
+  "max_consecutive_failed_trials": 15,
+  "dataset_path": "/home/imaopt/research-v2/campaigns/feedback-canary/inputs/rich-history.csv.gz",
+  "protocol_path": "/home/imaopt/research-v2/config/feedback-canary-protocol.json",
+  "mlflow_tracking_uri": "http://100.95.24.121:5000"
+}

@@ -86,6 +86,10 @@ class ResearchRegressor:
     kind: str = "ridge_regressor"
     parameters: dict[str, Any] | None = None
     pipeline: Pipeline | None = None
+    native_model: Any = None
+    native_preprocessor: Any = None
+    native_feature_schema: FeatureSchema | None = None
+    catboost_medians: dict[str, float] | None = None
 
     def fit(
         self,
@@ -93,6 +97,38 @@ class ResearchRegressor:
         feature_schema: FeatureSchema,
         label_column: str,
     ) -> "ResearchRegressor":
+        if self.kind == "catboost_regressor":
+            from catboost import CatBoostRegressor
+
+            self.native_feature_schema = feature_schema
+            prepared, self.catboost_medians = _catboost_frame(frame, feature_schema)
+            self.native_model = CatBoostRegressor(
+                **({"iterations": 160, "depth": 5, "learning_rate": 0.05,
+                    "thread_count": 1, "verbose": False, "random_seed": 42,
+                    "allow_writing_files": False} | dict(self.parameters or {}))
+            )
+            self.native_model.fit(
+                prepared, frame[label_column], cat_features=list(feature_schema.categorical)
+            )
+            return self
+        if self.kind == "lightgbm_lambdarank":
+            from lightgbm import LGBMRanker
+
+            self.native_feature_schema = feature_schema
+            ordered = frame.sort_values("race_id", kind="stable")
+            self.native_preprocessor = _sparse_preprocessor(feature_schema)
+            x = self.native_preprocessor.fit_transform(ordered[list(feature_schema.features)])
+            groups = ordered.groupby("race_id", sort=False).size().to_numpy()
+            relevance = np.rint(
+                np.clip(ordered[label_column].to_numpy(dtype=float), 0.0, 1.0) * 15
+            ).astype(int)
+            self.native_model = LGBMRanker(
+                **({"objective": "lambdarank", "n_estimators": 160, "learning_rate": 0.05,
+                    "num_leaves": 15, "min_child_samples": 20, "n_jobs": 1,
+                    "verbosity": -1, "random_state": 42} | dict(self.parameters or {}))
+            )
+            self.native_model.fit(x, relevance, group=groups)
+            return self
         numeric = list(feature_schema.numeric)
         categorical = list(feature_schema.categorical)
         preprocessor = ColumnTransformer([
@@ -119,6 +155,17 @@ class ResearchRegressor:
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.native_model is not None:
+            assert self.native_feature_schema is not None
+            if self.kind == "catboost_regressor":
+                prepared, _ = _catboost_frame(
+                    frame, self.native_feature_schema, self.catboost_medians
+                )
+                return np.asarray(self.native_model.predict(prepared), dtype=float)
+            x = self.native_preprocessor.transform(
+                frame[list(self.native_feature_schema.features)]
+            )
+            return np.asarray(self.native_model.predict(x), dtype=float)
         if self.pipeline is None:
             raise RuntimeError("Regressor has not been fitted")
         return np.asarray(self.pipeline.predict(frame), dtype=float)
@@ -130,6 +177,8 @@ class ResearchClassifier:
     parameters: dict[str, Any] | None = None
     pipeline: Pipeline | None = None
     feature_schema: FeatureSchema | None = None
+    native_model: Any = None
+    catboost_medians: dict[str, float] | None = None
 
     def fit(
         self,
@@ -138,6 +187,19 @@ class ResearchClassifier:
         label_column: str,
     ) -> "ResearchClassifier":
         self.feature_schema = feature_schema
+        if self.kind == "catboost_classifier":
+            from catboost import CatBoostClassifier
+
+            prepared, self.catboost_medians = _catboost_frame(frame, feature_schema)
+            self.native_model = CatBoostClassifier(
+                **({"iterations": 160, "depth": 5, "learning_rate": 0.05,
+                    "thread_count": 1, "verbose": False, "random_seed": 42,
+                    "allow_writing_files": False} | dict(self.parameters or {}))
+            )
+            self.native_model.fit(
+                prepared, frame[label_column], cat_features=list(feature_schema.categorical)
+            )
+            return self
         preprocessor = ColumnTransformer([
             ("numeric", Pipeline([
                 ("impute", SimpleImputer(strategy="median", add_indicator=True)),
@@ -161,6 +223,10 @@ class ResearchClassifier:
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        if self.native_model is not None:
+            assert self.feature_schema is not None
+            prepared, _ = _catboost_frame(frame, self.feature_schema, self.catboost_medians)
+            return np.asarray(self.native_model.predict_proba(prepared)[:, 1], dtype=float)
         if self.pipeline is None or self.feature_schema is None:
             raise RuntimeError("Classifier has not been fitted")
         return np.asarray(
@@ -203,7 +269,42 @@ def secondary_target_diagnostics(
             include_rank_metrics=False,
         )
         return metrics | {"mae": metrics["race_mae"]}
+    if contract.kind == "recorded_final_win_odds":
+        metrics = regression_metrics(
+            values, labelled, label_column=contract.label_column,
+        )
+        return metrics | {"log_odds_mae": metrics["race_mae"]}
     raise ValueError(f"Unsupported target diagnostics: {contract.kind}")
+
+
+def _sparse_preprocessor(schema: FeatureSchema) -> ColumnTransformer:
+    return ColumnTransformer([
+        ("numeric", Pipeline([
+            ("impute", SimpleImputer(strategy="median", add_indicator=True)),
+            ("scale", StandardScaler()),
+        ]), list(schema.numeric)),
+        ("categorical", Pipeline([
+            ("impute", SimpleImputer(strategy="most_frequent")),
+            ("encode", OneHotEncoder(handle_unknown="ignore")),
+        ]), list(schema.categorical)),
+    ], sparse_threshold=1.0)
+
+
+def _catboost_frame(
+    frame: pd.DataFrame, schema: FeatureSchema,
+    medians: dict[str, float] | None = None,
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    prepared = pd.DataFrame(index=frame.index)
+    fitted = dict(medians or {})
+    for column in schema.numeric:
+        values = pd.to_numeric(frame[column], errors="coerce")
+        if medians is None:
+            median = values.median()
+            fitted[column] = float(median) if pd.notna(median) else 0.0
+        prepared[column] = values.fillna(fitted[column]).astype(float)
+    for column in schema.categorical:
+        prepared[column] = frame[column].fillna("__missing__").astype(str)
+    return prepared, fitted
 
 
 def offset_gradient_check(

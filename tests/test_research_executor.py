@@ -8,7 +8,7 @@ import pandas as pd
 
 from ima.research_executor import RecipeExecutionRequest, execute_recipe
 from ima.research_model_package import load_research_package
-from ima.research_specs import PipelineRecipe
+from ima.research_specs import FUNDAMENTAL_FIRST_PORTFOLIO_VERSION, PipelineRecipe
 
 
 FIXTURE = Path("tests/fixtures/research_races.csv")
@@ -21,7 +21,10 @@ PROTOCOL = {
 
 
 class ResearchExecutorTests(unittest.TestCase):
-    def _run(self, root: Path, recipe: PipelineRecipe, dataset: Path = FIXTURE):
+    def _run(
+        self, root: Path, recipe: PipelineRecipe, dataset: Path = FIXTURE,
+        portfolio_version: str | None = None,
+    ):
         return execute_recipe(RecipeExecutionRequest(
             attempt_id=f"attempt-{recipe.recipe_hash()}",
             proposal_id="proposal-fixture",
@@ -32,6 +35,7 @@ class ResearchExecutorTests(unittest.TestCase):
             protocol_parameters=PROTOCOL,
             code_revision="fixture-revision",
             environment_hash="fixture-environment",
+            portfolio_version=portfolio_version,
         ))
 
     def test_executes_win_recipe_and_persists_protected_artifacts(self):
@@ -52,6 +56,33 @@ class ResearchExecutorTests(unittest.TestCase):
             predictions = pd.read_csv(output / "predictions.csv")
             totals = predictions.groupby("race_id")["selected_probability"].sum()
             self.assertTrue(np.allclose(totals.to_numpy(), 1.0))
+
+    def test_fundamental_portfolio_optimizes_and_packages_standalone_probabilities(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = self._run(
+                Path(directory), PipelineRecipe(),
+                portfolio_version=FUNDAMENTAL_FIRST_PORTFOLIO_VERSION,
+            )
+            self.assertEqual("completed", result.status, result.error)
+            self.assertEqual("development_fundamental_race_log_loss", result.objective_name)
+            self.assertEqual("model", result.metrics["objective_source"])
+            self.assertEqual(3, result.metrics["metric_contract_version"])
+            self.assertAlmostEqual(
+                result.objective_value,
+                result.metrics["summary"]["model"]["race_log_loss"]["mean"],
+            )
+            self.assertIn("selected", result.metrics["summary"])
+            package = load_research_package(Path(result.artifacts["package"]))
+            self.assertEqual("predict_fundamental_proba", package.manifest().prediction_method)
+            predictions = pd.read_csv(result.artifacts["predictions"])
+            source = pd.read_csv(FIXTURE)
+            final = predictions[predictions["fold_id"].eq("fold-002")]
+            frame = source[source["race_id"].isin(final["race_id"])].copy()
+            frame = frame.sort_values(["date", "race_no", "race_id", "horse_no"])
+            self.assertTrue(np.allclose(
+                package.predict_proba(frame.drop(columns=["market_probability"])),
+                final["model_probability"].to_numpy(),
+            ))
 
     def test_transform_ablation_and_window_change_effective_training(self):
         recipe = PipelineRecipe(

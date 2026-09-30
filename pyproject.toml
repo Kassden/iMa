@@ -37,6 +37,8 @@ dev = [
   "playwright>=1.54,<2",
 ]
 research = [
+  "catboost>=1.2,<2",
+  "lightgbm>=4.5,<5",
   "optuna>=4.2,<5",
   "psutil>=6,<8",
   "pydantic>=2.10,<3",

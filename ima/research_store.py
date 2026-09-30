@@ -158,6 +158,21 @@ class ResearchLedger:
             "uploaded_at": row["uploaded_at"],
         } for row in rows]
 
+    def reserved_attempts(self) -> list[dict[str, Any]]:
+        """All durable allocations in reservation order, including failures."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT attempt_id, status, payload_json FROM attempts ORDER BY rowid"
+            ).fetchall()
+        return [{
+            "attempt_id": row["attempt_id"],
+            "status": row["status"],
+            "payload": json.loads(row["payload_json"]),
+        } for row in rows]
+
+    def pending_attempts(self) -> list[dict[str, Any]]:
+        return [row for row in self.reserved_attempts() if row["status"] == "reserved"]
+
     def recover_running(self) -> int:
         """Return unsupervised running attempts to reserved on controller startup."""
         with self._connect() as conn:

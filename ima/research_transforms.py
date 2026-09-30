@@ -65,6 +65,22 @@ class FittedResearchTransforms:
                     output[column] = pd.to_numeric(output[column], errors="coerce").clip(lo, hi)
             elif spec.kind == "race_relative_rank":
                 output = _apply_race_relative_rank([output], spec)[0]
+            elif spec.kind == "race_relative_center":
+                for column in tuple(spec.parameters["columns"]):
+                    values = pd.to_numeric(output[column], errors="coerce")
+                    output[f"{column}_race_centered"] = (
+                        values - values.groupby(output["race_id"]).transform("mean")
+                    )
+            elif spec.kind == "signed_log1p":
+                for column in tuple(spec.parameters["columns"]):
+                    values = pd.to_numeric(output[column], errors="coerce")
+                    output[f"{column}_signed_log1p"] = np.sign(values) * np.log1p(np.abs(values))
+            elif spec.kind == "numeric_interaction":
+                left, right = tuple(spec.parameters["columns"])
+                output[f"{left}_x_{right}"] = (
+                    pd.to_numeric(output[left], errors="coerce")
+                    * pd.to_numeric(output[right], errors="coerce")
+                )
             else:  # pragma: no cover - specs are validated during fit.
                 raise TransformError(f"Unknown transform kind: {spec.kind}")
         return output
@@ -73,6 +89,9 @@ class FittedResearchTransforms:
 REGISTERED_TRANSFORMS = {
     "clip_numeric_quantiles",
     "race_relative_rank",
+    "race_relative_center",
+    "signed_log1p",
+    "numeric_interaction",
 }
 
 
@@ -87,10 +106,14 @@ def validate_transform_spec(spec: TransformSpec) -> None:
             raise TransformError("clip_numeric_quantiles requires columns")
         if not 0 <= lower < upper <= 1:
             raise TransformError("clip quantiles must satisfy 0 <= lower < upper <= 1")
-    if spec.kind == "race_relative_rank":
+    if spec.kind in {"race_relative_rank", "race_relative_center", "signed_log1p"}:
         columns = tuple(spec.parameters.get("columns", ()))
         if not columns:
-            raise TransformError("race_relative_rank requires columns")
+            raise TransformError(f"{spec.kind} requires columns")
+    if spec.kind == "numeric_interaction":
+        columns = tuple(spec.parameters.get("columns", ()))
+        if len(columns) != 2 or columns[0] == columns[1]:
+            raise TransformError("numeric_interaction requires two distinct columns")
 
 
 def apply_research_transforms(

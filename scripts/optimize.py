@@ -13,7 +13,7 @@ _CONFIG_KEYS = {
     "max_concurrent_trials", "timeout_minutes", "service_tier",
     "provider_endpoint",
     "planner_reasoning_effort",
-    "openrouter_batch", "model", "spec_profile", "planner_mode",
+    "openrouter_batch", "model", "spec_profile", "planner_mode", "research_policy",
     "max_total_cost_usd", "max_output_tokens", "planner_timeout_seconds",
     "replan_every_terminal_trials",
     "max_consecutive_failed_trials",
@@ -38,6 +38,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--campaign", type=Path, required=True)
     run.add_argument("--config", type=Path)
     run.add_argument("--policy", choices=("local", "openrouter", "agentic"))
+    run.add_argument("--research-policy", choices=("legacy", "benter_v3", "feature_v4"))
     run.add_argument(
         "--max-trials",
         type=_parse_max_trials,
@@ -84,6 +85,7 @@ def main() -> int:
         values = _load_config(args.config)
         cli_values = {
             "policy": args.policy,
+            "research_policy": args.research_policy,
             "max_trials": getattr(args, "max_trials", argparse.SUPPRESS),
             "proposal_batch_size": args.proposal_batch_size,
             "max_concurrent_trials": args.max_concurrent_trials,
@@ -127,6 +129,7 @@ def main() -> int:
             model=values.get("model", "openrouter/local-policy"),
             spec_profile=values.get("spec_profile", "default"),
             planner_mode=values.get("planner_mode", "local"),
+            research_policy=values.get("research_policy", "legacy"),
             max_total_cost_usd=values.get("max_total_cost_usd"),
             max_output_tokens=int(values.get("max_output_tokens", 4000)),
             planner_timeout_seconds=int(values.get("planner_timeout_seconds", 300)),

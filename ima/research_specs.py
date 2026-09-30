@@ -23,6 +23,17 @@ class RecipeValidationError(ValueError):
     """Raised when a recipe is invalid for the registered pipeline capabilities."""
 
 
+FUNDAMENTAL_FIRST_PORTFOLIO_VERSION = "benter-portfolio-v3-2-fundamental"
+FEATURE_DISCOVERY_PORTFOLIO_VERSION = "feature-discovery-v4-fundamental"
+
+
+def is_fundamental_first_portfolio(version: str | None) -> bool:
+    return version in {
+        FUNDAMENTAL_FIRST_PORTFOLIO_VERSION,
+        FEATURE_DISCOVERY_PORTFOLIO_VERSION,
+    }
+
+
 FORBIDDEN_RESEARCH_TERMS = {
     "final_odds",
     "dividend",
@@ -40,6 +51,28 @@ FORBIDDEN_RESEARCH_TERMS = {
 
 
 MODEL_PARAMETER_CONTRACTS: dict[str, dict[str, str]] = {
+    "benter_conditional_logit": {
+        "l2": "number from 0 through 100",
+        "max_iter": "integer from 1 through 5000",
+    },
+    "lightgbm_lambdarank": {
+        "learning_rate": "number greater than 0 and at most 1",
+        "n_estimators": "integer from 1 through 2000",
+        "num_leaves": "integer from 2 through 255",
+        "min_child_samples": "integer from 1 through 1000",
+    },
+    "catboost_classifier": {
+        "learning_rate": "number greater than 0 and at most 1",
+        "iterations": "integer from 1 through 2000",
+        "depth": "integer from 1 through 10",
+        "l2_leaf_reg": "number from 0 through 100",
+    },
+    "catboost_regressor": {
+        "learning_rate": "number greater than 0 and at most 1",
+        "iterations": "integer from 1 through 2000",
+        "depth": "integer from 1 through 10",
+        "l2_leaf_reg": "number from 0 through 100",
+    },
     "logit": {
         "C": "number greater than 0 and at most 100",
         "class_weight": "balanced or null",
@@ -87,12 +120,16 @@ class TargetSpec(StrictModel):
         "placing_top_k",
         "adjusted_finish_time_or_speed",
         "market_odds_forecast",
+        "recorded_final_win_odds",
     ] = "win_probability"
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class TransformSpec(StrictModel):
-    kind: Literal["clip_numeric_quantiles", "race_relative_rank"]
+    kind: Literal[
+        "clip_numeric_quantiles", "race_relative_rank", "race_relative_center",
+        "signed_log1p", "numeric_interaction",
+    ]
     parameters: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -104,10 +141,14 @@ class TransformSpec(StrictModel):
 class ModelSpec(StrictModel):
     kind: Literal[
         "logit",
+        "benter_conditional_logit",
         "boosted",
         "pairwise_ranker",
         "hist_gradient_regressor",
         "ridge_regressor",
+        "lightgbm_lambdarank",
+        "catboost_classifier",
+        "catboost_regressor",
     ] = "logit"
     parameters: dict[str, Any] = Field(default_factory=dict)
 
@@ -163,6 +204,18 @@ class PipelineRecipe(StrictModel):
             separators=(",", ":"),
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+    def feature_program_id(self, dataset_hash: str) -> str:
+        payload = {
+            "dataset_hash": dataset_hash,
+            "feature_schema": self.feature_schema,
+            "drop_feature_families": self.drop_feature_families,
+            "transforms": [spec.model_dump(mode="json") for spec in self.transforms],
+            "train_window": self.train_window,
+        }
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:16]
 
 
 class SearchDimension(StrictModel):
@@ -278,9 +331,11 @@ def experiment_spec_from_recipe(recipe: PipelineRecipe):
 
 
 def _validate_model_target(model_kind: str, task: str, target_kind: str) -> None:
-    classifiers = {"logit", "boosted"}
-    rankers = {"pairwise_ranker"}
-    regressors = {"hist_gradient_regressor", "ridge_regressor"}
+    classifiers = {"logit", "boosted", "benter_conditional_logit", "catboost_classifier"}
+    rankers = {"pairwise_ranker", "lightgbm_lambdarank"}
+    regressors = {"hist_gradient_regressor", "ridge_regressor", "catboost_regressor"}
+    if model_kind == "benter_conditional_logit" and target_kind != "win_probability":
+        raise RecipeValidationError("benter_conditional_logit requires win_probability")
     if task == "classifier" and model_kind not in classifiers:
         raise RecipeValidationError(f"{target_kind} requires a classifier model")
     if task == "ranker" and model_kind not in rankers:
@@ -322,7 +377,20 @@ def _validate_model_parameters(model_kind: str, parameters: dict[str, Any]) -> N
                 f"{model_kind}.{name} must be an integer from {lower} through {upper}"
             )
 
-    if model_kind == "logit":
+    if model_kind == "lightgbm_lambdarank":
+        number("learning_rate", 0.0, 1.0, inclusive_lower=False)
+        integer("n_estimators", 1, 2000)
+        integer("num_leaves", 2, 255)
+        integer("min_child_samples", 1, 1000)
+    elif model_kind in {"catboost_classifier", "catboost_regressor"}:
+        number("learning_rate", 0.0, 1.0, inclusive_lower=False)
+        number("l2_leaf_reg", 0.0, 100.0, inclusive_lower=True)
+        integer("iterations", 1, 2000)
+        integer("depth", 1, 10)
+    elif model_kind == "benter_conditional_logit":
+        number("l2", 0.0, 100.0, inclusive_lower=True)
+        integer("max_iter", 1, 5000)
+    elif model_kind == "logit":
         number("C", 0.0, 100.0, inclusive_lower=False)
         integer("max_iter", 1, 5000)
         if parameters.get("class_weight") not in {None, "balanced"}:
