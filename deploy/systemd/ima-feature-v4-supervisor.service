@@ -1,0 +1,17 @@
+[Unit]
+Description=iMa feature discovery v4 optimizer
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/imaopt/research-v2/live-releases/ima-v4-current
+ExecStart=/home/imaopt/.local/bin/ima-feature-v4-supervisor
+Restart=on-failure
+RestartSec=300
+KillSignal=SIGINT
+TimeoutStopSec=180
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
