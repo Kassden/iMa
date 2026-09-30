@@ -121,6 +121,7 @@ def research_run_parameters(
         "program_id": str(result.get("program_id", "")),
         "proposal_id": str(result.get("proposal_id", "")),
         "recipe_hash": str(result.get("recipe_hash", "")),
+        "feature_program_id": str(result.get("lineage", {}).get("feature_program_id", "")),
         "target_kind": str(result.get("target_kind", "")),
         "research_lane": str(result.get("lane", "legacy")),
         "experiment_id": str(result.get("experiment_id", "")),
@@ -188,6 +189,80 @@ def research_run_metrics(result: dict[str, Any]) -> dict[str, float]:
             "unavailable_feature_count": len(training.get("unavailable_features") or []),
         }
     return flatten_numeric_metrics(payload)
+
+
+def log_optimizer_planner_trace(
+    campaign_dir: Path,
+    decision: dict[str, Any],
+    config: MLflowConfig,
+) -> dict[str, Any] | None:
+    """Publish planner usage when a decision is made, before training finishes."""
+    if not config.enabled or not decision.get("planner_model"):
+        return None
+    cycle = int(decision["cycle"])
+    linkage_path = campaign_dir / "traces" / f"planner-cycle-{cycle:04d}.json"
+    if linkage_path.is_file():
+        return json.loads(linkage_path.read_text(encoding="utf-8"))
+
+    mlflow = _mlflow()
+    if config.tracking_uri:
+        mlflow.set_tracking_uri(config.tracking_uri)
+    experiment = mlflow.set_experiment(config.experiment_name)
+    usage = decision.get("planner_usage") or {}
+    trace_name = f"planner-cycle-{cycle:04d}"
+    cost = usage.get("total_cost_usd")
+    cost_preview = f"Planner cost: ${float(cost):.9f} USD" if cost is not None else "Planner cost unavailable"
+    tags = {
+        "ima.campaign_cycle_id": f"{campaign_dir.resolve()}:{cycle}",
+        "ima.cycle": str(cycle),
+        "ima.trace_phase": "planner",
+        "ima.cost_status": str(usage.get("cost_status", "unavailable")),
+        "mlflow.traceName": trace_name,
+    }
+    if cost is not None:
+        tags["planner_cost_usd"] = str(cost)
+    with mlflow.start_span(
+        name=trace_name,
+        span_type="LLM",
+        attributes={
+            "ima.cycle": cycle,
+            "ima.planner_model": str(decision["planner_model"]),
+            "ima.cost_status": str(usage.get("cost_status", "unavailable")),
+        },
+    ) as planner:
+        trace_id = planner.trace_id
+        mlflow.update_current_trace(
+            tags=tags,
+            session_id=str(campaign_dir.resolve()),
+            request_preview=_trace_preview(decision),
+            response_preview=f"{cost_preview} | {len(decision.get('suggestions') or [])} suggestions",
+        )
+        planner.set_inputs({
+            "evidence_id": decision.get("evidence_id"),
+            "requested_proposals": len(decision.get("suggestions") or []),
+        })
+        planner.set_outputs({"proposals": _trace_proposals(decision)})
+        token_usage = {
+            key: usage[key]
+            for key in ("input_tokens", "output_tokens", "total_tokens")
+            if usage.get(key) is not None
+        }
+        if token_usage:
+            planner.set_attribute("mlflow.chat.tokenUsage", token_usage)
+        if usage.get("total_cost_usd") is not None:
+            planner.set_attribute(
+                "mlflow.llm.cost", {"total_cost": float(usage["total_cost_usd"])}
+            )
+    mlflow.flush_trace_async_logging()
+    linkage = {
+        "trace_id": trace_id,
+        "experiment_id": str(experiment.experiment_id),
+        "cycle": cycle,
+        "cost_status": str(usage.get("cost_status", "unavailable")),
+        "total_cost_usd": usage.get("total_cost_usd"),
+    }
+    _write_json_atomic(linkage_path, linkage)
+    return linkage
 
 
 def log_optimizer_cycle_trace(
@@ -589,6 +664,7 @@ def log_research_package_version(
         "ima.target_kind": target_kind,
         "ima.protocol_id": str(result.get("lineage", {}).get("protocol_id", "")),
         "ima.dataset_hash": str(result.get("lineage", {}).get("dataset_hash", "")),
+        "ima.feature_program_id": str(result.get("lineage", {}).get("feature_program_id", "")),
         "ima.code_revision": str(result.get("lineage", {}).get("code_revision", "")),
         "ima.environment_hash": str(result.get("lineage", {}).get("environment_hash", "")),
         **research_identity_tags(params),
@@ -608,6 +684,16 @@ def log_research_package_version(
             mlflow.log_input(dataset, context="training")
         mlflow.log_metrics(research_run_metrics(result), dataset=dataset)
         mlflow.log_dict(result, "result.json")
+        feature_program_path = result.get("artifacts", {}).get("feature_program")
+        if feature_program_path and Path(feature_program_path).is_file():
+            mlflow.log_artifact(feature_program_path, artifact_path="analysis")
+        if dataset_path is not None:
+            manifest_path = dataset_path.with_suffix(".manifest.json")
+            if manifest_path.is_file():
+                mlflow.log_artifact(str(manifest_path), artifact_path="dataset")
+        weights_path = package_dir / "feature-weights.csv"
+        if weights_path.is_file():
+            mlflow.log_artifact(str(weights_path), artifact_path="analysis")
         mlflow.pyfunc.log_model(
             name="model",
             python_model=ResearchPyFuncModel(),

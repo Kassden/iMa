@@ -10,6 +10,7 @@ from ima.mlflow_tracking import (
     _model_artifact_source,
     flatten_numeric_metrics,
     log_optimizer_cycle_trace,
+    log_optimizer_planner_trace,
     log_research_package,
     log_research_package_version,
     research_identity_tags,
@@ -30,7 +31,8 @@ class DummyProbabilityModel:
 
 class MLflowTrackingTests(unittest.TestCase):
     def test_config_is_disabled_without_uri(self):
-        config = MLflowConfig.from_values(tracking_uri=None, experiment_name="demo")
+        with mock.patch.dict("os.environ", {"MLFLOW_TRACKING_URI": ""}):
+            config = MLflowConfig.from_values(tracking_uri=None, experiment_name="demo")
         self.assertFalse(config.enabled)
         self.assertEqual("demo", config.experiment_name)
         self.assertTrue(config.register_models)
@@ -280,6 +282,40 @@ class MLflowTrackingTests(unittest.TestCase):
             self.assertEqual(0.00125, trace.info.cost["total_cost"])
             self.assertEqual("reported", first["cost_status"])
             self.assertEqual(1, len(list((root / "traces").glob("cycle-*.json"))))
+
+    def test_planner_trace_is_visible_before_trials_finish(self):
+        import mlflow
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = MLflowConfig(
+                tracking_uri=f"sqlite:///{root / 'mlflow.db'}",
+                experiment_name="early-planner-trace",
+                enabled=True,
+                register_models=False,
+            )
+            decision = {
+                "cycle": 49,
+                "source": "benter_v3",
+                "planner_model": "deepseek/test",
+                "planner_usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 20,
+                    "total_tokens": 120,
+                    "total_cost_usd": 0.00125,
+                    "cost_status": "reported",
+                },
+                "suggestions": [],
+            }
+            first = log_optimizer_planner_trace(root, decision, config)
+            self.assertEqual(first, log_optimizer_planner_trace(root, decision, config))
+            trace = mlflow.get_trace(first["trace_id"], flush=True)
+            self.assertEqual("planner-cycle-0049", trace.info.tags["mlflow.traceName"])
+            self.assertEqual(120, trace.info.token_usage["total_tokens"])
+            self.assertEqual(0.00125, trace.info.cost["total_cost"])
+            self.assertEqual("planner", trace.info.tags["ima.trace_phase"])
+            self.assertEqual("0.00125", trace.info.tags["planner_cost_usd"])
+            self.assertIn("$0.001250000 USD", trace.info.response_preview)
 
     def test_optimizer_cycle_trace_marks_missing_cost_unavailable(self):
         import mlflow

@@ -95,10 +95,10 @@ class CampaignConfig:
     def validate(self) -> None:
         if self.policy not in {"local", "openrouter", "agentic"}:
             raise ValueError("policy must be local, openrouter, or agentic")
-        if self.research_policy not in {"legacy", "benter_v3"}:
-            raise ValueError("research_policy must be legacy or benter_v3")
-        if self.research_policy == "benter_v3" and self.policy != "agentic":
-            raise ValueError("benter_v3 requires agentic policy")
+        if self.research_policy not in {"legacy", "benter_v3", "feature_v4"}:
+            raise ValueError("research_policy must be legacy, benter_v3, or feature_v4")
+        if self.research_policy in {"benter_v3", "feature_v4"} and self.policy != "agentic":
+            raise ValueError(f"{self.research_policy} requires agentic policy")
         if self.max_trials is not None and self.max_trials <= 0:
             raise ValueError("max_trials must be positive or None for unlimited")
         if self.proposal_batch_size <= 0:
