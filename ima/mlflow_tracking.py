@@ -175,6 +175,7 @@ def research_run_metrics(result: dict[str, Any]) -> dict[str, float]:
         "summary": source.get("summary", {}),
         "dataset_exclusions": source.get("dataset_exclusions", {}),
         "fold_count": len(source.get("folds") or []),
+        "worker_resources": source.get("worker_resources", {}),
     }
     for fold in source.get("folds") or []:
         fold_id = str(fold.get("fold_id", "unknown"))
@@ -241,7 +242,7 @@ def log_optimizer_planner_trace(
             "evidence_id": decision.get("evidence_id"),
             "requested_proposals": len(decision.get("suggestions") or []),
         })
-        planner.set_outputs({"proposals": _trace_proposals(decision)})
+        planner.set_outputs({"proposals": _trace_proposals(decision),"trial_budget":decision.get("trial_budget"),"approved_trials":decision.get("approved_trials"),"retired_program_ids":decision.get("retired_program_ids",[]),"rejected":decision.get("rejected",[]),"planner_status":decision.get("planner_status"),"error":decision.get("error")})
         token_usage = {
             key: usage[key]
             for key in ("input_tokens", "output_tokens", "total_tokens")
@@ -480,6 +481,9 @@ def _trace_proposals(decision: dict[str, Any]) -> list[dict[str, Any]]:
             "expected_observation": item.get("expected_observation"),
             "falsification_rule": item.get("falsification_rule"),
             "recipe_hash": (item.get("recipe") or {}).get("recipe_hash"),
+            "recipe": item.get("recipe"),
+            "max_trials": item.get("max_trials"),
+            "program_id": item.get("program_id"),
         } for item in proposals]
     return [{
         "proposal_id": item.get("trial_id"),
@@ -693,8 +697,11 @@ def log_research_package_version(
     )
     if len(existing) > 1:
         raise RuntimeError(f"Duplicate MLflow runs for attempt {attempt_id}")
+    resume_run_id = existing[0].info.run_id if existing else None
     if existing:
-        return _research_model_linkage(client, model_name, existing[0].info.run_id)
+        linkage = _research_model_linkage(client, model_name, resume_run_id)
+        if not config.register_models or linkage.get("model_version"):
+            return linkage
 
     class ResearchPyFuncModel(mlflow.pyfunc.PythonModel):
         def load_context(self, context) -> None:
@@ -718,7 +725,7 @@ def log_research_package_version(
         "ima.environment_hash": str(result.get("lineage", {}).get("environment_hash", "")),
         **research_identity_tags(params),
     }
-    with mlflow.start_run(run_name=attempt_id, tags=tags) as active:
+    with mlflow.start_run(run_id=resume_run_id,run_name=attempt_id, tags=tags) as active:
         mlflow.log_params(params)
         for key in ("discovery_id", "matrix_id"):
             if result.get("lineage", {}).get(key):
@@ -751,7 +758,9 @@ def log_research_package_version(
                     digest=manifest["matrix_id"],
                 )
                 mlflow.log_input(feature_dataset, context="feature_matrix")
-            for selection in Path(discovery_path).parent.glob("discovery-*.json"):
+            for selection in Path(discovery_path).parent.glob("discovery-*"):
+                if selection.suffix not in {".json",".joblib"}:
+                    continue
                 if selection.name == "discovery-manifest.json":
                     continue
                 mlflow.log_artifact(str(selection), artifact_path="discovery")
@@ -769,6 +778,8 @@ def log_research_package_version(
             name="model",
             python_model=ResearchPyFuncModel(),
             artifacts={"package": str(package_dir)},
+            code_paths=[str(Path(__file__).resolve().parent)],
+            pip_requirements=_research_dependencies(bool(discovery_path)),
             registered_model_name=model_name if config.register_models else None,
         )
         run_id = active.info.run_id
@@ -776,6 +787,14 @@ def log_research_package_version(
     if config.register_models and "model_version" not in linkage:
         raise RuntimeError(f"MLflow did not register a model version for {attempt_id}")
     return linkage
+
+
+def _research_dependencies(discovery=False):
+    from importlib.metadata import version
+    names=["mlflow","numpy","pandas","scikit-learn","scipy","joblib","lightgbm","catboost","pydantic"]
+    if discovery:
+        names += ["featuretools","feature-engine","woodwork"]
+    return [f"{name}=={version(name)}" for name in names]
 
 
 def _research_model_linkage(client, model_name: str, run_id: str) -> dict[str, str]:
