@@ -264,7 +264,19 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                 "If the assignment says required_feature_change=true, change at least one "
                 "of feature_schema, drop_feature_families, transforms, or train_window "
                 "relative to reference_feature_recipe. A narrative claim is not sufficient; "
-                "the controller compares the actual recipe and rejects identical feature programs."
+                "the controller compares the actual recipe and rejects identical feature programs. "
+                "When discovery_capabilities is present this is v5: you may additionally create "
+                "new historical features with recipe.feature_discovery using its supplied strict schema. "
+                "Choose entities, measurements, aggregates, history windows, selection strategy and "
+                "selected-column budget. At least one program must use feature_discovery. "
+                "Return programs covering all B/E1/E2/E3/E4 contracts so the 80/20 dispatcher "
+                "can stay occupied; split your chosen trial budget mainly toward B. "
+                "Null feature_discovery provides a matched existing-feature control. "
+                "Set fixed_parameters=true for controlled fixed-model feature ablations; "
+                "otherwise Optuna tunes within your search_space. You may enable domain_history, "
+                "sequence_windows, race_relative, or adjusted_speed_residuals in DiscoverySpec. "
+                "Adjusted residuals are separately fit within each temporal fold, never on the full archive. "
+                "With no completed trials yet, parent_trial_ids may be empty; do not fabricate parents."
             ),
         },
         {
@@ -302,7 +314,15 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                         "calibration": {"kind": "temperature", "parameters": {}},
                         "blend": {"kind": "market_softmax", "parameters": {}},
                         "seed": 42,
+                        "feature_discovery": (
+                            {"entities": ["horse"], "measurements": ["speed_mps"], "aggregates": ["count", "mean", "std"], "windows_days": [90, 365], "max_depth": 1, "max_selected": 16, "selection": "mutual_information"}
+                            if evidence_bundle.get("discovery_capabilities") else None
+                        ),
                     },
+                    "discovery_capabilities": evidence_bundle.get("discovery_capabilities"),
+                    "requested_trial_budget": evidence_bundle.get("requested_trial_budget"),
+                    "next_required_lane": evidence_bundle.get("next_required_lane"),
+                    "v5_budget_rule": "When requested_trial_budget is supplied, the sum of all proposal max_trials MUST NOT exceed it. Prioritize next_required_lane if specified. Use Benter for most work, but include executable experimental contracts. Unused programs can carry over.",
                     "target_recipe_compatibility": {
                         "win_probability": {
                             "model": "one of: logit, boosted, benter_conditional_logit",
@@ -356,6 +376,7 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                             "hypothesis": "short falsifiable reason",
                             "changed_axes": ["one or more allowed axes"],
                             "recipe": "PipelineRecipe v2 object",
+                            "fixed_parameters": False,
                             "search_space": {
                                 "model_parameter_name": {
                                     "kind": "float, int, or categorical",

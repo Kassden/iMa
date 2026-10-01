@@ -277,7 +277,9 @@ def log_optimizer_cycle_trace(
     if not config.enabled:
         return None
     cycle = int(decision["cycle"])
-    linkage_path = campaign_dir / "traces" / f"cycle-{cycle:04d}.json"
+    checkpoint = decision.get("checkpoint")
+    suffix = f"-checkpoint-{int(checkpoint):04d}" if checkpoint is not None else ""
+    linkage_path = campaign_dir / "traces" / f"cycle-{cycle:04d}{suffix}.json"
     if linkage_path.is_file():
         return json.loads(linkage_path.read_text(encoding="utf-8"))
 
@@ -292,7 +294,7 @@ def log_optimizer_cycle_trace(
         "total_cost_usd": None,
         "cost_status": "unavailable",
     }
-    trace_name = f"optimizer-cycle-{cycle:04d}"
+    trace_name = f"optimizer-cycle-{cycle:04d}{suffix}"
     cycle_id = f"{campaign_dir.resolve()}:{cycle}"
     summary = _cycle_result_summary(results, campaign_results=campaign_results)
     with mlflow.start_span(
@@ -718,6 +720,10 @@ def log_research_package_version(
     }
     with mlflow.start_run(run_name=attempt_id, tags=tags) as active:
         mlflow.log_params(params)
+        for key in ("discovery_id", "matrix_id"):
+            if result.get("lineage", {}).get(key):
+                mlflow.set_tag(f"ima.{key}", result["lineage"][key])
+                mlflow.log_param(key, result["lineage"][key])
         dataset = None
         if dataset_path is not None:
             from mlflow.data.dataset_source_registry import resolve_dataset_source
@@ -731,6 +737,24 @@ def log_research_package_version(
             mlflow.log_input(dataset, context="training")
         mlflow.log_metrics(research_run_metrics(result), dataset=dataset)
         mlflow.log_dict(result, "result.json")
+        discovery_path = result.get("artifacts", {}).get("discovery_manifest")
+        paired_path = result.get("artifacts", {}).get("paired_feature_report")
+        if paired_path and Path(paired_path).is_file():
+            mlflow.log_artifact(paired_path, artifact_path="analysis")
+        if discovery_path and Path(discovery_path).is_file():
+            mlflow.log_artifact(discovery_path, artifact_path="discovery")
+            manifest = json.loads(Path(discovery_path).read_text())
+            if manifest.get("matrix_path"):
+                feature_dataset = MetaDataset(
+                    source=resolve_dataset_source(manifest["matrix_path"]),
+                    name=f"discovery-{manifest['discovery_id']}",
+                    digest=manifest["matrix_id"],
+                )
+                mlflow.log_input(feature_dataset, context="feature_matrix")
+            for selection in Path(discovery_path).parent.glob("discovery-*.json"):
+                if selection.name == "discovery-manifest.json":
+                    continue
+                mlflow.log_artifact(str(selection), artifact_path="discovery")
         feature_program_path = result.get("artifacts", {}).get("feature_program")
         if feature_program_path and Path(feature_program_path).is_file():
             mlflow.log_artifact(feature_program_path, artifact_path="analysis")
