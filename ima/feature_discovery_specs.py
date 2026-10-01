@@ -34,6 +34,7 @@ class DiscoverySpec(BaseModel):
     residual_shrinkage: float = Field(default=5, ge=0, le=100)
     domain_history: bool = False
     recency_decay_days: int = Field(default=180, ge=7, le=730)
+    diagnostics: tuple[Literal["race_permutation", "learning_curve"], ...] = ()
 
     @model_validator(mode="after")
     def valid_grid(self):

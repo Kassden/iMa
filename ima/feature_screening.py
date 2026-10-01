@@ -69,6 +69,7 @@ def chronological_inner_splits(train):
 class DiscoverySelection:
     columns: tuple[str, ...]
     report: dict
+    fitted_selectors: tuple = ()
 
     @classmethod
     def fit(cls, train: pd.DataFrame, spec: DiscoverySpec, target_kind: str, label: str):
@@ -76,12 +77,17 @@ class DiscoverySelection:
         coverage = train[generated].notna().mean()
         usable = [c for c in generated if coverage[c] >= 1 - spec.missingness_limit and train[c].nunique(dropna=True) > 1]
         dropped = {c: "missing_or_constant" for c in generated if c not in usable}
+        fitted = []
+        redundancy_groups = []
+        near_constant = [c for c in usable if train[c].value_counts(normalize=True,dropna=False).iloc[0]>.995]
         values = train[usable].replace([np.inf, -np.inf], np.nan)
         for selector in (DropConstantFeatures(tol=1, missing_values="ignore"), DropDuplicateFeatures(missing_values="ignore"), SmartCorrelatedSelection(method="spearman", threshold=spec.correlation_threshold, selection_method="missing_values", missing_values="ignore")):
             if values.shape[1] < 2:
                 break
             before = set(values)
             values = selector.fit_transform(values)
+            fitted.append(selector)
+            redundancy_groups.extend([sorted(group) for group in getattr(selector,"correlated_feature_sets_",[])])
             dropped.update({c: type(selector).__name__ for c in before - set(values)})
         ranking = [(c, 0.0) for c in values]
         if spec.selection != "quality" and len(values) and train[label].nunique() > 1:
@@ -109,7 +115,9 @@ class DiscoverySelection:
                 selector=SelectFromModel(estimator.model_[-1],prefit=True,max_features=spec.max_selected)
             columns=tuple(c for c,keep in zip(shortlist,selector.get_support()) if keep)
             selector_note="Race-weighted chronological proxy selection; final target model must confirm"
+            fitted.append(selector)
         fit_hash = content_id(sorted(train.race_id.astype(str).unique()))
         report = {"selector_id": content_id({"spec": spec.model_dump(mode="json"), "fit_races": fit_hash, "columns": columns, "target": target_kind}), "fit_races_hash": fit_hash, "target_kind": target_kind, "selected": columns, "ranking": ranking, "rejected": dropped, "coverage": coverage.to_dict(), "method": spec.selection, "caveat": "Univariate MI is screening evidence, not race-level statistical significance"}
         report.update(inner_protocol_id=content_id([(train.iloc[a].race_id.unique().tolist(),train.iloc[b].race_id.unique().tolist()) for a,b in inner]),inner_fold_count=len(inner),selector_note=selector_note)
-        return cls(columns, report)
+        report.update(near_constant_flags=near_constant,redundancy_groups=redundancy_groups,selection_exposure="Outer training labels used for screening; inner proxy scores are selection diagnostics, not independent confirmation")
+        return cls(columns, report,tuple(fitted))
