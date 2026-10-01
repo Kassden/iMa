@@ -251,8 +251,8 @@ conclusions + champions + coverage -> next EvidenceSnapshot
 - No remote installs, service changes, credentials changes, or downloads are authorized by writing this plan. When later approved, use the established Tailscale network path for China-host dependencies.
 
 ## Deterministic Real-User Test
-- Planned entry point: `.venv/bin/python scripts/run_discovery_canary.py --fixture tests/fixtures/discovery --output .tmp/discovery-canary --planner fixture --max-concurrent-trials 2`.
-- Fixture planner creates a novel historical feature, proposes two compatible pipelines and a budget of five attempts, then retrieves a completed hypothesis and extends one program.
+- Implemented entry point: `.venv/bin/python -m scripts.run_discovery_canary --output .tmp/discovery-canary --planner fixture --max-concurrent-trials 2 --max-trials 20`.
+- The built-in synthetic fixture planner creates novel historical features across all five lanes; subsequent checkpoints retrieve completed evidence. This is a deterministic test double, not an LLM reasoning claim. Separate real-history OpenRouter canaries verify genuine choices.
 - Include a straggler and a short job. Prove the freed worker starts eligible work from another program before the straggler ends; verify reservations never exceed budgets.
 - Before the agentic fixture test run deterministic discovery twice with the same spec and LLM disabled. Compare catalog IDs, numerical feature values, inner-fold IDs, mask IDs, shortlist order and reasons. Append a future race and repeat; all earlier as-of feature values remain unchanged.
 - Append future outcomes and late-observed events; earlier feature rows must remain identical. Replay with identical seeds yields matching predictions within declared tolerances.
@@ -422,7 +422,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: `.venv/bin/python -m unittest tests.test_research_scheduler tests.test_research_controller`; injected-clock stragglers, cross-program dispatch, bounded reservations, thread control, failure/restart and resource pause.
 - Success Criteria: queue timelines prove no cycle-wide straggler barrier when eligible work exists; actual concurrency and CPU/RAM reservations obey policy.
 - Checklist:
-  - [ ] Profile pool versus isolated Ray Tune backend; preserve single ask/tell owner. Record choice and measured overhead.
+  - [x] Profile pool versus isolated Ray Tune backend; preserve single ask/tell owner. Pool 0.4947s; Ray Tune 7.7024s including startup on the same four-task queue check; retained pool.
   - [x] Build jobs share the same resource budget; do not allow a dataset build to overlap unrestricted trainers.
 
 ### Subphase 4.2: Evidence checkpoints and planner freedom

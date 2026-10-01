@@ -42,11 +42,15 @@ evaluated 10,000 representative cutoffs and produced 372 columns. Wall time was
 cutoffs and no scored labels. Full-history output is a separate gate and must not
 be inferred from this sample.
 
-The isolated pool benchmark completed all four tasks and replenished short work
-ahead of its long task (completion order: .05, .1, .08, .4 seconds). Ray Tune is
-isolated from production dependencies; its measured result and any dependency or
-runtime incompatibility must be recorded before calling the comparison complete.
-No predictive-throughput claim follows from a sleep-task queue benchmark.
+The isolated pool benchmark completed all four tasks in 0.4947 seconds and
+replenished short work ahead of its long task (completion order: .05, .1, .08, .4
+seconds). Ray Tune 2.49.0 completed the same task set in 7.7024 seconds including
+initialization. Its first attempts exposed missing optional fsspec and an overlong
+Unix socket path; the separate benchmark environment and short temporary directory
+resolved those issues. Production dependencies were not changed. Report:
+`ops/scheduler-benchmark-c/comparison.json`. The persistent spawn pool was selected
+for the existing single-host/single-writer architecture. No predictive-throughput
+claim follows from a sleep-task queue benchmark.
 
 ## Production Handoff Gate
 
