@@ -46,11 +46,14 @@ models into betting. A new source needs a registered availability adapter first.
 - Maximum 16 concurrent trials, each one native CPU thread and a 4 GiB admission
   reservation; aggregate CPU budget 24 and RAM budget 80 GiB. Host reserve: four
   threads/eight GiB. A reservation is not an individual hard RSS limit. The service
-  has `MemoryHigh=88G`, `MemoryMax=96G`; dispatch also checks available host memory.
+  has `MemoryHigh=92G`, `MemoryMax=96G`; dispatch also checks available host memory.
   The 80 GiB admission budget accounts for declared reservations, not measured RSS.
   Initial full-history training required about 90 GiB for 16 in-flight jobs; the
   service limits were raised in place without restarting or changing pinned code.
   The hard cap still leaves roughly 20 GiB for other workloads on this 128 GiB host.
+  Full-history acceptance found sustained pressure at 16 workers. The production
+  configuration now sets a 12-worker ceiling; a guarded drain/resume is pending
+  while the initial trials finish. This ceiling does not change agent trial budgets.
 - Builders execute inside these same worker reservations. Identical raw matrix
   requests share a locked cache; selection/residual fit state is not shared across
   folds or targets. Fresh Featuretools builds may take many minutes.

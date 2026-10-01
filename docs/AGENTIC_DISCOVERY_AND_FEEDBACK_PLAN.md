@@ -453,6 +453,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Checklist:
   - [x] Obtain rollout authorization: user explicitly requested execution and v5 launch on 2026-10-01, superseding planning-only instructions.
   - [x] Authorized handoff verified: v4 stopped at 1,005 completed/zero running; v5 enabled at pinned 0915b619, 16 concurrent attempts, completed feature/model runs, registered replay and evidence-aware follow-up. Shared services preserved.
+  - [ ] Extended full-history acceptance: replay a completed generated-feature Benter model from its registered URI; gracefully resume at 12 workers after measured training RSS exceeded reservations; verify fresh progression, no OOM/hard-limit hits and protected-service health. Model revision remains pinned; operational resource settings are separately audited.
 
 ## Planning Deliverable Readback
 - Verify this plan with Megaskill plan checker and generate the read-only dashboard.

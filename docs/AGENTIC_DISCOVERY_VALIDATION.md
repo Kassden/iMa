@@ -155,6 +155,17 @@ resource-limit adjustment, not a model-code hotpatch. The 80 GiB scheduler budge
 still measures declared reservations rather than actual worker RSS; per-model
 measured memory admission remains a limitation, not a claimed adaptive capability.
 
+Further observation measured about 40% memory-pressure stall time while the
+working set held near 91 GiB. The soft limit was moved to 92 GiB while retaining
+the 96 GiB hard cap. Subsequent RSS reached 94.42 GiB, still with zero hard-limit
+hits/OOM kills. This leaves insufficient margin for a long-running 16-worker
+campaign, so an operator-owned STOP marker now drains existing work without
+killing trials. A guarded watcher resumes the same pinned campaign at 12 workers
+only after zero running attempts, zero pending tracking/tells, a clean stopped
+mode, unchanged code revision and active protected services. It refuses to remove
+a changed operator marker or resume a failure/spend stop. Resume and primary
+Benter replay are pending acceptance gates, not claimed completed work.
+
 All protected services remained active: `cortex-web`, `cortex-worker`, and
 `solar-simulator`. `imaopt` has `Linger=yes`; v5 is enabled and does not require the
 Mac or SSH session. Unlimited total trials remain subject to the explicit $5 planner
