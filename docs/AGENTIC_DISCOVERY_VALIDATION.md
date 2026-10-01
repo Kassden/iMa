@@ -21,6 +21,19 @@
   mandatory ceiling nor a budget tied to the two-worker canary limit. Decisions and
   fresh evidence are preserved in its campaign. Genuine OpenRouter responses are
   journaled; no fixture planner or bootstrap claimed as live agentic work.
+- Final pinned revision `0915b619f6a40dcc390c3044107831293f826660` canary:
+  20 completed, 20 linked model versions, all five lanes, no failed or pending
+  uploads/tells. Registered URI
+  `models:/ima-agentic-v5-discovery-candidates-win-probability/56` loaded successfully
+  and produced exactly the package's probabilities (maximum error zero); saved CSV
+  replay error was `9.71445146547012e-17`. Re-running the completed campaign exited
+  successfully without dispatching more trials.
+- Chromium inspected the actual MLflow traces table: planner USD previews and
+  meaningful cycle/campaign bests are visible. Screenshot `.tmp/v5-mlflow-traces.png`.
+  The UI's 4.4 MB JavaScript asset took 44 seconds over the observed network, exceeding
+  initial browser navigation timeouts. Browser verification used a temporary SSH
+  relay with a valid original Host header; server DNS-rebinding protections were
+  not disabled. Cost previews are supported; no fabricated native cost column.
 - Failed canaries A/B are retained: disconnected discounted provider routing and
   missing isolated `httpx` respectively. Plain-model routing and v5-only dependencies
   corrected those proven causes without changing v4 or shared packages.
