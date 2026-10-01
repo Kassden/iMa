@@ -1,0 +1,14 @@
+# Isolated imaopt overlay; install only into research-v2/v5-dependencies/site-packages.
+featuretools==1.31.0
+feature-engine==1.9.4
+woodwork==0.31.0
+holidays==0.105
+importlib_resources==7.1.0
+setuptools==80.9.0
+httpx==0.28.1
+httpcore==1.0.9
+h11==0.16.0
+anyio==4.15.1
+idna==3.20
+typing_extensions==4.16.0
+certifi==2026.7.22
