@@ -17,7 +17,7 @@ def main():
     p.add_argument("--max-concurrent-trials",type=int,default=2)
     p.add_argument("--fixture",type=Path)
     p.add_argument("--max-trials",type=int,default=20)
-    p.add_argument("--model",default="deepseek/deepseek-v4.1-flash:floor")
+    p.add_argument("--model",default="deepseek/deepseek-v4.1-flash")
     p.add_argument("--mlflow-tracking-uri")
     args=p.parse_args()
     args.output.mkdir(parents=True,exist_ok=True)
