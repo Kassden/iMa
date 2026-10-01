@@ -300,6 +300,9 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                 "Adjusted residuals are separately fit within each temporal fold, never on the full archive. "
                 "Registered transforms may also reference exact dfs_ feature IDs present in "
                 "feature_evidence, provided the same discovery spec generates them. Never guess IDs. "
+                "All other transform inputs MUST occur in numeric_columns_by_schema for the "
+                "chosen feature_schema. Inspect recent_planner_rejections and correct rejected "
+                "columns or definitions; do not repeat an already rejected recipe. "
                 "With no completed trials yet, parent_trial_ids may be empty; do not fabricate parents."
             ),
         },

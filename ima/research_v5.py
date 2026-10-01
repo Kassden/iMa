@@ -40,7 +40,7 @@ def _plan(evidence, config):
         responses.append(response)
         core._write_json_atomic(Path(config.campaign_dir)/"planner-calls"/f"{evidence['evidence_id']}-{len(responses):02d}.json",{"response":response,"evidence_id":evidence["evidence_id"],"received_at":utc_now()})
     remote=replace(remote,absolute_deadline_seconds=config.planner_timeout_seconds,response_observer=observe)
-    budget = choose_cycle_trial_budget(evidence, config.proposal_batch_size, replace(remote,max_output_tokens=min(2000,remote.max_output_tokens),reasoning_effort="low"))
+    budget = choose_cycle_trial_budget(evidence, config.proposal_batch_size, replace(remote,max_output_tokens=min(2000,remote.max_output_tokens),reasoning_effort="none"))
     evidence=dict(evidence,requested_trial_budget=budget["trial_budget"])
     response = choose_research_proposals(evidence, min(5,budget["trial_budget"],evidence.get("available_program_slots",5)), remote)
     response["trial_budget"] = budget["trial_budget"]
@@ -154,6 +154,9 @@ def run_v5_campaign(config):
                         evidence["reference_campaign_champions"] = [{"attempt_id":r["attempt_id"],"recipe":r["payload"]["recipe"],"objective_name":r["result"]["objective_name"],"objective_value":r["result"]["objective_value"],"source_campaign":str(config.reference_campaign_dir)} for r in references]
                         evidence["hypothesis_memory"] = memory.retrieve(limit=20)
                         evidence["feature_evidence"] = discovery_evidence(ledger.terminal_results())
+                        evidence["numeric_columns_by_schema"] = {name:list(schema.numeric) for name,schema in core.FEATURE_SCHEMAS.items()}
+                        recent_decisions = sorted((directory/"decisions").glob("cycle-*.json"))[-5:]
+                        evidence["recent_planner_rejections"] = [{"cycle":d.get("cycle"),"rejected":d.get("rejected",[]),"provider_rejected":d.get("provider_rejected_proposals",[]),"error":d.get("error")} for d in (core._read_json(path) for path in recent_decisions) if d.get("rejected") or d.get("provider_rejected_proposals") or d.get("error")]
                         evidence["next_required_lane"] = blocked_lane
                         evidence["available_program_slots"] = max(1,available_program_slots)
                         evidence["retirement_required"] = available_program_slots <= 0
@@ -177,6 +180,7 @@ def run_v5_campaign(config):
                         if not any(p.get("recipe",{}).get("feature_discovery") for p in response["proposals"]):
                             raise ValueError("v5 decision must include an executable feature-discovery program")
                         decision.update(trial_budget=budget,planner_model=config.model if config.planner_mode=="openrouter" else None,planner_usage=response.get("usage",{}),budget_decision=response.get("budget_decision"),planner_status=response["source"],rejected=[])
+                        decision["provider_rejected_proposals"] = response.get("rejected_proposals",[])
                         retire = response.get("retire_program_ids",[])
                         if not isinstance(retire,list) or not set(retire)<=set(search.programs):
                             raise ValueError("Planner retirement references unknown programs")
@@ -215,6 +219,9 @@ def run_v5_campaign(config):
                         decision["program_ids"] = accepted
                         decision["approved_trials"] = requested_budget-budget
                         last_error = None if accepted else "Planner returned no new executable programs"
+                        if accepted and not any(search.programs[pid].recipe.feature_discovery for pid in accepted):
+                            last_error = "No feature-discovery program passed admission; inspect recorded rejection reasons"
+                            decision["error"] = last_error
                         blocked_lane = None
                     except Exception as exc:
                         last_error = f"{type(exc).__name__}: {exc}"
