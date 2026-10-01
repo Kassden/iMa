@@ -39,8 +39,10 @@ search creates selection exposure; final confirmation remains protected.
 The representative Featuretools benchmark retained all 271,858 historical rows,
 evaluated 10,000 representative cutoffs and produced 372 columns. Wall time was
 799.8 seconds, process peak RSS 2.147 GiB, matrix memory 0.0278 GiB. It used strict
-cutoffs and no scored labels. Full-history output is a separate gate and must not
-be inferred from this sample.
+cutoffs and no scored labels. The subsequent actual full build evaluated all
+271,858 runner cutoffs with the same 372 columns: 857.14 seconds, process peak
+2.147 GiB, matrix memory 0.7535 GiB. Reports are preserved under the production
+campaign's `ops/build-benchmark/{representative,full,report}.json`.
 
 The isolated pool benchmark completed all four tasks in 0.4947 seconds and
 replenished short work ahead of its long task (completion order: .05, .1, .08, .4

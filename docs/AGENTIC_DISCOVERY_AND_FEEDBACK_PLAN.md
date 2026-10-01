@@ -363,7 +363,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: `.venv/bin/python -m unittest tests.test_feature_generators tests.test_feature_program`; catalog replay, library serialization, duplicate DAG elimination, paths/types, deterministic shard continuation, actual novel feature values and train-window variants.
 - Success Criteria: two repeated label-free runs produce identical candidate IDs and definitions; novel raw features are materialized and cached safely. The library benchmark proves correctness before corpus-scale execution.
 - Checklist:
-  - [ ] Measure Featuretools build wall time/peak RSS on fixture, 10,000 representative runner cutoffs and full candidate count; schedule sample builds under the same resource limits.
+  - [x] Measure Featuretools builds: real-history 10,000 cutoffs 799.8s; all 271,858 cutoffs 857.14s; 372 columns, peak 2.147 GiB; isolated bounded benchmark.
   - [x] Preserve strict semantics: no approximate cutoff or hand-written generic DFS fallback; sample gate passed, full gate remains explicit.
 
 ### Subphase 3.1c: Declarative builder and time-safe cache
