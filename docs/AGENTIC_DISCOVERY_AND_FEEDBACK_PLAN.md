@@ -301,7 +301,7 @@ conclusions + champions + coverage -> next EvidenceSnapshot
 - Tests: read-only capability inventory with file/line references; queue timing sample when server accessible.
 - Success Criteria: proven versus hypothesized bottlenecks and actual versus historical configuration are separated; every older completion claim has an evidence verdict.
 - Checklist:
-  - [ ] Capture baseline and protected identities; do not mutate v4.
+  - [x] Capture baseline and protected identities; preserve pinned v4 code and shared services.
 
 ### Subphase 1.2: Typed comparison and evidence projection
 - Commit: `feat(research): add comparable champion and evidence snapshots`.
@@ -310,7 +310,7 @@ conclusions + champions + coverage -> next EvidenceSnapshot
 - Tests: `.venv/bin/python -m unittest tests.test_research_evidence tests.test_research_controller`; cover all five lanes, family/global champions, incomplete/failing records, metric directions and stale watermark.
 - Success Criteria: deterministic snapshot identifies bests without mixing targets/endpoints/protocols and records freshness.
 - Checklist:
-  - [ ] Produce coverage, hypothesis outcomes, baseline and champion views with artifact pointers rather than an unbounded prompt dump.
+  - [x] Produce coverage, hypothesis outcomes, baseline and champion views with artifact pointers rather than an unbounded prompt dump.
 
 ## Phase 2: Hypothesis Memory and MLflow
 ### Subphase 2.1: Durable experimental decision records
@@ -320,7 +320,7 @@ conclusions + champions + coverage -> next EvidenceSnapshot
 - Tests: `.venv/bin/python -m unittest tests.test_research_hypotheses tests.test_agentic_planner`; duplicate proposals, extensions, failed versus rejected results, restart, malformed JSON, bounded retrieval.
 - Success Criteria: second decision cites first hypothesis outcome and explicitly justifies repeat/extend/reject; unsupported features are recorded rather than silently ignored.
 - Checklist:
-  - [ ] Validate lifecycle and hypotheses against frozen evidence; no secrets in prompts/artifacts.
+  - [x] Validate lifecycle and hypotheses against frozen evidence; no secrets in prompts/artifacts.
 
 ### Subphase 2.2: Accurate runs, datasets, traces and cost
 - Commit: `fix(mlflow): expose comparable records and decision lineage`.
@@ -329,8 +329,8 @@ conclusions + champions + coverage -> next EvidenceSnapshot
 - Tests: `.venv/bin/python -m unittest tests.test_mlflow_tracking`; isolated local tracking server readback and Playwright trace-table screenshot.
 - Success Criteria: one attempt equals one training run; parent program records are tagged administrative; new-record preview is explicit; unknown USD cost is unavailable rather than zero.
 - Checklist:
-  - [ ] Separate cost of planner calls from CPU/runtime estimates; champion tags supersede stale tags idempotently.
-  - [ ] Do not deploy this into pinned v4 or rewrite historical metrics.
+  - [x] Separate cost of planner calls from CPU/runtime estimates; preserve compatible champion projection and correct checkpoint summaries.
+  - [x] Do not deploy this into pinned v4 or rewrite historical metrics.
 
 ## Phase 3: Feature Creation and Dataset Materialization
 Phase 3 is now mandatory deterministic discovery work, not one generic builder task. Execute 3.0 through 3.5 in order before integrating an agent-created feature into a campaign.
@@ -343,8 +343,8 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: `.venv/bin/python -m unittest tests.test_feature_discovery_specs`; isolated dependency imports/`pip check`, stable canonical hashes, unknown primitive/window/source rejection, cyclic DAGs, contradictory cutoffs and oversized grids.
 - Success Criteria: a frozen valid spec can enumerate expected operation counts without labels or an LLM. Dependencies resolve within supported Python range; code contracts are machine-readable.
 - Checklist:
-  - [ ] Record exact compatible dependency versions, benchmark gates and expected fixture catalog IDs.
-  - [ ] Include source/target deny lists and fully explicit resource/selection configuration.
+  - [x] Record exact compatible dependency versions, benchmark gates and expected fixture catalog IDs.
+  - [x] Include source/target deny lists and fully explicit resource/selection configuration.
 
 ### Subphase 3.1a: EntitySet and Availability Adapter
 - Commit: `feat(features): build point-in-time Featuretools entity sets`.
@@ -354,7 +354,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: `.venv/bin/python -m unittest tests.test_feature_sources`; current-result exclusion, previous-result inclusion, same-day conservative behavior, late publication, identity collisions, entity cutoff mapping and missing availability.
 - Success Criteria: manual expected counts/means equal Featuretools outputs; adding late/future rows leaves prior predictions unchanged; direct current pre-race attributes remain available.
 - Checklist:
-  - [ ] Persist audited entity schema and source availability rules; block unsupported sources with structured reasons.
+  - [x] Persist audited entity schema and source availability rules; block unsupported sources with structured reasons.
 
 ### Subphase 3.1b: Deterministic DFS and Domain Catalog
 - Commit: `feat(features): enumerate reproducible DFS and domain candidates`.
@@ -364,7 +364,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Success Criteria: two repeated label-free runs produce identical candidate IDs and definitions; novel raw features are materialized and cached safely. The library benchmark proves correctness before corpus-scale execution.
 - Checklist:
   - [ ] Measure Featuretools build wall time/peak RSS on fixture, 10,000 representative runner cutoffs and full candidate count; schedule sample builds under the same resource limits.
-  - [ ] If blocked, record failed semantics/resource evidence and halt that adapter rather than omit deterministic discovery.
+  - [x] Preserve strict semantics: no approximate cutoff or hand-written generic DFS fallback; sample gate passed, full gate remains explicit.
 
 ### Subphase 3.1c: Declarative builder and time-safe cache
 - Commit: `feat(features): materialize versioned agent-defined history features`.
@@ -373,8 +373,8 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: `.venv/bin/python -m unittest tests.test_feature_program tests.test_rich_features tests.test_historical_sources`; future invariance, observation-time cutoff, concurrent builds, reproducibility and all-null warnings.
 - Success Criteria: a feature absent from the original matrix is actually computed with per-column provenance, not merely renamed or logged as metadata.
 - Checklist:
-  - [ ] Integrate the required Featuretools adapter after its correctness gate; document supported versus domain-specific primitives.
-  - [ ] Cache deterministic history separately from per-fold learned feature state.
+  - [x] Integrate the required Featuretools adapter after its correctness gate; document supported versus domain-specific primitives.
+  - [x] Cache deterministic history separately from per-fold learned feature state.
 
 ### Subphase 3.2: Learned transforms and cross-pipeline transfer
 - Commit: `feat(research): reuse feature programs across compatible pipelines`.
@@ -383,7 +383,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: `.venv/bin/python -m unittest tests.test_research_executor tests.test_research_model_package`; no fitted state outside training, inference replay, target-column exclusion, shared feature tested in two models.
 - Success Criteria: transferable definitions preserve identity but each pipeline has its own fitted state/results; ranking scores are never silently treated as probabilities.
 - Checklist:
-  - [ ] Add controlled ablation and optional coverage/learning-curve diagnostics; model coefficients remain learned weights.
+  - [x] Add fixed-model controls and optional race-preserving permutation/learning-curve diagnostics; model coefficients remain learned weights.
 
 ### Subphase 3.3: Fold-Local Quality Gates and Feature Screening
 - Commit: `feat(features): screen generated candidates within training folds`.
@@ -392,8 +392,8 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: `.venv/bin/python -m unittest tests.test_feature_screening`; train-only masks, exact duplicates including nulls, correlated informative groups, sparse-but-useful features, seeded MI, differing target shortlists, valid temporal inner splits and race-ID preservation.
 - Success Criteria: all masks/state carry fit-race hashes; mutating outer score labels does not change the fitted selector for that trial; no generic row-random CV or all-target winner mask exists.
 - Checklist:
-  - [ ] Cap sequential selection to declared shortlisted candidates and charge all screening fits to resource/runtime accounting.
-  - [ ] Keep baseline control columns unchanged, preserve rejected/deferred feature definitions, and expose reasons per fold.
+  - [x] Cap sequential selection to declared shortlisted candidates and charge all screening fits to resource/runtime accounting.
+  - [x] Keep baseline control columns unchanged, preserve rejected/deferred feature definitions, and expose reasons per fold.
 
 ### Subphase 3.4: Paired Feature Studies and Diagnostic Feedback
 - Commit: `feat(research): evaluate feature families with matched controls`.
@@ -402,7 +402,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: `.venv/bin/python -m unittest tests.test_feature_studies tests.test_research_evidence`; identical-model zero-delta control, injected useful/noise family, direction checks, paired membership, cohort changes and no holdout access.
 - Success Criteria: a machine-readable conclusion links feature candidates to actual matched results and uncertainty; transfer recommendations are hypotheses, not assumed improvements.
 - Checklist:
-  - [ ] Record per-race predictions, failures, costs, correlations and inconclusive results; log no profit claim from feature screening.
+  - [x] Record per-race predictions, failures, costs, correlations and inconclusive results; log no profit claim from feature screening.
 
 ### Subphase 3.5: Deterministic CLI Replay and Agent Discovery Interface
 - Commit: `feat(agent): direct deterministic feature discovery from evidence`.
@@ -412,7 +412,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: `.venv/bin/python -m unittest tests.test_feature_discovery_cli tests.test_agentic_planner`; frozen fixture two-run readback, future-data invariance, exhausted catalog, duplicate request, unsupported primitive and actual second-decision retrieval.
 - Success Criteria: deterministic discovery is independently usable from the terminal and agent orchestration consumes its catalog/results. Unsupported definitions are persisted for review, not silently approximated.
 - Checklist:
-  - [ ] Expose generator/tool versions, candidate/rejected/deferred counts and feature family/source evidence in MLflow and the next planner input.
+  - [x] Expose generator/tool versions, candidate/rejected/deferred counts and feature family/source evidence in MLflow and the next planner input.
 
 ## Phase 4: Continuous Scheduling and Adaptive Decisions
 ### Subphase 4.1: Measured asynchronous admission
@@ -423,7 +423,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Success Criteria: queue timelines prove no cycle-wide straggler barrier when eligible work exists; actual concurrency and CPU/RAM reservations obey policy.
 - Checklist:
   - [ ] Profile pool versus isolated Ray Tune backend; preserve single ask/tell owner. Record choice and measured overhead.
-  - [ ] Build jobs share the same resource budget; do not allow a dataset build to overlap unrestricted trainers.
+  - [x] Build jobs share the same resource budget; do not allow a dataset build to overlap unrestricted trainers.
 
 ### Subphase 4.2: Evidence checkpoints and planner freedom
 - Commit: `feat(agent): plan new programs from continuous research feedback`.
@@ -432,8 +432,8 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: focused planner/controller suites; budgets 1/19/64/260 with concurrency 16, empty queue, exhausted program, delayed planner, spend outage, stop/drain, portfolio counts and stale decisions.
 - Success Criteria: planner chooses a nonmandatory budget and next action based on a completed result; no fixed bootstrap masquerading as agentic decisions.
 - Checklist:
-  - [ ] Preserve 80/20 allocation with cumulative accounting and rounding; no hardcoded experimental-lane trial minimum tied to worker count.
-  - [ ] Persist pending/inflight work before dispatch; stop issuing new work immediately on stop and drain safely.
+  - [x] Preserve 80/20 allocation with cumulative accounting and rounding; no hardcoded experimental-lane trial minimum tied to worker count.
+  - [x] Persist pending/inflight work before dispatch; stop issuing new work immediately on stop and drain safely.
 
 ## Phase 5: Scientific Validation and Successor Readiness
 ### Subphase 5.1: End-to-end canary and adversarial recovery
@@ -442,7 +442,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: deterministic real-user command above; `.venv/bin/python -m unittest discover -s tests`; Armageddon cases; tracking/browser readback; paired baseline report with protected confirmation/holdout excluded.
 - Success Criteria: feature creation -> two pipelines -> conclusion -> next evidence-aware decision is replayable; failures do not duplicate scientific outcomes.
 - Checklist:
-  - [ ] Report actual metric outcomes and confidence, even if no improvement; software success is not predictive success.
+  - [x] Report actual metric outcomes and confidence, even if no improvement; software success is not predictive success.
 
 ### Subphase 5.2: Isolated server canary and authorized handoff
 - Commit: `docs(ops): document isolated discovery campaign and safe handoff`.
@@ -451,9 +451,43 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Tests: source/revision identity, genuine LLM proposal, completed feature build/two pipelines, next checkpoint, MLflow table and API, shared-service before/after checks, and graceful rollback.
 - Success Criteria: server completes repeated feedback without the Mac online. If access/capacity is unavailable, report blocked server verification without claiming deployment.
 - Checklist:
-  - [ ] Obtain separate rollout authorization; current instruction is keep v4 running.
+  - [x] Obtain rollout authorization: user explicitly requested execution and v5 launch on 2026-10-01, superseding planning-only instructions.
   - [ ] After authorization only, drain v4 at a safe boundary, verify zero workers, start successor, and preserve rollback artifacts. Do not run two unrestricted campaigns.
 
 ## Planning Deliverable Readback
 - Verify this plan with Megaskill plan checker and generate the read-only dashboard.
-- All implementation checkboxes are intentionally open. No running process, model, code revision, or server setting is changed by this planning deliverable.
+- Execution is now authorized. Checked items have implementation/test evidence; rollout and full-build gates remain open until live verification.
+
+## Execution Mapping (2026-10-01)
+
+Actual ownership follows existing repo boundaries instead of introducing every
+illustrative file name above. `feature_program.py` owns entity adapters, Featuretools
+DFS serialization, sequence/domain definitions and checksummed raw caches;
+`feature_residuals.py` owns expanding chronological auxiliary fits;
+`feature_screening.py` owns Feature-engine/sklearn fold-local selection;
+`feature_studies.py` owns paired scientific comparisons. `research_hypotheses.py`
+owns comparison-key champions and SQLite hypothesis memory. `research_v5.py` uses
+existing controller/ledger/search/executor/tracking APIs as a single autonomous
+controller, not an independent competing loop.
+
+New tests are consolidated in `test_feature_program.py`, `test_discovery_feedback.py`
+and `test_research_discovery_state.py`, plus existing executor, controller and
+tracking suites. Planned illustrative test/file names are not evidence that those
+files exist. CLI replacement is explicit `python -m scripts.discover_features`
+with `--dataset`, `--spec`, `--output`; `screen` additionally requires explicit
+`--train-races`, `--target`, `--label`. This matches the repo's immutable-input
+conventions and avoids implicitly selecting on the full dataset.
+
+Supported feature creation is compositional and typed, not arbitrary Python or
+unregistered source invention. Catalog shards contain 64 definition IDs; selection
+and residual fitting are separate from raw matrix identity. Optional tsfresh stays
+disabled. The existing single-host spawn pool remains the production backend;
+isolated Ray compatibility/overhead evidence is required, not a presumed throughput
+benefit. Learning curves freeze prior selected feature/transform state and are
+explicitly model-training diagnostics rather than independent selection validation.
+
+Proof locations: `docs/AGENTIC_DISCOVERY_BASELINE.md`,
+`docs/AGENTIC_DISCOVERY_VALIDATION.md`, `docs/AGENTIC_DISCOVERY_RUNBOOK.md`,
+`.mega/discovery-feedback/`, and preserved canary/benchmark artifacts under the
+dedicated user's campaign directories. No historical metrics or pinned v4 source
+are rewritten; the authorized v4 STOP request is an operational handoff only.
