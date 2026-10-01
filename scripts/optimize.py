@@ -18,6 +18,8 @@ _CONFIG_KEYS = {
     "replan_every_terminal_trials",
     "max_consecutive_failed_trials",
     "dataset_path", "protocol_path", "mlflow_tracking_uri",
+    "cpu_thread_budget", "ram_budget_gib", "planning_checkpoint_seconds",
+    "max_trials_per_decision",
 }
 
 
@@ -38,7 +40,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--campaign", type=Path, required=True)
     run.add_argument("--config", type=Path)
     run.add_argument("--policy", choices=("local", "openrouter", "agentic"))
-    run.add_argument("--research-policy", choices=("legacy", "benter_v3", "feature_v4"))
+    run.add_argument("--research-policy", choices=("legacy", "benter_v3", "feature_v4", "discovery_v5"))
     run.add_argument(
         "--max-trials",
         type=_parse_max_trials,
@@ -140,6 +142,9 @@ def main() -> int:
             dataset_path=Path(values["dataset_path"]) if values.get("dataset_path") else None,
             protocol_path=Path(values["protocol_path"]) if values.get("protocol_path") else None,
             mlflow_tracking_uri=values.get("mlflow_tracking_uri"),
+            cpu_thread_budget=int(values.get("cpu_thread_budget",24)),
+            ram_budget_gib=float(values.get("ram_budget_gib",80)),
+            planning_checkpoint_seconds=int(values.get("planning_checkpoint_seconds",300)),
         )
         payload = run_campaign(config, dry=args.dry_run)
         print(_render(payload))
@@ -165,6 +170,11 @@ def _load_config(path: Path | None) -> dict:
         raise ValueError(f"unknown optimizer config keys: {unknown}")
     if payload.get("schema_version", 1) != 1:
         raise ValueError("optimizer config schema_version must be 1")
+    if "max_trials_per_decision" in payload:
+        value=payload.pop("max_trials_per_decision")
+        if "proposal_batch_size" in payload and payload["proposal_batch_size"]!=value:
+            raise ValueError("Conflicting proposal_batch_size and max_trials_per_decision")
+        payload["proposal_batch_size"]=value
     return {key: value for key, value in payload.items() if key != "schema_version"}
 
 
