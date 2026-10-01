@@ -5,6 +5,7 @@ import json
 import time
 import sys
 import resource
+from dataclasses import replace
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait, FIRST_COMPLETED
 from pathlib import Path
 
@@ -13,9 +14,9 @@ import psutil
 from . import research_controller as core
 from .feature_discovery_specs import DiscoverySpec, content_id
 from .feature_studies import paired_feature_report
-from .openrouter_orchestrator import OpenRouterConfig, choose_cycle_trial_budget, choose_research_proposals
+from .openrouter_orchestrator import OpenRouterConfig, choose_cycle_trial_budget, choose_research_proposals, normalize_openrouter_usage, _json_message_from_response
 from .research_executor import RecipeExecutionRequest, execute_recipe
-from .research_hypotheses import HypothesisMemory, champion_snapshot
+from .research_hypotheses import HypothesisMemory, champion_snapshot, reference_champions
 from .research_scheduler import ResourceAdmission, ResourceRequest
 from .research_search import ProgramSearchController
 from .research_specs import ResearchProposal, V5_PORTFOLIO_VERSION
@@ -34,12 +35,18 @@ def _plan(evidence, config):
             proposals.append(old.model_copy(update={"proposal_id":f"fixture-v5-{evidence['terminal_watermark']}-{index}","recipe":recipe,"max_trials":program_budget,"evidence_ids":(evidence["evidence_id"],)}).model_dump(mode="json"))
         return {"proposals":proposals,"trial_budget":config.proposal_batch_size,"usage":{},"source":"fixture"}
     remote = OpenRouterConfig.from_env(model=config.model, service_tier=config.service_tier, max_output_tokens=config.max_output_tokens, timeout_seconds=config.planner_timeout_seconds, provider_endpoint=config.provider_endpoint, reasoning_effort=config.planner_reasoning_effort)
-    budget = choose_cycle_trial_budget(evidence, config.proposal_batch_size, remote)
+    responses=[]
+    def observe(response):
+        responses.append(response)
+        core._write_json_atomic(Path(config.campaign_dir)/"planner-calls"/f"{evidence['evidence_id']}-{len(responses):02d}.json",{"response":response,"evidence_id":evidence["evidence_id"],"received_at":utc_now()})
+    remote=replace(remote,absolute_deadline_seconds=config.planner_timeout_seconds,response_observer=observe)
+    budget = choose_cycle_trial_budget(evidence, config.proposal_batch_size, replace(remote,max_output_tokens=min(2000,remote.max_output_tokens),reasoning_effort="low"))
     evidence=dict(evidence,requested_trial_budget=budget["trial_budget"])
-    response = choose_research_proposals(evidence, min(5,budget["trial_budget"]), remote)
+    response = choose_research_proposals(evidence, min(5,budget["trial_budget"],evidence.get("available_program_slots",5)), remote)
     response["trial_budget"] = budget["trial_budget"]
     response["budget_decision"] = budget
     response["source"] = "openrouter"
+    response["retire_program_ids"] = _json_message_from_response(response["raw_response"]).get("retire_program_ids",[])
     parts=(budget.get("usage",{}),response.get("usage",{}))
     response["usage"] = {k: sum(float(part[k]) for part in parts) if all(part.get(k) is not None for part in parts) else None for k in ("input_tokens","output_tokens","total_tokens","total_cost_usd")}
     response["usage"]["cost_status"]="reported" if response["usage"]["total_cost_usd"] is not None else "unavailable"
@@ -76,12 +83,17 @@ def run_v5_campaign(config):
         ledger = ResearchLedger(directory/"ledger.sqlite")
         search = ProgramSearchController(directory)
         memory = HypothesisMemory(directory/"hypotheses.sqlite")
+        references_path = directory/"reference-champions.json"
+        references = core._read_json(references_path) if references_path.is_file() else (reference_champions(config.reference_campaign_dir,digest,protocol) if config.reference_campaign_dir else [])
+        core._write_json_atomic(references_path,references)
         profile = core.DatasetFeatureProfile(dataset,protocol)
         ledger.recover_running()
         core._reconcile_tells(ledger,search)
         tracking_errors = core._reconcile_tracking(config,ledger,dataset)
         jobs = config.max_concurrent_trials if isinstance(config.max_concurrent_trials,int) else max(1,config.cpu_thread_budget)
-        resources = ResourceAdmission(jobs,config.cpu_thread_budget,config.ram_budget_gib)
+        cpu_budget = min(config.cpu_thread_budget,max(1,psutil.cpu_count()-config.host_reserve_cpu_threads))
+        ram_budget = min(config.ram_budget_gib,psutil.virtual_memory().total/1024**3-config.host_reserve_ram_gib)
+        resources = ResourceAdmission(jobs,cpu_budget,ram_budget)
         requirement = ResourceRequest(1,4)
         completed_since_plan = 0
         last_plan = 0.0
@@ -99,6 +111,8 @@ def run_v5_campaign(config):
         stop_mode = None
         last_error = None
         blocked_lane = None
+        exhausted_path = directory/"exhausted-programs.json"
+        exhausted = set(core._read_json(exhausted_path) or [])
         with ProcessPoolExecutor(max_workers=jobs) as pool, ThreadPoolExecutor(max_workers=1) as planner:
             while True:
                 now = time.monotonic()
@@ -108,16 +122,23 @@ def run_v5_campaign(config):
                     stop_mode = "complete"
                 if core._consecutive_failure_count(ledger) >= config.max_consecutive_failed_trials:
                     stop_mode = "blocked_failures"
-                need_plan = blocked_lane is not None or not search.has_capacity() or completed_since_plan >= config.replan_every_terminal_trials or now-last_plan >= config.planning_checkpoint_seconds
-                if not stop_mode and planning is None and need_plan and now-last_plan >= (60 if last_error else 5):
+                capacity = {pid:0 if pid in exhausted else max(0,proposal.max_trials-sum(t.state.name!="PRUNED" for t in search.studies[pid].get_trials(deepcopy=False))) for pid,proposal in search.programs.items()}
+                active_ids = set(pid for pid,v in capacity.items() if v>0) | {payload["program_id"] for _,payload in inflight.values()}
+                available_program_slots = config.max_inflight_programs-len(active_ids)
+                need_plan = blocked_lane is not None or sum(capacity.values()) <= config.queue_low_watermark or completed_since_plan >= config.replan_every_terminal_trials or now-last_plan >= config.planning_checkpoint_seconds
+                if not stop_mode and planning is None and (available_program_slots>0 or blocked_lane is not None) and need_plan and now-last_plan >= (60 if last_error else 5):
                     if config.planner_mode == "openrouter" and core._planner_spend(directory) >= config.max_total_cost_usd:
                         stop_mode = "paused_spend"
                     else:
                         evidence = core._build_evidence(ledger.terminal_results(),search,profile)
-                        evidence.update(champion_snapshot(ledger.terminal_results()))
+                        evidence.update(champion_snapshot(references + ledger.terminal_results()))
+                        evidence["reference_campaign_champions"] = [{"attempt_id":r["attempt_id"],"recipe":r["payload"]["recipe"],"objective_name":r["result"]["objective_name"],"objective_value":r["result"]["objective_value"],"source_campaign":str(config.reference_campaign_dir)} for r in references]
                         evidence["hypothesis_memory"] = memory.retrieve(limit=20)
                         evidence["feature_evidence"] = discovery_evidence(ledger.terminal_results())
                         evidence["next_required_lane"] = blocked_lane
+                        evidence["available_program_slots"] = max(1,available_program_slots)
+                        evidence["retirement_required"] = available_program_slots <= 0
+                        evidence["remaining_program_capacity"] = capacity
                         evidence["discovery_capabilities"] = {"schema":DiscoverySpec.model_json_schema(),"engine":"Featuretools DFS","screening":"Feature-engine + sklearn; fitted on training only","policy":"80% Benter / 20% rotating E1..E4; propose programs for all required contracts","contracts":core.V4_CONTRACTS,"rules":"May create new definitions by composing allowed entities, measurements, aggregates and windows. Return budgets chosen from evidence, not a mandatory ceiling. No arbitrary code, current result features, final holdout, or live promotion."}
                         evidence["evidence_id"] = content_id(evidence)
                         core._write_json_atomic(directory/"evidence"/f"cycle-{cycle:04d}.json",evidence)
@@ -127,19 +148,31 @@ def run_v5_campaign(config):
                         completed_since_plan = 0
                 if planning and planning[0].done():
                     future, number, evidence = planning
-                    decision = {"cycle":number,"source":"discovery_v5","suggestions":[],"evidence_id":evidence["evidence_id"],"budget_ceiling":config.proposal_batch_size}
+                    decision = {"cycle":number,"source":"discovery_v5","suggestions":[],"evidence_id":evidence["evidence_id"],"budget_ceiling":config.proposal_batch_size,"planner_model":config.model if config.planner_mode=="openrouter" else None}
                     try:
                         response = future.result()
                         core._write_json_atomic(directory/"planner"/f"cycle-{number:04d}.json",{"response":response,"evidence_id":evidence["evidence_id"]})
-                        budget = min(config.proposal_batch_size,int(response["trial_budget"]))
+                        budget = int(response["trial_budget"])
                         requested_budget = budget
-                        if budget < 1: raise ValueError("Planner trial budget must be positive")
+                        if not 1<=budget<=config.proposal_batch_size: raise ValueError("Planner trial budget must be within the operator ceiling")
+                        if not any(p.get("recipe",{}).get("feature_discovery") for p in response["proposals"]):
+                            raise ValueError("v5 decision must include an executable feature-discovery program")
                         decision.update(trial_budget=budget,planner_model=config.model if config.planner_mode=="openrouter" else None,planner_usage=response.get("usage",{}),budget_decision=response.get("budget_decision"),planner_status=response["source"],rejected=[])
+                        retire = response.get("retire_program_ids",[])
+                        if not isinstance(retire,list) or not set(retire)<=set(search.programs):
+                            raise ValueError("Planner retirement references unknown programs")
+                        exhausted.update(retire)
+                        core._write_json_atomic(exhausted_path,sorted(exhausted))
+                        decision["retired_program_ids"] = retire
+                        available_program_slots = config.max_inflight_programs - len((set(pid for pid,v in capacity.items() if v>0)-exhausted)|{p["program_id"] for _,p in inflight.values()})
                         if sum(int(p["max_trials"]) for p in response["proposals"])>budget:
                             raise ValueError("Planner program budgets exceed its chosen decision budget")
-                        known = {r["attempt_id"] for r in ledger.terminal_results() if r["status"]=="completed"}
+                        known = {r["attempt_id"] for r in references+ledger.terminal_results() if r["status"]=="completed"}
                         accepted = []
                         for raw in response["proposals"]:
+                            if len(accepted)>=available_program_slots:
+                                decision["rejected"].append("Active program admission ceiling reached")
+                                break
                             try:
                                 proposal = ResearchProposal.model_validate(raw)
                                 core._portfolio_identity(proposal.recipe,config.research_policy)
@@ -164,6 +197,10 @@ def run_v5_campaign(config):
                     except Exception as exc:
                         last_error = f"{type(exc).__name__}: {exc}"
                         decision.update(planner_status="error",error=last_error)
+                        calls=[normalize_openrouter_usage(core._read_json(p)["response"]) for p in (directory/"planner-calls").glob(f"{evidence['evidence_id']}-*.json")]
+                        if calls:
+                            decision["planner_usage"]={k:sum(float(c[k]) for c in calls) if all(c.get(k) is not None for c in calls) else None for k in ("input_tokens","output_tokens","total_tokens","total_cost_usd")}
+                            decision["planner_usage"]["cost_status"]="reported" if decision["planner_usage"]["total_cost_usd"] is not None else "unavailable"
                     core._persist_decision(directory,number,decision)
                     cycle_results[number]=[]
                     error = core._trace_planner_decision(config,directory,decision)
@@ -212,7 +249,7 @@ def run_v5_campaign(config):
                     trace_decision["planner_usage"] = {"total_cost_usd":0,"cost_status":"not_a_planner_call"}
                     error=core._trace_completed_cycle(config,directory,trace_decision,cycle_results[number],ledger=ledger)
                     if error: tracking_errors.append(error)
-                reserve_gib = min(8,psutil.virtual_memory().total/(1024**3)*.1)
+                reserve_gib = min(config.host_reserve_ram_gib,psutil.virtual_memory().total/(1024**3)*.1)
                 while not stop_mode and resources.admits(requirement) and psutil.virtual_memory().available/(1024**3)>reserve_gib:
                     if config.max_trials is not None and core._success_count(ledger)+len(inflight)>=config.max_trials: break
                     if pending:
@@ -222,9 +259,11 @@ def run_v5_campaign(config):
                     else:
                         lane = core._portfolio_slot(len(ledger.reserved_attempts()),config.research_policy)
                         target,model = core.V4_CONTRACTS[lane]
-                        allowed=[pid for pid,p in search.programs.items() if (p.recipe.target.kind,p.recipe.model.kind)==(target,model)]
+                        allowed=[pid for pid,p in search.programs.items() if pid not in exhausted and (p.recipe.target.kind,p.recipe.model.kind)==(target,model)]
                         suggestions=search.ask(1,allowed_program_ids=allowed)
                         if not suggestions:
+                            exhausted.update(pid for pid in allowed if capacity.get(pid,0)>0)
+                            core._write_json_atomic(exhausted_path,sorted(exhausted))
                             blocked_lane=lane
                             break
                         suggestion=suggestions[0]
@@ -243,7 +282,7 @@ def run_v5_campaign(config):
                     inflight[pool.submit(_worker,request)]=(attempt,payload)
                 host = psutil.virtual_memory()
                 host_resources = {"logical_cpus":psutil.cpu_count(),"load_one_minute_percent":100*psutil.getloadavg()[0]/psutil.cpu_count(),"available_ram_gib":host.available/1024**3}
-                core._write_json_atomic(directory/"status.json",{"status":"draining" if stop_mode else ("training" if inflight else "provider_planning" if planning else "paused_planning"),"updated_at":utc_now(),"cycle":cycle-1,"ledger":ledger.snapshot(),"resources":resources.snapshot(),"host_resources":host_resources,"planner_inflight":planning is not None,"blocked_lane":blocked_lane,"last_planner_error":last_error,"planner_spend_usd":core._planner_spend(directory),"tracking_errors":tracking_errors[-10:]})
+                core._write_json_atomic(directory/"status.json",{"status":"draining" if stop_mode else ("training" if inflight else "provider_planning" if planning else "paused_planning"),"updated_at":utc_now(),"cycle":cycle-1,"ledger":ledger.snapshot(),"resources":resources.snapshot(),"host_resources":host_resources,"planner_inflight":planning is not None,"planner_inflight_seconds":round(now-last_plan,1) if planning else 0,"blocked_lane":blocked_lane,"last_planner_error":last_error,"planner_spend_usd":core._planner_spend(directory),"tracking_errors":tracking_errors[-10:]})
                 if stop_mode and not inflight and planning is None:
                     return core._finish_payload(directory,ledger,search,cycle-1,terminal_new,stop_mode,tracking_errors)
                 if inflight:

@@ -89,10 +89,15 @@ class CampaignConfig:
     max_consecutive_failed_trials: int = 12
     dataset_path: Path | None = None
     protocol_path: Path | None = None
+    reference_campaign_dir: Path | None = None
     mlflow_tracking_uri: str | None = None
     cpu_thread_budget: int = 24
     ram_budget_gib: float = 80
     planning_checkpoint_seconds: int = 300
+    max_inflight_programs: int = 12
+    queue_low_watermark: int = 8
+    host_reserve_cpu_threads: int = 4
+    host_reserve_ram_gib: float = 8
     gates: MetricGates = field(default_factory=MetricGates)
 
     def validate(self) -> None:
@@ -106,6 +111,8 @@ class CampaignConfig:
             raise ValueError("max_trials must be positive or None for unlimited")
         if min(self.cpu_thread_budget, self.ram_budget_gib, self.planning_checkpoint_seconds) <= 0:
             raise ValueError("Resource and checkpoint budgets must be positive")
+        if self.max_inflight_programs < 5 or min(self.queue_low_watermark,self.host_reserve_cpu_threads,self.host_reserve_ram_gib) < 0:
+            raise ValueError("Invalid program queue or shared-host reserve limits")
         if self.proposal_batch_size <= 0:
             raise ValueError("proposal_batch_size must be positive")
         if isinstance(self.max_concurrent_trials, str):
@@ -156,6 +163,7 @@ class CampaignConfig:
         payload["campaign_dir"] = str(self.campaign_dir)
         payload["dataset_path"] = str(self.dataset_path) if self.dataset_path else None
         payload["protocol_path"] = str(self.protocol_path) if self.protocol_path else None
+        payload["reference_campaign_dir"] = str(self.reference_campaign_dir) if self.reference_campaign_dir else None
         return payload
 
 
