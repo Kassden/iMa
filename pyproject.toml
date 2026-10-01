@@ -33,6 +33,11 @@ ima-train = "scripts.train:main"
 ima-optimize = "scripts.optimize:main"
 
 [project.optional-dependencies]
+features = [
+  "featuretools==1.31.0",
+  "feature-engine==1.9.4",
+  "woodwork==0.31.0",
+]
 dev = [
   "playwright>=1.54,<2",
 ]
