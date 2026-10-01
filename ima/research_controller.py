@@ -40,6 +40,7 @@ from .research_specs import (
     FUNDAMENTAL_FIRST_PORTFOLIO_VERSION,
     PipelineRecipe,
     ResearchProposal,
+    V5_PORTFOLIO_VERSION,
 )
 from .research_store import ResearchLedger, utc_now
 from .feature_sets import FEATURE_SCHEMAS, drop_feature_families
@@ -132,6 +133,9 @@ class DatasetFeatureProfile:
 
 def run_research_campaign(config: Any) -> dict[str, Any]:
     config.validate()
+    if config.research_policy == "discovery_v5":
+        from .research_v5 import run_v5_campaign
+        return run_v5_campaign(config)
     if config.protocol_path is None:
         raise ValueError(
             "Executable agentic campaigns require an explicit protocol_path"
@@ -400,13 +404,14 @@ V4_CONTRACTS = {
 
 
 def _is_portfolio_policy(policy: str) -> bool:
-    return policy in {"benter_v3", "feature_v4"}
+    return policy in {"benter_v3", "feature_v4", "discovery_v5"}
 
 
 def _portfolio_version(policy: str) -> str | None:
     return {
         "benter_v3": V3_PORTFOLIO_VERSION,
         "feature_v4": V4_PORTFOLIO_VERSION,
+        "discovery_v5": V5_PORTFOLIO_VERSION,
     }.get(policy)
 
 
@@ -419,7 +424,7 @@ def _portfolio_identity(recipe: PipelineRecipe, policy: str) -> dict[str, str]:
             return {
                 "lane": "benter" if experiment_id == "B" else "experimental",
                 "experiment_id": experiment_id,
-                "portfolio_version": V4_PORTFOLIO_VERSION,
+                "portfolio_version": _portfolio_version(policy),
             }
     raise ValueError(f"Recipe is outside the v4 portfolio: {pair}")
 
@@ -438,6 +443,8 @@ def _portfolio_contracts(policy: str) -> dict[str, tuple[str, str]]:
 
 
 def _tracking_names(policy: str) -> tuple[str, str]:
+    if policy == "discovery_v5":
+        return "ima-agentic-v5-discovery", "ima-agentic-v5-discovery-candidates"
     if policy == "feature_v4":
         return V4_MLFLOW_EXPERIMENT, V4_REGISTERED_MODEL_PREFIX
     if policy == "benter_v3":
