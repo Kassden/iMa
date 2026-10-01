@@ -42,6 +42,7 @@ dev = [
   "playwright>=1.54,<2",
 ]
 research = [
+  "httpx>=0.28,<1",
   "catboost>=1.2,<2",
   "lightgbm>=4.5,<5",
   "optuna>=4.2,<5",
