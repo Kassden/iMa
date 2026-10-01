@@ -145,6 +145,8 @@ class DatasetFeatureProfile:
         )
         for transform in recipe.transforms:
             for column in transform.parameters["columns"]:
+                if recipe.feature_discovery and re.fullmatch(r"dfs_[a-f0-9]{24}",column):
+                    continue
                 if column not in schema.numeric:
                     return f"{column} is not in the effective numeric feature schema"
                 if column in self.unavailable[recipe.train_window]:

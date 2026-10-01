@@ -298,6 +298,8 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                 "otherwise Optuna tunes within your search_space. You may enable domain_history, "
                 "sequence_windows, race_relative, or adjusted_speed_residuals in DiscoverySpec. "
                 "Adjusted residuals are separately fit within each temporal fold, never on the full archive. "
+                "Registered transforms may also reference exact dfs_ feature IDs present in "
+                "feature_evidence, provided the same discovery spec generates them. Never guess IDs. "
                 "With no completed trials yet, parent_trial_ids may be empty; do not fabricate parents."
             ),
         },

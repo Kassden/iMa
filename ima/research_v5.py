@@ -62,6 +62,7 @@ def _worker(request):
     after = psutil.Process().cpu_times()
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     result.metrics["worker_resources"] = {"wall_seconds": time.monotonic()-started, "cpu_seconds": after.user+after.system-before.user-before.system, "peak_rss_gib": peak/(1024**3 if sys.platform=="darwin" else 1024**2), "thread_limit":1}
+    core._write_json_atomic(request.output_dir/"result.json",result.serializable())
     return result
 
 
@@ -76,7 +77,7 @@ def run_v5_campaign(config):
         digest = core._hash_file(dataset)
         protocol = core._protocol_parameters(config)
         from importlib.metadata import version
-        dependency_versions = {name:version(name) for name in ("featuretools","feature-engine","scikit-learn","pandas","optuna","mlflow","lightgbm","catboost")}
+        dependency_versions = {name:version(name) for name in ("featuretools","feature-engine","scikit-learn","pandas","optuna","mlflow","lightgbm","catboost","httpx","httpcore")}
         revision, environment = core._code_revision(),content_id({"runtime":core._environment_hash(),"dependencies":dependency_versions})
         core._write_json_atomic(directory/"environment.json",{"environment_hash":environment,"dependencies":dependency_versions})
         core._validate_campaign_identity(directory,dataset_hash=digest,protocol_parameters=protocol,code_revision=revision,environment_hash=environment,research_policy=config.research_policy)
@@ -89,7 +90,9 @@ def run_v5_campaign(config):
         profile = core.DatasetFeatureProfile(dataset,protocol)
         ledger.recover_running()
         core._reconcile_tells(ledger,search)
-        tracking_errors = core._reconcile_tracking(config,ledger,dataset)
+        tracking_errors = []
+        tracking_upload = None
+        next_tracking_retry = 0.0
         jobs = config.max_concurrent_trials if isinstance(config.max_concurrent_trials,int) else max(1,config.cpu_thread_budget)
         cpu_budget = min(config.cpu_thread_budget,max(1,psutil.cpu_count()-config.host_reserve_cpu_threads))
         ram_budget = min(config.ram_budget_gib,psutil.virtual_memory().total/1024**3-config.host_reserve_ram_gib)
@@ -113,9 +116,24 @@ def run_v5_campaign(config):
         blocked_lane = None
         exhausted_path = directory/"exhausted-programs.json"
         exhausted = set(core._read_json(exhausted_path) or [])
-        with ProcessPoolExecutor(max_workers=jobs) as pool, ThreadPoolExecutor(max_workers=1) as planner:
+        with ProcessPoolExecutor(max_workers=jobs) as pool, ThreadPoolExecutor(max_workers=1) as planner, ThreadPoolExecutor(max_workers=1) as uploader:
             while True:
                 now = time.monotonic()
+                if tracking_upload and tracking_upload[0].done():
+                    upload,upload_attempt=tracking_upload
+                    try:
+                        linkage=upload.result()
+                        if linkage is None:
+                            raise ValueError("Tracking returned no run/model linkage")
+                        ledger.mark_uploaded(upload_attempt,json.dumps(linkage,sort_keys=True))
+                    except Exception as exc:
+                        tracking_errors.append(f"{upload_attempt}: {type(exc).__name__}: {exc}")
+                        next_tracking_retry=now+30
+                    tracking_upload=None
+                if config.mlflow_tracking_uri and tracking_upload is None and now>=next_tracking_retry:
+                    outbox=ledger.pending_outbox()
+                    if outbox:
+                        tracking_upload=(uploader.submit(upload_result,config,dataset,outbox[0]),outbox[0]["attempt_id"])
                 if (directory/"STOP").exists():
                     stop_mode = "stopped"
                 if config.max_trials is not None and core._success_count(ledger) >= config.max_trials:
@@ -126,7 +144,8 @@ def run_v5_campaign(config):
                 active_ids = set(pid for pid,v in capacity.items() if v>0) | {payload["program_id"] for _,payload in inflight.values()}
                 available_program_slots = config.max_inflight_programs-len(active_ids)
                 need_plan = blocked_lane is not None or sum(capacity.values()) <= config.queue_low_watermark or completed_since_plan >= config.replan_every_terminal_trials or now-last_plan >= config.planning_checkpoint_seconds
-                if not stop_mode and planning is None and (available_program_slots>0 or blocked_lane is not None) and need_plan and now-last_plan >= (60 if last_error else 5):
+                quota_reserved = config.max_trials is not None and core._success_count(ledger)+len(inflight)>=config.max_trials
+                if not stop_mode and not quota_reserved and planning is None and (available_program_slots>0 or blocked_lane is not None) and need_plan and now-last_plan >= (60 if last_error else 5):
                     if config.planner_mode == "openrouter" and core._planner_spend(directory) >= config.max_total_cost_usd:
                         stop_mode = "paused_spend"
                     else:
@@ -187,6 +206,9 @@ def run_v5_campaign(config):
                                 decisions[pid] = number
                                 budget -= proposal.max_trials
                                 accepted.append(pid)
+                                proposal_payload=proposal.model_dump(mode="json") | {"program_id":pid,"recipe_hash":proposal.recipe.recipe_hash(),"trial_id":proposal.proposal_id}
+                                decision.setdefault("proposals",[]).append(proposal_payload)
+                                decision["suggestions"].append(proposal_payload)
                                 memory.record(f"proposal:{pid}",pid,"proposed",{"proposal":proposal.model_dump(mode="json"),"evidence_id":evidence["evidence_id"],"cycle":number})
                             except Exception as exc:
                                 decision["rejected"].append(str(exc))
@@ -241,9 +263,9 @@ def run_v5_campaign(config):
                     cycle_results.setdefault(number,[]).append(row)
                     completed_since_plan += 1
                     core._reconcile_tells(ledger,search)
-                    tracking_errors.extend(core._reconcile_tracking(config,ledger,dataset))
                     trace_decision = core._read_json(directory/"decisions"/f"cycle-{number:04d}.json") or {"cycle":number,"source":"resume"}
-                    trace_decision["suggestions"] = [payload]
+                    cycle_attempts={r["attempt_id"] for r in cycle_results[number]}
+                    trace_decision["suggestions"] = [r["payload"] for r in ledger.terminal_results() if r["attempt_id"] in cycle_attempts]
                     trace_decision["checkpoint"] = len(cycle_results[number])
                     trace_decision["planner_model"] = None
                     trace_decision["planner_usage"] = {"total_cost_usd":0,"cost_status":"not_a_planner_call"}
@@ -283,7 +305,7 @@ def run_v5_campaign(config):
                 host = psutil.virtual_memory()
                 host_resources = {"logical_cpus":psutil.cpu_count(),"load_one_minute_percent":100*psutil.getloadavg()[0]/psutil.cpu_count(),"available_ram_gib":host.available/1024**3}
                 core._write_json_atomic(directory/"status.json",{"status":"draining" if stop_mode else ("training" if inflight else "provider_planning" if planning else "paused_planning"),"updated_at":utc_now(),"cycle":cycle-1,"ledger":ledger.snapshot(),"resources":resources.snapshot(),"host_resources":host_resources,"planner_inflight":planning is not None,"planner_inflight_seconds":round(now-last_plan,1) if planning else 0,"blocked_lane":blocked_lane,"last_planner_error":last_error,"planner_spend_usd":core._planner_spend(directory),"tracking_errors":tracking_errors[-10:]})
-                if stop_mode and not inflight and planning is None:
+                if stop_mode and not inflight and planning is None and tracking_upload is None and (not config.mlflow_tracking_uri or not ledger.pending_outbox()):
                     return core._finish_payload(directory,ledger,search,cycle-1,terminal_new,stop_mode,tracking_errors)
                 if inflight:
                     wait(inflight,timeout=1,return_when=FIRST_COMPLETED)
@@ -294,6 +316,14 @@ def run_v5_campaign(config):
 def result_recipe(payload):
     from .research_specs import PipelineRecipe
     return PipelineRecipe.model_validate(payload["recipe"])
+
+
+def upload_result(config,dataset,item):
+    """Network/artifact work only; the controller remains the sole ledger writer."""
+    from .mlflow_tracking import MLflowConfig, log_research_package_version
+    experiment,model=core._tracking_names(config.research_policy)
+    tracking=MLflowConfig.from_values(tracking_uri=config.mlflow_tracking_uri,experiment_name=experiment,register_models=True,registered_model_name=model)
+    return log_research_package_version(Path(item["result"]["artifacts"]["package"]),tracking,attempt_id=item["attempt_id"],result=item["result"],dataset_path=dataset)
 
 
 def discovery_evidence(terminal):
@@ -310,7 +340,10 @@ def discovery_evidence(terminal):
             continue
         manifest = core._read_json(Path(path))
         selections = [core._read_json(p) for p in sorted(Path(path).parent.glob("discovery-selection-*.json"))]
-        reports.append({"discovery_id":discovery,"attempt_id":item["attempt_id"],"spec":manifest["spec"],"engine_version":manifest["engine_version"],"candidate_count":len(manifest["catalog"]),"deferred_count":manifest["deferred_count"],"catalog_preview":manifest["catalog"][:20],"training_fold_screening":selections[-1:],"artifact":path})
+        diagnostics = [core._read_json(p) for p in sorted(Path(path).parent.glob("discovery-diagnostics-*.json"))]
+        selected = set(selections[-1].get("selected",[])) if selections else set()
+        preview = sorted(manifest["catalog"],key=lambda row:(row["feature_id"] not in selected,row["feature_id"]))[:32]
+        reports.append({"discovery_id":discovery,"attempt_id":item["attempt_id"],"spec":manifest["spec"],"engine_version":manifest["engine_version"],"candidate_count":len(manifest["catalog"]),"deferred_count":manifest["deferred_count"],"catalog_preview":preview,"training_fold_screening":selections[-1:],"diagnostics":diagnostics[-1:],"artifact":path})
         seen.add(discovery)
         if len(reports)>=5:
             break
