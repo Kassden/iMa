@@ -97,9 +97,10 @@ class FittedWinRecipeModel:
     calibrator: TemperatureCalibrator | None
     blend: MarketBlend | None
     feature_schema: FeatureSchema
+    residual_history: Any = None
 
     def predict_fundamental_proba(self, frame: pd.DataFrame) -> np.ndarray:
-        transformed = self.transforms.transform(frame)
+        transformed = self.transforms.transform(self.residual_history.transform(frame) if self.residual_history else frame)
         transformed = _ensure_feature_columns(transformed, self.feature_schema)
         probabilities = self.model.predict_proba(transformed)
         if self.calibrator is not None:
@@ -124,9 +125,10 @@ class FittedSecondaryRecipeModel:
     feature_schema: FeatureSchema
     calibrator: IsotonicRegression | None = None
     win_calibrator: TemperatureCalibrator | None = None
+    residual_history: Any = None
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
-        transformed = self.transforms.transform(frame)
+        transformed = self.transforms.transform(self.residual_history.transform(frame) if self.residual_history else frame)
         transformed = _ensure_feature_columns(transformed, self.feature_schema)
         predictions = self.model.predict(transformed)
         if self.calibrator is not None:
@@ -136,7 +138,7 @@ class FittedSecondaryRecipeModel:
     def predict_win_proba(self, frame: pd.DataFrame) -> np.ndarray:
         if self.win_calibrator is None:
             raise TypeError("This secondary model has no calibrated win-probability endpoint")
-        transformed = self.transforms.transform(frame)
+        transformed = self.transforms.transform(self.residual_history.transform(frame) if self.residual_history else frame)
         transformed = _ensure_feature_columns(transformed, self.feature_schema)
         raw = _ranking_scores_to_probabilities(
             self.model.predict(transformed), transformed["race_id"]
@@ -148,11 +150,23 @@ def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
     """Train/evaluate one recipe and atomically persist its accepted artifacts."""
     started = time.perf_counter()
     try:
+        _write_json_atomic(request.output_dir/"stage.json",{"phase":"loading_dataset","started_at_epoch":time.time()})
         frame = _load_dataset(request.dataset_path)
         observed_hash = _hash_file(request.dataset_path)
         if request.dataset_hash is not None and request.dataset_hash != observed_hash:
             raise ValueError("dataset hash does not match execution request")
+        if request.recipe.feature_discovery:
+            from .feature_program import materialize
+            _write_json_atomic(request.output_dir/"stage.json",{"phase":"building_features","discovery_id":request.recipe.feature_discovery.discovery_id(),"started_at_epoch":time.time()})
+            frame, manifest = materialize(frame, request.recipe.feature_discovery, observed_hash, request.output_dir.parent.parent / "discovery-cache")
+            _write_json_atomic(request.output_dir / "discovery-manifest.json", manifest)
+        _write_json_atomic(request.output_dir/"stage.json",{"phase":"training","started_at_epoch":time.time()})
         result = _execute_frame(request, frame, observed_hash, started)
+        if request.recipe.feature_discovery:
+            result.artifacts["discovery_manifest"] = str(request.output_dir / "discovery-manifest.json")
+            result.lineage["matrix_id"] = manifest["matrix_id"]
+            result.lineage["discovery_id"] = manifest["discovery_id"]
+            _write_json_atomic(request.output_dir / "result.json", result.serializable())
     except Exception as exc:
         result = RecipeExecutionResult(
             schema_version=RESULT_SCHEMA_VERSION,
@@ -211,6 +225,8 @@ def _execute_frame(
         calibration = select_fold(labelled, fold.calibration_race_ids)
         score = select_fold(labelled, fold.score_race_ids)
         train = _apply_training_window(train, calibration, recipe.train_window)
+        train, calibration, score, residual_history = _residual_fold(train, calibration, score, recipe, request.output_dir, fold.fold_id)
+        selected_schema = _discovery_schema(train, schema, recipe, "target_win", request.output_dir, fold.fold_id)
         runtime_specs = tuple(
             RuntimeTransformSpec(spec.kind, dict(spec.parameters)) for spec in recipe.transforms
         )
@@ -218,7 +234,7 @@ def _execute_frame(
         transformed_train = fitted_transforms.transform(train)
         transformed_calibration = fitted_transforms.transform(calibration)
         transformed_score = fitted_transforms.transform(score)
-        fold_schema = _schema_with_transform_features(schema, recipe)
+        fold_schema = _schema_with_transform_features(selected_schema, recipe)
         transformed_train = _ensure_feature_columns(transformed_train, fold_schema)
         transformed_calibration = _ensure_feature_columns(transformed_calibration, fold_schema)
         transformed_score = _ensure_feature_columns(transformed_score, fold_schema)
@@ -328,8 +344,9 @@ def _execute_frame(
             },
         })
         final_model = FittedWinRecipeModel(
-            model, fitted_transforms, calibrator, blend, fold_schema
+            model, fitted_transforms, calibrator, blend, fold_schema, residual_history
         )
+        _discovery_diagnostics(final_model,transformed_train,calibration,score,recipe,request.output_dir,fold.fold_id)
 
     if not folds or final_model is None:
         raise ValueError("protocol produced no executable folds")
@@ -462,6 +479,8 @@ def _execute_secondary_frame(
             recipe.train_window,
         )
         score = select_fold(labelled, fold.score_race_ids)
+        train, calibration, score, residual_history = _residual_fold(train, calibration, score, recipe, request.output_dir, fold.fold_id)
+        selected_schema = _discovery_schema(train, schema, recipe, contract.label_column, request.output_dir, fold.fold_id)
         runtime_specs = tuple(
             RuntimeTransformSpec(spec.kind, dict(spec.parameters)) for spec in recipe.transforms
         )
@@ -469,7 +488,7 @@ def _execute_secondary_frame(
         transformed_train = fitted_transforms.transform(train)
         transformed_calibration = fitted_transforms.transform(calibration)
         transformed_score = fitted_transforms.transform(score)
-        fold_schema = _schema_with_transform_features(schema, recipe)
+        fold_schema = _schema_with_transform_features(selected_schema, recipe)
         transformed_train = _ensure_feature_columns(transformed_train, fold_schema)
         transformed_calibration = _ensure_feature_columns(transformed_calibration, fold_schema)
         transformed_score = _ensure_feature_columns(transformed_score, fold_schema)
@@ -579,8 +598,9 @@ def _execute_secondary_frame(
             },
         })
         final_model = FittedSecondaryRecipeModel(
-            model, fitted_transforms, fold_schema, calibrator, win_calibrator
+            model, fitted_transforms, fold_schema, calibrator, win_calibrator, residual_history
         )
+        _discovery_diagnostics(final_model,transformed_train,calibration,score,recipe,request.output_dir,fold.fold_id)
 
     if not folds or final_model is None:
         raise ValueError("protocol produced no executable folds")
@@ -746,6 +766,79 @@ def _effective_schema(recipe: PipelineRecipe) -> FeatureSchema:
     )
 
 
+def _discovery_diagnostics(fitted, train, calibration, score, recipe, output, fold_id):
+    if not recipe.feature_discovery or not recipe.feature_discovery.diagnostics:
+        return
+    import copy
+    contract=target_contract(recipe.target.kind,recipe.target.parameters)
+    def objective(estimator, frame, calibrator):
+        transformed=_ensure_feature_columns(fitted.transforms.transform(frame),fitted.feature_schema)
+        prediction=estimator.predict_proba(transformed) if contract.kind=="win_probability" else estimator.predict(transformed)
+        if calibrator is not None:
+            prediction=calibrator.transform(prediction,transformed.race_id) if contract.kind=="win_probability" else calibrator.predict(prediction)
+        return evaluate_research_probabilities(prediction,transformed,label="diagnostic")["race_weighted_log_loss"] if contract.kind=="win_probability" else _secondary_objective(contract.kind,secondary_target_diagnostics(transformed,contract,prediction))
+    baseline=objective(fitted.model,score,fitted.calibrator)
+    report={"target_kind":contract.kind,"baseline":baseline,"scope":"Exploratory outer-development diagnostics; not used to select features for this scored trial"}
+    if "race_permutation" in recipe.feature_discovery.diagnostics:
+        columns=[c for c in fitted.feature_schema.numeric if c.startswith("dfs_") and c in score]
+        rng=np.random.default_rng(recipe.seed)
+        deltas=[]
+        for _ in range(2):
+            changed=score.copy()
+            if columns:
+                values=score[columns].to_numpy().copy()
+                for positions in score.groupby("race_id",sort=True).indices.values():
+                    values[positions]=values[rng.permutation(positions)]
+                changed[columns]=values
+            deltas.append(float(objective(fitted.model,changed,fitted.calibrator)-baseline))
+        report["race_permutation"]={"columns":columns,"policy":"Synchronized generated-feature family swaps within each race, after past-only construction","repeats":2,"objective_deltas":deltas}
+    if "learning_curve" in recipe.feature_discovery.diagnostics:
+        races=train[["race_id","date","race_no"]].drop_duplicates("race_id").sort_values(["date","race_no"])
+        smaller=train[train.race_id.isin(races.race_id.iloc[len(races)//2:])]
+        model=copy.deepcopy(fitted.model)
+        if contract.kind=="win_probability":
+            model.fit(smaller)
+            calframe=_ensure_feature_columns(fitted.transforms.transform(calibration),fitted.feature_schema)
+            calibrator=TemperatureCalibrator.fit(model.predict_proba(calframe),calframe) if recipe.calibration.kind=="temperature" else None
+        else:
+            model.fit(smaller,fitted.feature_schema,contract.label_column)
+            calibrator=None
+        report["learning_curve"]={"training_fraction":.5,"training_races":smaller.race_id.nunique(),"objective":objective(model,score,calibrator),"caveat":"Model-only diagnostic with frozen full-training feature mask and transforms; placing recalibration disabled"}
+    _write_json_atomic(output/f"discovery-diagnostics-{fold_id}.json",report)
+
+
+def _residual_fold(train, calibration, score, recipe, output, fold_id):
+    if not recipe.feature_discovery or not recipe.feature_discovery.adjusted_speed_residuals:
+        return train, calibration, score, None
+    from .feature_residuals import AdjustedSpeedHistory, covariates, records
+    residual = AdjustedSpeedHistory.fit(train, recipe.feature_discovery, pd.to_datetime(calibration.date).min().normalize())
+    transformed_train = residual.transform(train)
+    transformed_calibration = residual.transform(calibration)
+    speed = pd.to_numeric(calibration.distance) / pd.to_numeric(calibration.finish_seconds).where(lambda x: x > 0)
+    residual.history = pd.concat([residual.history, records(calibration, speed.to_numpy() - residual.model.predict(covariates(calibration)))], ignore_index=True)
+    _write_json_atomic(output / f"discovery-residual-{fold_id}.json", residual.report)
+    return transformed_train, transformed_calibration, residual.transform(score), residual
+
+
+def _discovery_schema(train, schema, recipe, label, output, fold_id):
+    if recipe.feature_discovery is None:
+        return schema
+    from .feature_screening import DiscoverySelection
+    selection = DiscoverySelection.fit(train, recipe.feature_discovery, recipe.target.kind, label)
+    required = sorted({c for transform in recipe.transforms for c in transform.parameters["columns"] if c.startswith("dfs_")})
+    if any(c not in train or not train[c].notna().any() for c in required):
+        raise ValueError("Discovery transform references an absent or unavailable generated column")
+    columns = tuple(dict.fromkeys((*selection.columns,*required)))
+    if len(columns)>32:
+        raise ValueError("Explicit discovery transforms exceed the selected-feature ceiling")
+    selection.report["explicit_transform_inputs"] = required
+    selection.report["effective_columns"] = columns
+    _write_json_atomic(output / f"discovery-selection-{fold_id}.json", selection.report)
+    import joblib
+    joblib.dump(selection,output / f"discovery-selector-{fold_id}.joblib")
+    return FeatureSchema(schema.name, (*schema.numeric, *columns), schema.categorical)
+
+
 def _schema_with_transform_features(
     schema: FeatureSchema,
     recipe: PipelineRecipe,
@@ -769,6 +862,9 @@ def _schema_with_transform_features(
 
 def _ensure_feature_columns(frame: pd.DataFrame, schema: FeatureSchema) -> pd.DataFrame:
     output = frame.copy()
+    missing_discovery = [c for c in schema.numeric if c.startswith("dfs_") and c not in frame]
+    if missing_discovery:
+        raise ValueError("Inference requires materialized discovery features; missing: " + str(missing_discovery))
     missing_numeric = {
         column: pd.Series(np.nan, index=output.index, dtype=float)
         for column in schema.numeric if column not in output

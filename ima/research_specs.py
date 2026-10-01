@@ -7,6 +7,7 @@ import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from .feature_discovery_specs import DiscoverySpec
 
 from .feature_sets import (
     FEATURE_FAMILIES,
@@ -25,12 +26,14 @@ class RecipeValidationError(ValueError):
 
 FUNDAMENTAL_FIRST_PORTFOLIO_VERSION = "benter-portfolio-v3-2-fundamental"
 FEATURE_DISCOVERY_PORTFOLIO_VERSION = "feature-discovery-v4-fundamental"
+V5_PORTFOLIO_VERSION = "feature-discovery-v5-fundamental"
 
 
 def is_fundamental_first_portfolio(version: str | None) -> bool:
     return version in {
         FUNDAMENTAL_FIRST_PORTFOLIO_VERSION,
         FEATURE_DISCOVERY_PORTFOLIO_VERSION,
+        V5_PORTFOLIO_VERSION,
     }
 
 
@@ -179,6 +182,7 @@ class PipelineRecipe(StrictModel):
     calibration: CalibrationSpec = Field(default_factory=CalibrationSpec)
     blend: BlendSpec = Field(default_factory=BlendSpec)
     seed: int = 42
+    feature_discovery: DiscoverySpec | None = None
 
     @field_validator("drop_feature_families")
     @classmethod
@@ -212,6 +216,7 @@ class PipelineRecipe(StrictModel):
             "drop_feature_families": self.drop_feature_families,
             "transforms": [spec.model_dump(mode="json") for spec in self.transforms],
             "train_window": self.train_window,
+            "feature_discovery": self.feature_discovery.model_dump(mode="json") if self.feature_discovery else None,
         }
         return hashlib.sha256(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -266,6 +271,7 @@ class ResearchProposal(StrictModel):
     ]
     recipe: PipelineRecipe
     search_space: dict[str, SearchDimension] = Field(default_factory=dict)
+    fixed_parameters: bool = False
     expected_observation: str
     falsification_rule: str
     max_trials: int = 1
@@ -279,6 +285,8 @@ class ResearchProposal(StrictModel):
             raise ValueError(f"Research proposal contains forbidden terms: {matches}")
         if self.max_trials < 1:
             raise ValueError("max_trials must be positive")
+        if self.fixed_parameters and (self.max_trials != 1 or self.search_space):
+            raise ValueError("A fixed-parameter control must use one trial and no search space")
         unknown = set(self.search_space) - set(MODEL_PARAMETER_CONTRACTS[self.recipe.model.kind])
         if unknown:
             raise ValueError(f"Search space contains unsupported model parameters: {sorted(unknown)}")

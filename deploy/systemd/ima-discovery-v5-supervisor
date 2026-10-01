@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -eu
+CAMPAIGN=/home/imaopt/research-v2/campaigns/agentic_v5_discovery
+CODE=/home/imaopt/research-v2/live-releases/ima-v5-current
+PYTHON=/home/imaopt/research-v2/releases/f54c604/.venv/bin/python
+mkdir -p "$CAMPAIGN/ops"
+exec >>"$CAMPAIGN/ops/supervisor.log" 2>&1
+cd "$CODE"
+set -a
+. /home/imaopt/.config/imaopt/openrouter.env
+set +a
+test -n "${OPENROUTER_API_KEY:-}"
+export PYTHONPATH="/home/imaopt/research-v2/v5-dependencies/site-packages:$CODE"
+export IMA_CODE_REVISION
+IMA_CODE_REVISION=$(<"$CODE/REVISION")
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+export MLFLOW_HTTP_REQUEST_TIMEOUT=20 MLFLOW_HTTP_REQUEST_MAX_RETRIES=1
+unset HTTPS_PROXY HTTP_PROXY https_proxy http_proxy ALL_PROXY all_proxy
+# Clean operator/spend/failure exits stay stopped; only crashes restart via systemd.
+exec "$PYTHON" -W ignore -m scripts.optimize run --campaign "$CAMPAIGN" --config "$CAMPAIGN/ops/openrouter-config.json"

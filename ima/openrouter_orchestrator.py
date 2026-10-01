@@ -8,7 +8,7 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from .experiments import ExperimentSpec
 from .research_specs import (
@@ -38,6 +38,8 @@ class OpenRouterConfig:
     base_url: str = OPENROUTER_BASE_URL
     provider_endpoint: str | None = None
     reasoning_effort: str | None = None
+    absolute_deadline_seconds: int | None = None
+    response_observer: Callable[[dict[str, Any]], None] | None = None
 
     @classmethod
     def from_env(
@@ -97,6 +99,22 @@ def _reasoning_options(config: OpenRouterConfig) -> dict[str, Any]:
 
 
 def _post_json(url: str, payload: dict[str, Any], config: OpenRouterConfig) -> dict[str, Any]:
+    if config.absolute_deadline_seconds:
+        import asyncio
+        import httpx
+        async def send():
+            async with asyncio.timeout(config.absolute_deadline_seconds):
+                async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
+                    response = await client.post(url,json=payload,headers={"Authorization":f"Bearer {config.api_key}","Content-Type":"application/json"})
+                    response.raise_for_status()
+                    result=response.json()
+                    if config.response_observer:
+                        config.response_observer(result)
+                    return result
+        try:
+            return asyncio.run(send())
+        except (TimeoutError,httpx.HTTPError,ValueError) as exc:
+            raise OpenRouterError(f"OpenRouter bounded request failed: {type(exc).__name__}: {exc}") from exc
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -264,7 +282,28 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                 "If the assignment says required_feature_change=true, change at least one "
                 "of feature_schema, drop_feature_families, transforms, or train_window "
                 "relative to reference_feature_recipe. A narrative claim is not sufficient; "
-                "the controller compares the actual recipe and rejects identical feature programs."
+                "the controller compares the actual recipe and rejects identical feature programs. "
+                "When discovery_capabilities is present this is v5: you may additionally create "
+                "new historical features with recipe.feature_discovery using its supplied strict schema. "
+                "Choose entities, measurements, aggregates, history windows, selection strategy and "
+                "selected-column budget. At least one program must use feature_discovery. "
+                "Initially return programs covering all B/E1/E2/E3/E4 contracts so the 80/20 dispatcher "
+                "can stay occupied; split your chosen trial budget mainly toward B. "
+                "On later decisions, respect available_program_slots and replenish the requested "
+                "next_required_lane; existing programs may already cover other contracts. "
+                "You may return retire_program_ids to stop asking unused trials in unpromising "
+                "programs. Running trials finish; completed evidence is never deleted. "
+                "Null feature_discovery provides a matched existing-feature control. "
+                "Set fixed_parameters=true for controlled fixed-model feature ablations; "
+                "otherwise Optuna tunes within your search_space. You may enable domain_history, "
+                "sequence_windows, race_relative, or adjusted_speed_residuals in DiscoverySpec. "
+                "Adjusted residuals are separately fit within each temporal fold, never on the full archive. "
+                "Registered transforms may also reference exact dfs_ feature IDs present in "
+                "feature_evidence, provided the same discovery spec generates them. Never guess IDs. "
+                "All other transform inputs MUST occur in numeric_columns_by_schema for the "
+                "chosen feature_schema. Inspect recent_planner_rejections and correct rejected "
+                "columns or definitions; do not repeat an already rejected recipe. "
+                "With no completed trials yet, parent_trial_ids may be empty; do not fabricate parents."
             ),
         },
         {
@@ -302,7 +341,15 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                         "calibration": {"kind": "temperature", "parameters": {}},
                         "blend": {"kind": "market_softmax", "parameters": {}},
                         "seed": 42,
+                        "feature_discovery": (
+                            {"entities": ["horse"], "measurements": ["speed_mps"], "aggregates": ["count", "mean", "std"], "windows_days": [90, 365], "max_depth": 1, "max_selected": 16, "selection": "mutual_information"}
+                            if evidence_bundle.get("discovery_capabilities") else None
+                        ),
                     },
+                    "discovery_capabilities": evidence_bundle.get("discovery_capabilities"),
+                    "requested_trial_budget": evidence_bundle.get("requested_trial_budget"),
+                    "next_required_lane": evidence_bundle.get("next_required_lane"),
+                    "v5_budget_rule": "When requested_trial_budget is supplied, the sum of all proposal max_trials MUST NOT exceed it. Prioritize next_required_lane if specified. Use Benter for most work, but include executable experimental contracts. Unused programs can carry over.",
                     "target_recipe_compatibility": {
                         "win_probability": {
                             "model": "one of: logit, boosted, benter_conditional_logit",
@@ -349,6 +396,7 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                     },
                     "evidence_bundle": evidence_bundle,
                     "output_schema": {
+                        "retire_program_ids": [],
                         "proposals": [{
                             "proposal_id": "stable id",
                             "parent_trial_ids": ["actual trial ids from evidence"],
@@ -356,6 +404,7 @@ def agentic_planner_messages(evidence_bundle: dict[str, Any], proposal_count: in
                             "hypothesis": "short falsifiable reason",
                             "changed_axes": ["one or more allowed axes"],
                             "recipe": "PipelineRecipe v2 object",
+                            "fixed_parameters": False,
                             "search_space": {
                                 "model_parameter_name": {
                                     "kind": "float, int, or categorical",
@@ -424,6 +473,8 @@ def choose_cycle_trial_budget(
         },
         "program_outcomes": evidence_bundle.get("program_outcomes", [])[-12:],
         "recent_failures": evidence_bundle.get("recent_failures", [])[-5:],
+        "global_champions": evidence_bundle.get("global_champions",{}),
+        "next_required_lane": evidence_bundle.get("next_required_lane"),
     }
     payload = {
         "model": config.model,
