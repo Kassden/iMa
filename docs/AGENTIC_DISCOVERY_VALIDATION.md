@@ -142,6 +142,19 @@ rows per identity is a follow-up performance opportunity; the pinned live source
 was not hotpatched. Zero failed trials and active CPU do not by themselves prove
 that a Benter model has finished.
 
+The primary cache subsequently completed with 225 candidates in 3,920.567 seconds
+(65.34 minutes), allowing its waiting workers to enter training. Sixteen concurrent
+full-history jobs then sustained soft-limit pressure: service memory reached
+84.67 GiB under the original 80/88 GiB soft/hard limits. Hard-limit hits and OOM
+kills were both zero. The dedicated v5 service limits were raised, without restart,
+to 88/96 GiB and persisted in its own user unit; the source unit passed
+`systemd-analyze --user verify` with `XDG_RUNTIME_DIR=/run/user/1001`. At subsequent
+observation service memory was 89.74 GiB, hard-limit hits/OOM kills were still zero,
+the PID remained 756004 and restart count remained zero. This is an operational
+resource-limit adjustment, not a model-code hotpatch. The 80 GiB scheduler budget
+still measures declared reservations rather than actual worker RSS; per-model
+measured memory admission remains a limitation, not a claimed adaptive capability.
+
 All protected services remained active: `cortex-web`, `cortex-worker`, and
 `solar-simulator`. `imaopt` has `Linger=yes`; v5 is enabled and does not require the
 Mac or SSH session. Unlimited total trials remain subject to the explicit $5 planner
