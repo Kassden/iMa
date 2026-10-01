@@ -285,6 +285,8 @@ class ResearchProposal(StrictModel):
             raise ValueError(f"Research proposal contains forbidden terms: {matches}")
         if self.max_trials < 1:
             raise ValueError("max_trials must be positive")
+        if self.fixed_parameters and (self.max_trials != 1 or self.search_space):
+            raise ValueError("A fixed-parameter control must use one trial and no search space")
         unknown = set(self.search_space) - set(MODEL_PARAMETER_CONTRACTS[self.recipe.model.kind])
         if unknown:
             raise ValueError(f"Search space contains unsupported model parameters: {sorted(unknown)}")

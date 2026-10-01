@@ -337,6 +337,8 @@ class ProgramSearchController:
             "evidence_ids": proposal.evidence_ids,
             "target_kind": proposal.recipe.target.kind,
         }
+        if proposal.fixed_parameters:
+            payload["fixed_parameters"] = True
         program_id = hashlib.sha256(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()[:16]
