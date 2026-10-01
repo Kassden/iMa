@@ -8,6 +8,7 @@ import resource
 from dataclasses import replace
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait, FIRST_COMPLETED
 from pathlib import Path
+import multiprocessing
 
 import psutil
 
@@ -24,6 +25,7 @@ from .research_store import ResearchLedger, utc_now
 
 
 def _plan(evidence, config):
+    started = time.monotonic()
     if config.planner_mode == "fixture":
         proposals = []
         seeds=core._v4_seed_proposals()[:min(5,config.proposal_batch_size)]
@@ -46,6 +48,7 @@ def _plan(evidence, config):
     response["trial_budget"] = budget["trial_budget"]
     response["budget_decision"] = budget
     response["source"] = "openrouter"
+    response["planning_wall_seconds"] = time.monotonic()-started
     response["retire_program_ids"] = _json_message_from_response(response["raw_response"]).get("retire_program_ids",[])
     parts=(budget.get("usage",{}),response.get("usage",{}))
     response["usage"] = {k: sum(float(part[k]) for part in parts) if all(part.get(k) is not None for part in parts) else None for k in ("input_tokens","output_tokens","total_tokens","total_cost_usd")}
@@ -116,7 +119,7 @@ def run_v5_campaign(config):
         blocked_lane = None
         exhausted_path = directory/"exhausted-programs.json"
         exhausted = set(core._read_json(exhausted_path) or [])
-        with ProcessPoolExecutor(max_workers=jobs) as pool, ThreadPoolExecutor(max_workers=1) as planner, ThreadPoolExecutor(max_workers=1) as uploader:
+        with ProcessPoolExecutor(max_workers=jobs,mp_context=multiprocessing.get_context("spawn")) as pool, ThreadPoolExecutor(max_workers=1) as planner, ThreadPoolExecutor(max_workers=1) as uploader:
             while True:
                 now = time.monotonic()
                 if tracking_upload and tracking_upload[0].done():
@@ -180,6 +183,7 @@ def run_v5_campaign(config):
                         if not any(p.get("recipe",{}).get("feature_discovery") for p in response["proposals"]):
                             raise ValueError("v5 decision must include an executable feature-discovery program")
                         decision.update(trial_budget=budget,planner_model=config.model if config.planner_mode=="openrouter" else None,planner_usage=response.get("usage",{}),budget_decision=response.get("budget_decision"),planner_status=response["source"],rejected=[])
+                        decision["planner_wall_seconds"] = response.get("planning_wall_seconds")
                         decision["provider_rejected_proposals"] = response.get("rejected_proposals",[])
                         retire = response.get("retire_program_ids",[])
                         if not isinstance(retire,list) or not set(retire)<=set(search.programs):

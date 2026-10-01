@@ -242,6 +242,8 @@ def log_optimizer_planner_trace(
             "evidence_id": decision.get("evidence_id"),
             "requested_proposals": len(decision.get("suggestions") or []),
         })
+        if decision.get("planner_wall_seconds") is not None:
+            planner.set_attribute("ima.planning_wall_seconds",decision["planner_wall_seconds"])
         planner.set_outputs({"proposals": _trace_proposals(decision),"trial_budget":decision.get("trial_budget"),"approved_trials":decision.get("approved_trials"),"retired_program_ids":decision.get("retired_program_ids",[]),"rejected":decision.get("rejected",[]),"planner_status":decision.get("planner_status"),"error":decision.get("error")})
         token_usage = {
             key: usage[key]
