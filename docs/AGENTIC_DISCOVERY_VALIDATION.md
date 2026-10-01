@@ -76,6 +76,46 @@ then demonstrate completed real-history trials, a subsequent evidence-aware
 OpenRouter decision, tracking/model readback and protected shared-service health.
 Canary success alone does not satisfy this gate.
 
-Actual production identity, full-build/scheduler outcomes and live advancement
-evidence are appended after verification; this document does not claim those
-pending gates have passed.
+## Verified Production Handoff
+
+At 2026-10-01 16:00:21 Asia/Shanghai, v4 finished with 1,005 completed and zero
+running attempts, emitted `mode=stopped` and exited successfully. Its supervisor
+was disabled. The guarded server-side handoff then enabled and started v5 at
+revision `0915b619f6a40dcc390c3044107831293f826660`. Receipt:
+`agentic_v5_discovery/ops/handoff.json`. No trial was killed; no shared app restarted.
+
+Production reached 16 in-flight attempts under its CPU/RAM reservations. A 30-second
+host CPU sample averaged 14.9%; service RSS sum was about 19.7 GiB with 94.2 GiB
+available host RAM. Shared cache builders explain initial idle waiting workers;
+in-flight count is not a claim that all 16 CPUs are busy simultaneously.
+
+The first generated-feature boosted attempt completed with fundamental race log
+loss `2.19732089830168`, MLflow run `c48cbd2f707c4dd8bce80f00f2502c03`, registry
+version 57, two dataset inputs and 72 generated candidates. Registered-URI replay
+matched exactly; CSV probability replay maximum error was `9.974659986866641e-17`.
+The first LambdaRank attempt completed at negative NDCG@3 `-0.7527063491756949`,
+run `2655d247edcd44b68455c7b6ee642ac6`, registry version 4. These early scores do
+not improve on the compatible v4 champions; software validation is not accuracy
+improvement. Compatible v4 references are retained read-only (boosted loss 2.15972,
+Benter loss 2.18169, ranking negative NDCG -0.75626).
+
+The controller replenished completed slots while other attempts continued. Its
+next frozen evidence included two evaluated hypothesis events and the new feature
+manifest/selection reports. The genuine OpenRouter follow-up chose 12 trials,
+approved 12, and proposed revised discovery recipes, a control, and the missing odds
+lane. The earlier successful decision chose 48 and approved 42. Neither budget is
+a concurrency multiple or a mandatory 260. Evidence ID:
+`1d75a2569d5ab332d8942a91`; `ops/live-proof.json` records API/ledger readbacks.
+
+The initial production discovery proposal was rejected by the pre-existing
+conservative narrative term guard (benign wording containing "results"). Its
+billed response and failure were preserved, and the next agent decision corrected
+the request and launched valid work. This is a documented false-positive limitation,
+not evidence of target leakage. No silent bootstrap or pinned-source hotpatch was
+used. Current planner/tracking errors were empty, pending tells were zero, and the
+supervisor had zero restarts at verification.
+
+All protected services remained active: `cortex-web`, `cortex-worker`, and
+`solar-simulator`. `imaopt` has `Linger=yes`; v5 is enabled and does not require the
+Mac or SSH session. Unlimited total trials remain subject to the explicit $5 planner
+spend pause, operator stop and failure safeguards documented in the runbook.
