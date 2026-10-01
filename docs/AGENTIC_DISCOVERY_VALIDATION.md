@@ -115,6 +115,33 @@ not evidence of target leakage. No silent bootstrap or pinned-source hotpatch wa
 used. Current planner/tracking errors were empty, pending tells were zero, and the
 supervisor had zero restarts at verification.
 
+### Extended Live Observation
+
+Cycle 3 exhausted its 12,000-token proposal output allowance (9,938 reasoning
+tokens), leaving truncated JSON; its bounded repair request then failed with a
+connection ReadError. Both the billed response and the decision failure remain
+recorded. Training continued independently. Cycle 4 subsequently recovered
+without a restart, chose and approved 24 trials, and cleared the current planner
+error. An isolated medium-reasoning/24,000-output-token probe also encountered a
+ReadError, so it did not justify changing the live configuration.
+
+At 16:51 Asia/Shanghai, production had three completed attempts and 16 in flight,
+with zero pending tracking records or Optuna tells. The recorded-odds attempt
+completed at log-final-odds MAE `0.47479374169465055`, MLflow run
+`29173f24fcea4b05acb848b5e2358823`, registry version 4. This does not improve on
+the compatible v4 reference `0.422614132517678`.
+
+The first Benter historical-feature cache was still building, not yet a completed
+primary-path validation. Most Benter workers waited on its shared cache lock.
+A read-only timing probe over 256 identities in the 271,858-row source measured
+4.105 seconds for the repeated full-column identity queries. Extrapolating those
+queries to 12,012 horses and 16 sequence passes gives approximately 3,082 seconds
+for the scans alone, excluding Featuretools and other work. This is a timing
+estimate, not a full-build benchmark or proof of completion. Pre-indexing query
+rows per identity is a follow-up performance opportunity; the pinned live source
+was not hotpatched. Zero failed trials and active CPU do not by themselves prove
+that a Benter model has finished.
+
 All protected services remained active: `cortex-web`, `cortex-worker`, and
 `solar-simulator`. `imaopt` has `Linger=yes`; v5 is enabled and does not require the
 Mac or SSH session. Unlimited total trials remain subject to the explicit $5 planner
