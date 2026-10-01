@@ -68,7 +68,10 @@ def run_v5_campaign(config):
         dataset = core._resolve_dataset(config,directory)
         digest = core._hash_file(dataset)
         protocol = core._protocol_parameters(config)
-        revision, environment = core._code_revision(),core._environment_hash()
+        from importlib.metadata import version
+        dependency_versions = {name:version(name) for name in ("featuretools","feature-engine","scikit-learn","pandas","optuna","mlflow","lightgbm","catboost")}
+        revision, environment = core._code_revision(),content_id({"runtime":core._environment_hash(),"dependencies":dependency_versions})
+        core._write_json_atomic(directory/"environment.json",{"environment_hash":environment,"dependencies":dependency_versions})
         core._validate_campaign_identity(directory,dataset_hash=digest,protocol_parameters=protocol,code_revision=revision,environment_hash=environment,research_policy=config.research_policy)
         ledger = ResearchLedger(directory/"ledger.sqlite")
         search = ProgramSearchController(directory)
