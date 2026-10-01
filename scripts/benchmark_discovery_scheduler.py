@@ -2,6 +2,7 @@
 import argparse
 import json
 import multiprocessing
+import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -31,10 +32,11 @@ def main():
     (args.output/"pool.json").write_text(json.dumps(pool,indent=2))
     started=time.monotonic()
     ray_report={}
+    runtime=tempfile.TemporaryDirectory(prefix="ima-ray-")
     try:
         import ray
         from ray import tune
-        ray.init(num_cpus=2,num_gpus=0,include_dashboard=False,object_store_memory=100*1024**2,_node_ip_address="127.0.0.1",_temp_dir=str((args.output/"ray-runtime").resolve()))
+        ray.init(num_cpus=2,num_gpus=0,include_dashboard=False,object_store_memory=100*1024**2,_node_ip_address="127.0.0.1",_temp_dir=runtime.name)
         analysis=tune.run(ray_task,config={"seconds":tune.grid_search(requests)},resources_per_trial={"cpu":1},max_concurrent_trials=2,storage_path=str((args.output/"ray-results").resolve()),verbose=0)
         ray_report={"wall_seconds":time.monotonic()-started,"completed":len(analysis.trials),"version":ray.__version__}
     except Exception as exc:
@@ -45,6 +47,7 @@ def main():
             ray.shutdown()
         except ImportError:
             pass
+        runtime.cleanup()
     result={"pool":pool,"ray_tune":ray_report,"selected":"persistent_spawn_pool","rationale":"Single audited host; existing single-owner ledger/Optuna controller and pool need no distributed scheduler. Ray is optional only for a demonstrated missing capability.","scope":"Queue initialization and replenishment overhead on deterministic sleep tasks, not model-training throughput"}
     (args.output/"comparison.json").write_text(json.dumps(result,indent=2))
     print(json.dumps(result,indent=2))
