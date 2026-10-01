@@ -43,17 +43,17 @@ models into betting. A new source needs a registered availability adapter first.
 - One controller owns ledger writes and Optuna ask/tell. Trials are asked just in
   time; completed slots are replenished without waiting for a cycle's straggler.
   Programs rotate within a lane so fresh probes can share existing large budgets.
-- Maximum 16 concurrent trials, each one native CPU thread and a 4 GiB admission
+- Maximum 12 concurrent trials, each one native CPU thread and a 4 GiB admission
   reservation; aggregate CPU budget 24 and RAM budget 80 GiB. Host reserve: four
   threads/eight GiB. A reservation is not an individual hard RSS limit. The service
   has `MemoryHigh=92G`, `MemoryMax=96G`; dispatch also checks available host memory.
   The 80 GiB admission budget accounts for declared reservations, not measured RSS.
-  Initial full-history training required about 90 GiB for 16 in-flight jobs; the
-  service limits were raised in place without restarting or changing pinned code.
-  The hard cap still leaves roughly 20 GiB for other workloads on this 128 GiB host.
-  Full-history acceptance found sustained pressure at 16 workers. The production
-  configuration now sets a 12-worker ceiling; a guarded drain/resume is pending
-  while the initial trials finish. This ceiling does not change agent trial budgets.
+  Initial 16-worker full-history training reached 96 GiB and suffered an OOM
+  interruption. All 16 interrupted attempts were automatically requeued; the
+  guarded resume uses the same model revision and dataset with 12 workers.
+  A subsequent sample measured about 81 GiB and zero memory-pressure stalls at
+  12 workers. The cap leaves nominal host headroom, not a guaranteed reservation
+  against other apps' growth. The ceiling does not change agent trial budgets.
 - Builders execute inside these same worker reservations. Identical raw matrix
   requests share a locked cache; selection/residual fit state is not shared across
   folds or targets. Fresh Featuretools builds may take many minutes.

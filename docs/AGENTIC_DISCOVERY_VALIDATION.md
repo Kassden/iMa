@@ -166,6 +166,47 @@ mode, unchanged code revision and active protected services. It refuses to remov
 a changed operator marker or resume a failure/spend stop. Resume and primary
 Benter replay are pending acceptance gates, not claimed completed work.
 
+### Root-Cause Baseline: Full-History Memory Incident
+
+Proven: at 17:43:34 Asia/Shanghai, the dedicated v5 user-service journal reported
+that the kernel OOM killer killed processes in its unit. Systemd recorded
+`Result=oom-kill`, a 96 GiB memory peak and 5.7 GiB swap peak. Sixteen attempts were
+running and only three were completed. Their observed worker RSS exceeded the
+fixed 4 GiB admission reservation. The model-code revision and source dataset did
+not change.
+
+Likely cause: aggregate full-history preprocessing/selection/training memory at
+16 workers exceeded this service's safe working set. The lower worker ceiling
+addresses that measured overcommit. Unknown: the exact triggering allocation and
+kernel victim selection; `imaopt` cannot read system/kernel journals. The service
+OOM and its peak are verified, but broader kernel attribution is not inferred
+from inaccessible logs. There is no established evidence of a model memory leak.
+
+Recovery: systemd restarted the controller at 17:44:38. Ledger recovery returned
+all 16 interrupted attempts to reserved status. The operator-owned marker then
+allowed a clean stopped boundary, and the guard resumed unchanged revision
+`0915b619` at 17:45:05 with 12 workers. Readback verified 12 running, four reserved,
+three completed, zero pending uploads/tells and no planner error. The initial
+watcher receipt incorrectly asserted `trials_killed=0` after an unanticipated OOM;
+the original is retained, and `ops/memory-rebalance-receipt.json` explicitly
+corrects it to zero operator cancellations and 16 OOM-interrupted/requeued
+attempts. The interruption is not hidden as a successful clean drain.
+
+At 17:50:29, the new service instance used 81.26 GiB. Its hard-limit and OOM
+counters were zero, and memory-pressure averages were zero. A 30-second host
+sample measured 43.37% CPU utilization and 32.96 GiB available RAM. These are
+post-recovery samples, not proof that no historical OOM occurred. The operations
+trace `tr-18f1bd735aeacf88bcba5676098db21c` in experiment 6 was written and read back
+successfully; it records the interruption/recovery rather than an LLM decision.
+
+Protected-service caveat: all three shared services were active at inspection.
+Cortex web showed an activation at 17:39:50 (restart counter 7), Cortex worker at
+17:04:44 (counter 6), and solar simulator since September 30 (counter 0). No
+command in this rollout restarted or modified those services. Their automatic
+restarts during the observation window have an unverified cause because their
+system journals are not available to `imaopt`. Active checks do not prove
+uninterrupted availability or zero indirect resource impact.
+
 All protected services remained active: `cortex-web`, `cortex-worker`, and
 `solar-simulator`. `imaopt` has `Linger=yes`; v5 is enabled and does not require the
 Mac or SSH session. Unlimited total trials remain subject to the explicit $5 planner
