@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,9 @@ from ima.feature_studies import paired_feature_report
 from ima.research_search import ProgramSearchController
 from ima.research_controller import _v4_seed_proposals
 from scripts.optimize import _load_config
+from ima.openrouter_orchestrator import OpenRouterConfig, OpenRouterError, _post_json
+from ima.research_hypotheses import reference_champions
+from ima.research_store import ResearchLedger
 
 
 def history():
@@ -24,6 +28,26 @@ def history():
 
 
 class DiscoveryFeedbackTests(unittest.TestCase):
+    def test_absolute_api_deadline(self):
+        import asyncio
+        class SlowClient:
+            def __init__(self,**kwargs): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self,*args): pass
+            async def post(self,*args,**kwargs): await asyncio.sleep(5)
+        config=OpenRouterConfig("test","test",absolute_deadline_seconds=1)
+        with patch("httpx.AsyncClient",SlowClient),self.assertRaisesRegex(OpenRouterError,"TimeoutError"):
+            _post_json("https://example.invalid",{},config)
+
+    def test_reference_evidence_requires_same_population(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger=ResearchLedger(Path(directory)/"ledger.sqlite")
+            payload={"dataset_hash":"d","protocol_parameters":{"score_races":2},"recipe":{"target":{"kind":"win_probability"},"model":{"kind":"boosted"}}}
+            record=ledger.reserve_attempt("a",payload)
+            ledger.complete_attempt(record.attempt_id,{"objective_name":"loss","objective_value":2.1,"lineage":{"protocol_id":"p"}})
+            self.assertEqual(len(reference_champions(directory,"d",{"score_races":2})),1)
+            self.assertEqual(reference_champions(directory,"other",{"score_races":2}),[])
+            self.assertEqual(ledger.snapshot()["completed"],1)
     def test_domain_past_only_and_definitions(self):
         frame=history()
         spec=DiscoverySpec(domain_history=True,windows_days=(90,))
@@ -73,7 +97,7 @@ class DiscoveryFeedbackTests(unittest.TestCase):
             path.write_text(json.dumps({"max_trials_per_decision":104}))
             self.assertEqual(_load_config(path)["proposal_batch_size"],104)
             search=ProgramSearchController(Path(directory)/"campaign")
-            proposal=_v4_seed_proposals()[0].model_copy(update={"fixed_parameters":True,"max_trials":1})
+            proposal=_v4_seed_proposals()[0].model_copy(update={"fixed_parameters":True,"max_trials":1,"search_space":{}})
             search.register(proposal)
             suggestion=search.ask(1)[0]
             self.assertEqual(suggestion.recipe.model.parameters,proposal.recipe.model.parameters)
