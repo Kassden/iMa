@@ -452,7 +452,7 @@ Phase 3 is now mandatory deterministic discovery work, not one generic builder t
 - Success Criteria: server completes repeated feedback without the Mac online. If access/capacity is unavailable, report blocked server verification without claiming deployment.
 - Checklist:
   - [x] Obtain rollout authorization: user explicitly requested execution and v5 launch on 2026-10-01, superseding planning-only instructions.
-  - [ ] After authorization only, drain v4 at a safe boundary, verify zero workers, start successor, and preserve rollback artifacts. Do not run two unrestricted campaigns.
+  - [x] Authorized handoff verified: v4 stopped at 1,005 completed/zero running; v5 enabled at pinned 0915b619, 16 concurrent attempts, completed feature/model runs, registered replay and evidence-aware follow-up. Shared services preserved.
 
 ## Planning Deliverable Readback
 - Verify this plan with Megaskill plan checker and generate the read-only dashboard.
