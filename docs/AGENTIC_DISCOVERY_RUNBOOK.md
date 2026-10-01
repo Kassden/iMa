@@ -126,12 +126,15 @@ Optional tsfresh is disabled. Catalog shards contain 64 definition IDs; this is 
 bounded catalog, not unrestricted arbitrary DAG synthesis or a distributed builder.
 Learning-curve diagnostics freeze selected features/transforms and measure model
 training sensitivity, not a fresh end-to-end feature-selection curve at each size.
-# Full-History Memory Recovery
+
+## Full-History Memory Recovery
 
 The 16- and 12-worker waves exceeded the dedicated 96 GiB cap. The authorized
-next measurement uses ten workers, `MemoryHigh=96G`, `MemoryMax=100G` (GiB).
+current verified setting uses ten workers, `MemoryHigh=96G`, `MemoryMax=100G` (GiB).
 The host reports 121.4 GiB usable, leaving about 21.4 GiB outside this cap.
-This is an operating limit, not a claim that ten workers have passed all folds.
+The first ten-job generated-feature Benter wave passed all three folds with a
+88.898 GiB peak and zero OOM/hard-limit hits. This validates that measured recipe,
+not arbitrary future feature widths. Do not automatically raise the ceiling.
 
 The unit's `ExecStartPre` runs `v5-memory-backoff.py` from the operational
 dependency directory, outside the pinned model release. A new own-unit
@@ -143,3 +146,9 @@ raises concurrency, or reads other users' units. Inspect
 Changing ceilings upward requires operator review of full-fold memory peaks.
 The original 4 GiB/job reservation is insufficient for these discovery recipes;
 do not mistake admission estimates for observed RSS or total cgroup memory.
+
+Acceptance evidence is in `ops/full-history-acceptance.json` and
+`ops/full-history-memory-watch.jsonl`. MLflow operations trace
+`tr-8881e7cb5210cbc1e5703daad5e4c479` contains the registry replay and queue-refill
+readback. The prior two OOMs and the operator stop of the twelve-worker retry are
+retained in separate receipts; zero current-instance counters do not erase them.

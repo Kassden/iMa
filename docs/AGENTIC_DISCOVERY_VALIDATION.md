@@ -211,7 +211,8 @@ All protected services remained active: `cortex-web`, `cortex-worker`, and
 `solar-simulator`. `imaopt` has `Linger=yes`; v5 is enabled and does not require the
 Mac or SSH session. Unlimited total trials remain subject to the explicit $5 planner
 spend pause, operator stop and failure safeguards documented in the runbook.
-# Second Memory Recovery: Full Acceptance Still Open
+
+## Second Memory Recovery: Initial Readback
 
 At 18:45:49 Shanghai time, the twelve-worker service also reported `oom-kill`.
 All eleven Benter attempts had written two folds of selection/diagnostic
@@ -228,4 +229,49 @@ Seven deterministic guard tests passed. An isolated 64 MiB own-user canary
 produced a real `oom-kill`; its separate config reduced ten to eight exactly
 once and the repeated guard invocation left eight unchanged. This canary did
 not mutate the production ledger or model settings. Full-history Benter
-completion and registered-model replay remain required acceptance evidence.
+completion and registered-model replay were still pending at that initial
+readback. The later acceptance evidence follows.
+
+## Full-History Acceptance: 20:14 Shanghai Time
+
+All ten generated-feature Benter attempts completed three chronological folds
+under the unchanged `0915b619` model revision. The controller remained PID 774302
+from its 18:55:35 activation through completion. At 20:14:35, fourteen attempts
+were completed and linked to MLflow models, ten replacement jobs were running,
+and pending tells/uploads, tracking errors and planner errors were all clear.
+The dedicated service peaked at 88.89784 GiB, then used 54.39231 GiB, with zero
+OOM, hard-limit or soft-throttle events for this instance. The two earlier OOMs
+remain recorded above.
+
+Best generated-feature Benter loss was `2.175056736884313`, attempt
+`attempt-1ea109fcd59b78fede7c0b5fd80f449d6213e6b7fa50f9d2992d75ee7ffd3471`,
+MLflow run `b8c8f5aec53c40a6a256a8dd0baffa23`, registered URI
+`models:/ima-agentic-v5-discovery-candidates-win-probability/61`.
+The actual registered URI replay error was exactly zero; saved scoring-CSV
+replay error was `9.8879238130678e-17`. Within-race probability sums ranged from
+0.9999999999999999 to 1.0000000000000002. The run has two dataset inputs and the
+generated catalog has 225 candidates. This is a development family improvement
+over reference Benter loss 2.18168778, not a global win-probability record: the
+reference boosted model remains better at 2.15972115. Statistical significance
+and live betting profit are not claimed.
+
+The real isolated 64 MiB auto-restart canary also verified `ExecStartPre`:
+the deduplicated first startup kept eight workers, a new OOM at 19:10:19 triggered
+an automatic restart, and the hook reduced the canary to six at 19:10:20 before
+a successful workload exit. Production was not restarted for this check. The
+current production hook is loaded for subsequent starts; the current process
+predates its load and used the manually verified guard transaction.
+
+Full regression: 286 tests passed in 67.541 seconds. PR15 merged at
+`8dd0732c37bf6d9ee8f152270223e663c0c572d8`. The committed recovery delta contains
+exactly the seven declared code/test/config/unit/document files. The scope
+helper itself reported unrelated pre-existing dirty/untracked artifacts; those
+were preserved and excluded by explicit commit-delta review.
+
+Final receipts: `ops/full-history-acceptance.json`, `readback.json`,
+`ops/full-history-memory-watch.jsonl`; acceptance trace
+`tr-8881e7cb5210cbc1e5703daad5e4c479` was read back OK in experiment 6.
+Protected units were active, with Cortex web/worker restart counters 10/8 and
+solar counter zero. No protected unit was deliberately restarted or modified;
+their earlier restart causes remain unverified. This check establishes current
+health, not uninterrupted shared-service availability.
