@@ -45,6 +45,23 @@ class FeatureProgramTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Duplicate"):
             synthesize(pd.concat([fixture(), fixture()]), spec)
 
+    def test_generator_cache_shared_across_target_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first=DiscoverySpec(windows_days=(90,),selection="quality")
+            second=DiscoverySpec(windows_days=(90,),selection="mutual_information",max_selected=8)
+            _,a=materialize(fixture(),first,"same-source",Path(directory))
+            _,b=materialize(fixture(),second,"same-source",Path(directory))
+            self.assertEqual(a["matrix_id"],b["matrix_id"])
+            self.assertNotEqual(a["discovery_id"],b["discovery_id"])
+            self.assertEqual(b["spec"]["selection"],"mutual_information")
+
+    def test_representative_cutoffs_keep_full_past_history(self):
+        frame=fixture()
+        spec=DiscoverySpec(windows_days=(365,))
+        full,_=synthesize(frame,spec)
+        selected,_=synthesize(frame,spec,cutoff_positions=[12,18,21])
+        pd.testing.assert_frame_equal(full.iloc[[12,18,21]],selected)
+
     def test_late_observation(self):
         frame = fixture()
         spec = DiscoverySpec(windows_days=(365,))
