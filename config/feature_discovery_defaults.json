@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "entities": ["horse", "jockey", "trainer"],
+  "measurements": ["speed_mps", "beaten_lengths", "carried_weight"],
+  "aggregates": ["count", "mean", "std", "min", "max"],
+  "windows_days": [90, 365],
+  "max_depth": 1,
+  "max_definitions": 500,
+  "max_selected": 16,
+  "missingness_limit": 0.95,
+  "correlation_threshold": 0.95,
+  "selection": "mutual_information",
+  "seed": 17,
+  "availability_rule": "date_only_next_day"
+}
