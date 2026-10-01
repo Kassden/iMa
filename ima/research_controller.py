@@ -58,7 +58,7 @@ class DatasetFeatureProfile:
 
     def __init__(self, dataset_path: Path, protocol: dict[str, Any]) -> None:
         numeric = set().union(*(schema.numeric for schema in FEATURE_SCHEMAS.values()))
-        required = {"race_id", "race_no", "date", "target_win"}
+        required = {"race_id", "race_no", "date", "target_win", "source", "horse_id", "jockey_id", "jockey_key", "trainer_id", "trainer_key", "finish_seconds", "lengths_raw", "actual_weight"}
         if dataset_path.suffix == ".parquet":
             frame = pd.read_parquet(dataset_path)
             frame = frame[[column for column in frame if column in numeric | required]]
@@ -81,7 +81,19 @@ class DatasetFeatureProfile:
         scored_races = set().union(*(set(fold.score_race_ids) for fold in folds))
         score_rows = frame["race_id"].astype(str).isin(scored_races)
         score_coverage = values.loc[score_rows].notna().mean()
-        full_coverage = values.notna().mean()
+        development_races = set().union(*(set(fold.train_race_ids) | set(fold.calibration_race_ids) | set(fold.score_race_ids) for fold in folds))
+        full_coverage = values.loc[frame["race_id"].astype(str).isin(development_races)].notna().mean()
+        development = frame[frame["race_id"].astype(str).isin(development_races)]
+        entities = []
+        for entity in ("horse","jockey","trainer"):
+            key,fallback=f"{entity}_id",f"{entity}_key"
+            identities=development[key] if key in development else pd.Series(index=development.index,dtype=object)
+            if fallback in development:
+                identities=identities.fillna(development[fallback])
+            if identities.notna().all():
+                entities.append(entity)
+        measurements = [name for name,column in (("speed_mps","finish_seconds"),("beaten_lengths","lengths_raw"),("carried_weight","actual_weight")) if column in development and development[column].notna().any()]
+        self.discovery_sources = {"entities":entities,"measurements":measurements,"history_sources":sorted(development.source.dropna().astype(str).unique()) if "source" in development else [],"scope":"development only; source availability checked before feature construction"}
         coverage_drift = (score_coverage - full_coverage).sort_values()
         self.unavailable: dict[str, set[str]] = {}
         for window in ("all_history", "trailing_3_years"):
@@ -98,6 +110,7 @@ class DatasetFeatureProfile:
                 unavailable.update(values.columns[~values.loc[train].notna().any()].tolist())
             self.unavailable[window] = unavailable
         self.summary = {
+            "discovery_sources": self.discovery_sources,
             "numeric_feature_count": len(numeric),
             "present_numeric_count": len(present_numeric),
             "unavailable_transform_columns": sorted(self.unavailable["all_history"]),
@@ -119,6 +132,14 @@ class DatasetFeatureProfile:
         }
 
     def admission_error(self, recipe: PipelineRecipe) -> str | None:
+        if recipe.feature_discovery:
+            spec=recipe.feature_discovery
+            if not set(spec.entities)<=set(self.discovery_sources["entities"]):
+                return "Discovery entity identities are incomplete in development data"
+            if not set(spec.measurements)<=set(self.discovery_sources["measurements"]):
+                return "Discovery measurement has no validated development observations"
+            if not set(spec.history_sources)<=set(self.discovery_sources["history_sources"]):
+                return "Discovery source is not registered in development data"
         schema = drop_feature_families(
             FEATURE_SCHEMAS[recipe.feature_schema], recipe.drop_feature_families
         )
@@ -1514,6 +1535,9 @@ def _read_lock_metadata(path: Path) -> dict[str, Any] | None:
 
 def _planner_spend(campaign_dir: Path) -> float:
     total = 0.0
+    calls = list((campaign_dir/"planner-calls").glob("*.json"))
+    if calls:
+        return sum(float(normalize_openrouter_usage(_read_json(path)["response"]).get("total_cost_usd") or 0) for path in calls)
     for path in (campaign_dir / "planner").glob("cycle-*.json"):
         payload = _read_json(path)
         response = payload.get("response", {})

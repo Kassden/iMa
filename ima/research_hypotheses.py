@@ -42,3 +42,18 @@ def champion_snapshot(terminal):
             if index not in mapping or candidate["objective_value"] < mapping[index]["objective_value"]:
                 mapping[index] = candidate
     return {"global_champions":groups,"family_champions":families,"terminal_watermark":len(terminal),"scope":"development only; objective values minimized; ranking exposes negative NDCG"}
+
+
+def reference_champions(path, dataset_hash, protocol_parameters):
+    """Read prior completed evidence without opening the reference ledger for writes."""
+    with sqlite3.connect(f"file:{Path(path).resolve()}/ledger.sqlite?mode=ro",uri=True) as conn:
+        rows=conn.execute("SELECT attempt_id,status,payload_json,result_json FROM attempts WHERE status='completed'").fetchall()
+    accepted=[]
+    for attempt,status,payload,result in rows:
+        payload,result=json.loads(payload),json.loads(result)
+        if payload.get("dataset_hash")!=dataset_hash or payload.get("protocol_parameters")!=protocol_parameters:
+            continue
+        accepted.append(dict(attempt_id=attempt,status=status,payload=payload,result=result))
+    view=champion_snapshot(accepted)
+    ids={value["attempt_id"] for group in (view["global_champions"],view["family_champions"]) for value in group.values()}
+    return [row for row in accepted if row["attempt_id"] in ids]
