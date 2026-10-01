@@ -415,7 +415,7 @@ class ProgramSearchController:
                     continue
                 attempts += 1
                 trial = study.ask()
-                space = proposal.search_space or _default_space(proposal.recipe.model.kind)
+                space = {} if proposal.fixed_parameters else (proposal.search_space or _default_space(proposal.recipe.model.kind))
                 parameters = dict(proposal.recipe.model.parameters)
                 for name, dimension in space.items():
                     if dimension.kind == "float":
