@@ -7,14 +7,15 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
+ExecStartPre=/home/imaopt/research-v2/releases/f54c604/.venv/bin/python /home/imaopt/research-v2/v5-dependencies/v5-memory-backoff.py --campaign /home/imaopt/research-v2/campaigns/agentic_v5_discovery
 ExecStart=/home/imaopt/research-v2/live-releases/ima-v5-current/deploy/systemd/ima-discovery-v5-supervisor
 Restart=on-failure
 RestartSec=60
 KillMode=control-group
 TimeoutStopSec=1800
 Nice=5
-MemoryHigh=92G
-MemoryMax=96G
+MemoryHigh=96G
+MemoryMax=100G
 TasksMax=512
 
 [Install]
