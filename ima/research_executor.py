@@ -150,14 +150,17 @@ def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
     """Train/evaluate one recipe and atomically persist its accepted artifacts."""
     started = time.perf_counter()
     try:
+        _write_json_atomic(request.output_dir/"stage.json",{"phase":"loading_dataset","started_at_epoch":time.time()})
         frame = _load_dataset(request.dataset_path)
         observed_hash = _hash_file(request.dataset_path)
         if request.dataset_hash is not None and request.dataset_hash != observed_hash:
             raise ValueError("dataset hash does not match execution request")
         if request.recipe.feature_discovery:
             from .feature_program import materialize
+            _write_json_atomic(request.output_dir/"stage.json",{"phase":"building_features","discovery_id":request.recipe.feature_discovery.discovery_id(),"started_at_epoch":time.time()})
             frame, manifest = materialize(frame, request.recipe.feature_discovery, observed_hash, request.output_dir.parent.parent / "discovery-cache")
             _write_json_atomic(request.output_dir / "discovery-manifest.json", manifest)
+        _write_json_atomic(request.output_dir/"stage.json",{"phase":"training","started_at_epoch":time.time()})
         result = _execute_frame(request, frame, observed_hash, started)
         if request.recipe.feature_discovery:
             result.artifacts["discovery_manifest"] = str(request.output_dir / "discovery-manifest.json")

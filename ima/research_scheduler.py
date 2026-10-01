@@ -32,3 +32,9 @@ class ResourceAdmission:
 
     def snapshot(self):
         return {"running_jobs":len(self.active),"reserved_cpu_threads":sum(r.cpu_threads for r in self.active.values()),"reserved_ram_gib":sum(r.ram_gib for r in self.active.values()),"max_jobs":self.max_jobs,"cpu_budget":self.cpu_threads,"ram_budget_gib":self.ram_gib}
+
+
+def fair_program_order(program_ids, reservations):
+    """Durable round robin within a lane; new probes cannot starve behind a large budget."""
+    last = {row["payload"].get("program_id"):index for index,row in enumerate(reservations)}
+    return sorted(program_ids,key=lambda pid:(last.get(pid,-1),program_ids.index(pid)))

@@ -18,7 +18,7 @@ from .feature_studies import paired_feature_report
 from .openrouter_orchestrator import OpenRouterConfig, choose_cycle_trial_budget, choose_research_proposals, normalize_openrouter_usage, _json_message_from_response
 from .research_executor import RecipeExecutionRequest, execute_recipe
 from .research_hypotheses import HypothesisMemory, champion_snapshot, reference_champions
-from .research_scheduler import ResourceAdmission, ResourceRequest
+from .research_scheduler import ResourceAdmission, ResourceRequest, fair_program_order
 from .research_search import ProgramSearchController
 from .research_specs import ResearchProposal, V5_PORTFOLIO_VERSION
 from .research_store import ResearchLedger, utc_now
@@ -290,10 +290,11 @@ def run_v5_campaign(config):
                         payload=original["payload"]
                         attempt=original["attempt_id"]
                     else:
-                        lane = core._portfolio_slot(len(ledger.reserved_attempts()),config.research_policy)
+                        reservations=ledger.reserved_attempts()
+                        lane = core._portfolio_slot(len(reservations),config.research_policy)
                         target,model = core.V4_CONTRACTS[lane]
                         allowed=[pid for pid,p in search.programs.items() if pid not in exhausted and (p.recipe.target.kind,p.recipe.model.kind)==(target,model)]
-                        suggestions=search.ask(1,allowed_program_ids=allowed)
+                        suggestions=search.ask(1,allowed_program_ids=allowed,preferred_program_ids=fair_program_order(allowed,reservations))
                         if not suggestions:
                             exhausted.update(pid for pid in allowed if capacity.get(pid,0)>0)
                             core._write_json_atomic(exhausted_path,sorted(exhausted))
