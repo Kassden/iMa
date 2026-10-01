@@ -211,3 +211,21 @@ All protected services remained active: `cortex-web`, `cortex-worker`, and
 `solar-simulator`. `imaopt` has `Linger=yes`; v5 is enabled and does not require the
 Mac or SSH session. Unlimited total trials remain subject to the explicit $5 planner
 spend pause, operator stop and failure safeguards documented in the runbook.
+# Second Memory Recovery: Full Acceptance Still Open
+
+At 18:45:49 Shanghai time, the twelve-worker service also reported `oom-kill`.
+All eleven Benter attempts had written two folds of selection/diagnostic
+artifacts, but no completed Benter score was available. The automatic
+twelve-worker retry was explicitly stopped at 18:48:42; this is an operator
+interruption, not a successful graceful drain. Existing three completed
+experimental trials and their registry links remain intact.
+
+The user authorized a 100 GiB hard cap and incremental ceiling adjustments.
+The operational startup guard applied the observed twelve-worker OOM once,
+changing the ceiling to ten. Unit readback confirms 96 GiB soft/100 GiB hard;
+the restarted ledger shows ten running and six reserved, three completed.
+Seven deterministic guard tests passed. An isolated 64 MiB own-user canary
+produced a real `oom-kill`; its separate config reduced ten to eight exactly
+once and the repeated guard invocation left eight unchanged. This canary did
+not mutate the production ledger or model settings. Full-history Benter
+completion and registered-model replay remain required acceptance evidence.

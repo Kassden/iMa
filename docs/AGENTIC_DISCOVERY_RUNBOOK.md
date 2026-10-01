@@ -126,3 +126,20 @@ Optional tsfresh is disabled. Catalog shards contain 64 definition IDs; this is 
 bounded catalog, not unrestricted arbitrary DAG synthesis or a distributed builder.
 Learning-curve diagnostics freeze selected features/transforms and measure model
 training sensitivity, not a fresh end-to-end feature-selection curve at each size.
+# Full-History Memory Recovery
+
+The 16- and 12-worker waves exceeded the dedicated 96 GiB cap. The authorized
+next measurement uses ten workers, `MemoryHigh=96G`, `MemoryMax=100G` (GiB).
+The host reports 121.4 GiB usable, leaving about 21.4 GiB outside this cap.
+This is an operating limit, not a claim that ten workers have passed all folds.
+
+The unit's `ExecStartPre` runs `v5-memory-backoff.py` from the operational
+dependency directory, outside the pinned model release. A new own-unit
+`UNIT_RESULT=oom-kill` journal event reduces `max_concurrent_trials` by two;
+the persisted transaction makes retry idempotent. One-worker OOM creates a
+STOP marker and refuses restart. It never changes model/data/trial budgets,
+raises concurrency, or reads other users' units. Inspect
+`ops/memory-backoff-state.json` and the own user journal for recovery evidence.
+Changing ceilings upward requires operator review of full-fold memory peaks.
+The original 4 GiB/job reservation is insufficient for these discovery recipes;
+do not mistake admission estimates for observed RSS or total cgroup memory.
