@@ -26,7 +26,7 @@ def main():
         shutil.copy2(source/"rich-history-v4.csv.gz",target)
     if not (live/"inputs/protocol.json").exists():
         shutil.copy2(source/"protocol.json",live/"inputs/protocol.json")
-    config=json.loads(Path("config/agentic_v5_discovery.json").read_text())
+    config=json.loads((Path(__file__).resolve().parents[1]/"config/agentic_v5_discovery.json").read_text())
     (live/"ops/openrouter-config.json").write_text(json.dumps(config,indent=2))
     canary=root/"campaigns"/args.canary_name
     if canary.exists():
