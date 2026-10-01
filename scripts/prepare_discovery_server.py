@@ -41,7 +41,7 @@ def main():
     subset.to_csv(dataset,index=False,compression="gzip")
     protocol=canary/"inputs/protocol.json"
     protocol.write_text(json.dumps({"min_train_races":200,"calibration_races":50,"score_races":50,"max_folds":2}))
-    config.update(max_trials=20,max_trials_per_decision=20,max_concurrent_trials=2,cpu_thread_budget=2,ram_budget_gib=8,planning_checkpoint_seconds=300,replan_every_terminal_trials=8,max_total_cost_usd=1,dataset_path=str(dataset),protocol_path=str(protocol))
+    config.update(max_trials=20,max_trials_per_decision=20,max_concurrent_trials=2,cpu_thread_budget=2,ram_budget_gib=8,planning_checkpoint_seconds=300,replan_every_terminal_trials=8,max_total_cost_usd=1,dataset_path=str(dataset),protocol_path=str(protocol),reference_campaign_dir=None)
     (canary/"ops/openrouter-config.json").write_text(json.dumps(config,indent=2))
     print(json.dumps({"main_dataset_rows":len(frame),"main_races":frame.race_id.nunique(),"canary_rows":len(subset),"canary_races":len(races),"campaign":str(canary)}))
 

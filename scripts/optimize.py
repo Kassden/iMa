@@ -20,6 +20,8 @@ _CONFIG_KEYS = {
     "dataset_path", "protocol_path", "mlflow_tracking_uri",
     "cpu_thread_budget", "ram_budget_gib", "planning_checkpoint_seconds",
     "max_trials_per_decision",
+    "reference_campaign_dir",
+    "max_inflight_programs", "queue_low_watermark", "host_reserve_cpu_threads", "host_reserve_ram_gib",
 }
 
 
@@ -141,10 +143,15 @@ def main() -> int:
             ),
             dataset_path=Path(values["dataset_path"]) if values.get("dataset_path") else None,
             protocol_path=Path(values["protocol_path"]) if values.get("protocol_path") else None,
+            reference_campaign_dir=Path(values["reference_campaign_dir"]) if values.get("reference_campaign_dir") else None,
             mlflow_tracking_uri=values.get("mlflow_tracking_uri"),
             cpu_thread_budget=int(values.get("cpu_thread_budget",24)),
             ram_budget_gib=float(values.get("ram_budget_gib",80)),
             planning_checkpoint_seconds=int(values.get("planning_checkpoint_seconds",300)),
+            max_inflight_programs=int(values.get("max_inflight_programs",12)),
+            queue_low_watermark=int(values.get("queue_low_watermark",8)),
+            host_reserve_cpu_threads=int(values.get("host_reserve_cpu_threads",4)),
+            host_reserve_ram_gib=float(values.get("host_reserve_ram_gib",8)),
         )
         payload = run_campaign(config, dry=args.dry_run)
         print(_render(payload))
