@@ -115,6 +115,98 @@ not evidence of target leakage. No silent bootstrap or pinned-source hotpatch wa
 used. Current planner/tracking errors were empty, pending tells were zero, and the
 supervisor had zero restarts at verification.
 
+### Extended Live Observation
+
+Cycle 3 exhausted its 12,000-token proposal output allowance (9,938 reasoning
+tokens), leaving truncated JSON; its bounded repair request then failed with a
+connection ReadError. Both the billed response and the decision failure remain
+recorded. Training continued independently. Cycle 4 subsequently recovered
+without a restart, chose and approved 24 trials, and cleared the current planner
+error. An isolated medium-reasoning/24,000-output-token probe also encountered a
+ReadError, so it did not justify changing the live configuration.
+
+At 16:51 Asia/Shanghai, production had three completed attempts and 16 in flight,
+with zero pending tracking records or Optuna tells. The recorded-odds attempt
+completed at log-final-odds MAE `0.47479374169465055`, MLflow run
+`29173f24fcea4b05acb848b5e2358823`, registry version 4. This does not improve on
+the compatible v4 reference `0.422614132517678`.
+
+The first Benter historical-feature cache was still building, not yet a completed
+primary-path validation. Most Benter workers waited on its shared cache lock.
+A read-only timing probe over 256 identities in the 271,858-row source measured
+4.105 seconds for the repeated full-column identity queries. Extrapolating those
+queries to 12,012 horses and 16 sequence passes gives approximately 3,082 seconds
+for the scans alone, excluding Featuretools and other work. This is a timing
+estimate, not a full-build benchmark or proof of completion. Pre-indexing query
+rows per identity is a follow-up performance opportunity; the pinned live source
+was not hotpatched. Zero failed trials and active CPU do not by themselves prove
+that a Benter model has finished.
+
+The primary cache subsequently completed with 225 candidates in 3,920.567 seconds
+(65.34 minutes), allowing its waiting workers to enter training. Sixteen concurrent
+full-history jobs then sustained soft-limit pressure: service memory reached
+84.67 GiB under the original 80/88 GiB soft/hard limits. Hard-limit hits and OOM
+kills were both zero. The dedicated v5 service limits were raised, without restart,
+to 88/96 GiB and persisted in its own user unit; the source unit passed
+`systemd-analyze --user verify` with `XDG_RUNTIME_DIR=/run/user/1001`. At subsequent
+observation service memory was 89.74 GiB, hard-limit hits/OOM kills were still zero,
+the PID remained 756004 and restart count remained zero. This is an operational
+resource-limit adjustment, not a model-code hotpatch. The 80 GiB scheduler budget
+still measures declared reservations rather than actual worker RSS; per-model
+measured memory admission remains a limitation, not a claimed adaptive capability.
+
+Further observation measured about 40% memory-pressure stall time while the
+working set held near 91 GiB. The soft limit was moved to 92 GiB while retaining
+the 96 GiB hard cap. Subsequent RSS reached 94.42 GiB, still with zero hard-limit
+hits/OOM kills. This leaves insufficient margin for a long-running 16-worker
+campaign, so an operator-owned STOP marker now drains existing work without
+killing trials. A guarded watcher resumes the same pinned campaign at 12 workers
+only after zero running attempts, zero pending tracking/tells, a clean stopped
+mode, unchanged code revision and active protected services. It refuses to remove
+a changed operator marker or resume a failure/spend stop. Resume and primary
+Benter replay are pending acceptance gates, not claimed completed work.
+
+### Root-Cause Baseline: Full-History Memory Incident
+
+Proven: at 17:43:34 Asia/Shanghai, the dedicated v5 user-service journal reported
+that the kernel OOM killer killed processes in its unit. Systemd recorded
+`Result=oom-kill`, a 96 GiB memory peak and 5.7 GiB swap peak. Sixteen attempts were
+running and only three were completed. Their observed worker RSS exceeded the
+fixed 4 GiB admission reservation. The model-code revision and source dataset did
+not change.
+
+Likely cause: aggregate full-history preprocessing/selection/training memory at
+16 workers exceeded this service's safe working set. The lower worker ceiling
+addresses that measured overcommit. Unknown: the exact triggering allocation and
+kernel victim selection; `imaopt` cannot read system/kernel journals. The service
+OOM and its peak are verified, but broader kernel attribution is not inferred
+from inaccessible logs. There is no established evidence of a model memory leak.
+
+Recovery: systemd restarted the controller at 17:44:38. Ledger recovery returned
+all 16 interrupted attempts to reserved status. The operator-owned marker then
+allowed a clean stopped boundary, and the guard resumed unchanged revision
+`0915b619` at 17:45:05 with 12 workers. Readback verified 12 running, four reserved,
+three completed, zero pending uploads/tells and no planner error. The initial
+watcher receipt incorrectly asserted `trials_killed=0` after an unanticipated OOM;
+the original is retained, and `ops/memory-rebalance-receipt.json` explicitly
+corrects it to zero operator cancellations and 16 OOM-interrupted/requeued
+attempts. The interruption is not hidden as a successful clean drain.
+
+At 17:50:29, the new service instance used 81.26 GiB. Its hard-limit and OOM
+counters were zero, and memory-pressure averages were zero. A 30-second host
+sample measured 43.37% CPU utilization and 32.96 GiB available RAM. These are
+post-recovery samples, not proof that no historical OOM occurred. The operations
+trace `tr-18f1bd735aeacf88bcba5676098db21c` in experiment 6 was written and read back
+successfully; it records the interruption/recovery rather than an LLM decision.
+
+Protected-service caveat: all three shared services were active at inspection.
+Cortex web showed an activation at 17:39:50 (restart counter 7), Cortex worker at
+17:04:44 (counter 6), and solar simulator since September 30 (counter 0). No
+command in this rollout restarted or modified those services. Their automatic
+restarts during the observation window have an unverified cause because their
+system journals are not available to `imaopt`. Active checks do not prove
+uninterrupted availability or zero indirect resource impact.
+
 All protected services remained active: `cortex-web`, `cortex-worker`, and
 `solar-simulator`. `imaopt` has `Linger=yes`; v5 is enabled and does not require the
 Mac or SSH session. Unlimited total trials remain subject to the explicit $5 planner

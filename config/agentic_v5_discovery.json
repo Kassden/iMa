@@ -10,7 +10,7 @@
   "planner_timeout_seconds": 300,
   "max_trials": null,
   "max_trials_per_decision": 260,
-  "max_concurrent_trials": 16,
+  "max_concurrent_trials": 12,
   "cpu_thread_budget": 24,
   "ram_budget_gib": 80,
   "max_inflight_programs": 12,
