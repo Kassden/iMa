@@ -50,7 +50,7 @@ def history_table(frame: pd.DataFrame, spec: DiscoverySpec) -> pd.DataFrame:
     return history
 
 
-def synthesize(frame: pd.DataFrame, spec: DiscoverySpec) -> tuple[pd.DataFrame, dict]:
+def synthesize(frame: pd.DataFrame, spec: DiscoverySpec, *, enumerate_only=False) -> tuple[pd.DataFrame, dict]:
     import featuretools as ft
     from woodwork.logical_types import Double, Categorical
 
@@ -64,7 +64,7 @@ def synthesize(frame: pd.DataFrame, spec: DiscoverySpec) -> tuple[pd.DataFrame, 
             raise ValueError("Unregistered history source")
         included = frame.source.astype(str).isin(spec.history_sources)
     cutoff_dates = pd.to_datetime(frame.date, errors="raise").dt.normalize()
-    output = pd.DataFrame(index=frame.index)
+    output = pd.DataFrame(index=[] if enumerate_only else frame.index)
     catalog = []
     definitions = {}
     deferred = []
@@ -97,6 +97,10 @@ def synthesize(frame: pd.DataFrame, spec: DiscoverySpec) -> tuple[pd.DataFrame, 
                     names.append(fid)
                 if not eligible:
                     continue
+                definitions[f"{entity}-{window}"] = json.loads(ft.save_features(eligible))
+                if enumerate_only:
+                    output[names] = pd.DataFrame(columns=names)
+                    continue
                 matrix = ft.calculate_feature_matrix(features=eligible, entityset=es, cutoff_time=unique, cutoff_time_in_index=True, include_cutoff_time=False, training_window=(f"{window} days" if window else None), approximate=None, n_jobs=1)
                 matrix.columns = names
                 query = pd.MultiIndex.from_frame(cutoffs[[key, "time"]])
@@ -112,6 +116,10 @@ def synthesize(frame: pd.DataFrame, spec: DiscoverySpec) -> tuple[pd.DataFrame, 
                     if len(catalog)>=spec.max_definitions:
                         deferred.append(definition)
                         continue
+                    if enumerate_only:
+                        output[fid]=pd.Series(dtype=float)
+                        catalog.append({"feature_id":fid,**definition})
+                        continue
                     values=pd.Series(np.nan,index=frame.index)
                     for identity,group in history.loc[included].groupby(key,sort=True):
                         group=group.sort_values(["available_at","start_id"],kind="stable")
@@ -122,6 +130,43 @@ def synthesize(frame: pd.DataFrame, spec: DiscoverySpec) -> tuple[pd.DataFrame, 
                         values.loc[rows[valid]]=rolled[last[valid]]
                     output[fid]=values
                     catalog.append({"feature_id":fid,**definition})
+    if spec.domain_history:
+        if "horse_id" not in history or "speed_mps" not in history:
+            raise ValueError("Domain history requires horse entity and speed_mps measurement")
+        domain = history.loc[included].copy()
+        domain["distance_band"] = (pd.to_numeric(frame.loc[included,"distance"]) / 400).round()
+        for operation in ("elapsed_days", "recency_weighted_speed", "distance_conditioned_speed"):
+            definition={"entity":"horse","expression":operation,"recency_decay_days":spec.recency_decay_days,"availability_rule":spec.availability_rule}
+            fid="dfs_"+content_id(definition)
+            if len(catalog)>=spec.max_definitions:
+                deferred.append(definition)
+                continue
+            if enumerate_only:
+                output[fid]=pd.Series(dtype=float)
+                catalog.append({"feature_id":fid,**definition})
+                continue
+            values=pd.Series(np.nan,index=frame.index)
+            group_keys=["horse_id","distance_band"] if operation=="distance_conditioned_speed" else ["horse_id"]
+            current=history.copy()
+            current["distance_band"]=(pd.to_numeric(frame.distance)/400).round()
+            queries={key: rows.index for key,rows in current.groupby(group_keys,sort=False)}
+            for key,group in domain.groupby(group_keys,sort=False):
+                rows=queries.get(key)
+                if rows is None:
+                    continue
+                group=group.sort_values(["available_at","start_id"],kind="stable")
+                count=np.searchsorted(group.available_at.to_numpy(),cutoff_dates.loc[rows].to_numpy(),side="left")
+                valid=count>0
+                if operation=="elapsed_days":
+                    values.loc[rows[valid]]=(cutoff_dates.loc[rows[valid]].to_numpy()-group.available_at.to_numpy()[count[valid]-1])/np.timedelta64(1,"D")
+                else:
+                    weights=np.exp((group.available_at-group.available_at.max()).dt.total_seconds().to_numpy()/(86400*spec.recency_decay_days)) if operation=="recency_weighted_speed" else np.ones(len(group))
+                    weights=np.where(group.speed_mps.notna(),weights,0)
+                    sums=np.concatenate([[0],np.cumsum(group.speed_mps.fillna(0).to_numpy()*weights)])
+                    support=np.concatenate([[0],np.cumsum(weights)])
+                    values.loc[rows[valid]]=np.divide(sums[count[valid]],support[count[valid]],out=np.full(valid.sum(),np.nan),where=support[count[valid]]>0)
+            output[fid]=values
+            catalog.append({"feature_id":fid,**definition})
     if spec.race_relative:
         for original in list(output):
             for operation in ("rank","center"):
@@ -138,7 +183,9 @@ def synthesize(frame: pd.DataFrame, spec: DiscoverySpec) -> tuple[pd.DataFrame, 
 
 
 def materialize(frame: pd.DataFrame, spec: DiscoverySpec, source_hash: str, cache: Path) -> tuple[pd.DataFrame, dict]:
-    identity = content_id({"source_hash": source_hash, "spec": spec.model_dump(mode="json"), "builder": 1})
+    import featuretools as ft
+    builder_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    identity = content_id({"source_hash": source_hash, "spec": spec.model_dump(mode="json"), "builder_hash": builder_hash, "engine_version": ft.__version__})
     directory = Path(cache) / identity
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / "build.lock").open("a") as lock:
@@ -154,7 +201,7 @@ def materialize(frame: pd.DataFrame, spec: DiscoverySpec, source_hash: str, cach
             temporary = directory / f"matrix-{os.getpid()}.parquet"
             matrix.to_parquet(temporary)
             os.replace(temporary, path)
-            manifest.update(matrix_id=identity, source_hash=source_hash, matrix_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+            manifest.update(matrix_id=identity, source_hash=source_hash, builder_hash=builder_hash, matrix_path=str(path.resolve()), matrix_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
             temporary_meta = directory / "manifest.tmp"
             temporary_meta.write_text(json.dumps(manifest, indent=2, sort_keys=True))
             os.replace(temporary_meta, meta)

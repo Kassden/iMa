@@ -30,6 +30,10 @@ class DiscoverySpec(BaseModel):
     history_sources: tuple[str, ...] = ()
     sequence_windows: tuple[int, ...] = ()
     race_relative: bool = False
+    adjusted_speed_residuals: bool = False
+    residual_shrinkage: float = Field(default=5, ge=0, le=100)
+    domain_history: bool = False
+    recency_decay_days: int = Field(default=180, ge=7, le=730)
 
     @model_validator(mode="after")
     def valid_grid(self):
