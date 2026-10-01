@@ -2,10 +2,15 @@ import tempfile
 import unittest
 from pathlib import Path
 from ima.research_hypotheses import HypothesisMemory, champion_snapshot
-from ima.research_scheduler import ResourceAdmission, ResourceRequest
+from ima.research_scheduler import ResourceAdmission, ResourceRequest, fair_program_order
 
 
 class DiscoveryStateTests(unittest.TestCase):
+    def test_small_probe_is_not_starved(self):
+        reservations=[{"payload":{"program_id":"large"}} for _ in range(26)]
+        self.assertEqual(fair_program_order(["large","probe"],reservations),["probe","large"])
+        reservations.append({"payload":{"program_id":"probe"}})
+        self.assertEqual(fair_program_order(["large","probe"],reservations),["large","probe"])
     def test_idempotent_memory(self):
         with tempfile.TemporaryDirectory() as d:
             m=HypothesisMemory(Path(d)/"h.sqlite")
