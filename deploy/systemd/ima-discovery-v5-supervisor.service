@@ -13,7 +13,7 @@ RestartSec=60
 KillMode=control-group
 TimeoutStopSec=1800
 Nice=5
-MemoryHigh=88G
+MemoryHigh=92G
 MemoryMax=96G
 TasksMax=512
 
