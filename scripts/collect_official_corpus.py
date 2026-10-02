@@ -6,11 +6,12 @@ import signal
 import subprocess
 import sys
 import time
+from importlib.metadata import version
 from pathlib import Path
 
 from scrapy.crawler import CrawlerProcess
 import scrapy
-from scrapper.official_corpus import CorpusSpider, HORSE_ID, ROOT, canonical_url
+from scrapper.official_corpus import CorpusSpider, HORSE_ID, ROOT, MOVEMENT_PDF, canonical_url
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 
@@ -105,7 +106,9 @@ def main():
     identity = {"python": sys.version, "scrapy": scrapy.__version__,
                 "code_hashes": {name: hashlib.sha256(body).hexdigest() for name, body in code.items()},
                 "seed_hashes": {name: hashlib.sha256(body).hexdigest() for name, body in inputs.items()},
-                "limits": {"pages": args.limit, "seconds": args.seconds}, "retry_scope_errors": args.retry_scope_errors}
+        "limits": {"pages": args.limit, "seconds": args.seconds}, "retry_scope_errors": args.retry_scope_errors}
+    if any(urlsplit(url).path == MOVEMENT_PDF for url in seeds):
+        identity["pypdf"] = version("pypdf")
     encoded = json.dumps(identity, sort_keys=True).encode()
     revision = hashlib.sha256(encoded).hexdigest()
     release = args.output / "collector-releases" / revision

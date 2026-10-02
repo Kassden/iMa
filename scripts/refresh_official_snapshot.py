@@ -4,7 +4,7 @@ import hashlib
 import json
 import sys
 from datetime import datetime, timezone
-from importlib.metadata import version
+from importlib.metadata import version, PackageNotFoundError
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -36,8 +36,13 @@ def input_digest(archive, profiles, corpora):
                  "scrapper/historical/results.py", "scrapper/horse_pages.py",
                  "ima/rich_features.py", "ima/data.py", "ima/feature_sets.py"):
         digest.update(json.dumps([name, hashlib.sha256(Path(name).read_bytes()).hexdigest()]).encode())
+    try:
+        pdf_version = version("pypdf")
+    except PackageNotFoundError:
+        pdf_version = None
     digest.update(json.dumps({"python": sys.version, "dependencies": {
         name: version(name) for name in ("numpy", "pandas", "pyarrow", "scrapy", "parsel", "lxml", "filelock")}}, sort_keys=True).encode())
+    digest.update(json.dumps({"pypdf": pdf_version}).encode())
     return digest.hexdigest()
 
 

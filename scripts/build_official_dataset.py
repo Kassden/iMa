@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 import shutil
-from importlib.metadata import version
+from importlib.metadata import version, PackageNotFoundError
 from collections import Counter
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
@@ -326,9 +326,13 @@ def build(args):
     coverage = {c: {"nonmissing": int(features[c].notna().sum()), "total": len(features),
                     "distinct": int(features[c].nunique(dropna=True))} for c in features}
     event_counts = Counter(event["family"] for event in events.values())
+    try:
+        pdf_version = version("pypdf")
+    except PackageNotFoundError:
+        pdf_version = None
     manifest = {"created_at": now(), "source_policy": "HKJC-only; raw replay; no third-party values",
         "parser_version": PARSER_VERSION, "code_hashes": code_hashes,
-        "dependencies": {name: version(name) for name in ("numpy", "pandas", "pyarrow", "scrapy", "parsel", "lxml")},
+        "dependencies": {name: version(name) for name in ("numpy", "pandas", "pyarrow", "scrapy", "parsel", "lxml")} | {"pypdf": pdf_version},
         "base_snapshot": str(args.base_snapshot) if args.base_snapshot else None,
         "nonfinishers": int(source.get("finishing_status", pd.Series(dtype=str)).isin(NONFINISHERS).sum()),
         "rows": len(source), "races": source["race_id"].nunique(), "horses": source["horse_id"].nunique(),

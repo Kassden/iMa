@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from parsel import Selector
 
-from scrapper.official_corpus import HORSE_ID, ROOT, canonical_url, event_date, family, now
+from scrapper.official_corpus import HORSE_ID, ROOT, MOVEMENT_PDF, canonical_url, event_date, family, now
 
 
 def result_selector_seeds(options, observed, today):
@@ -90,7 +90,7 @@ def archive_links(profiles, cutoff):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--kind", choices=("trackwork", "archive-links", "results", "barrier-trials"), default="trackwork")
+    parser.add_argument("--kind", choices=("trackwork", "archive-links", "results", "barrier-trials", "movements"), default="trackwork")
     parser.add_argument("--profiles", type=Path)
     parser.add_argument("--before-date", default="2008-04-02")
     args = parser.parse_args()
@@ -110,6 +110,28 @@ def main():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
+        if args.kind == "movements":
+            source = "https://racing.hkjc.com/en-us/local/page/conghua-movement-records"
+            page.goto(source, wait_until="domcontentloaded", timeout=60000)
+            page.get_by_text("Click here to download PDF version", exact=True).wait_for(timeout=30000)
+            hrefs = page.locator("a").evaluate_all("els => els.map(e => ({text:e.innerText,href:e.href}))")
+            seeds = sorted({url for entry in hrefs if (url := canonical_url(entry["href"]))
+                            and urlsplit(url).path == MOVEMENT_PDF})
+            if len(seeds) != 1:
+                raise ValueError("Missing or ambiguous observed movement PDF link")
+            rendered = page.content().encode()
+            evidence = {"captured_at": now(), "source_url": source, "seeds": seeds,
+                "rendered_body_sha256": hashlib.sha256(rendered).hexdigest(),
+                "rendered_text": page.inner_text("body"), "method": "actual rendered official PDF anchor",
+                "policy": "Current report only; verify PDF meeting/schema; no horse ID or historical publication inferred"}
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(seeds, indent=2))
+            args.output.with_suffix(".evidence.json").write_text(json.dumps(evidence, indent=2))
+            with gzip.open(args.output.with_suffix(".rendered.html.gz"), "wb") as handle:
+                handle.write(rendered)
+            browser.close()
+            print(json.dumps({"seed_count": len(seeds), "evidence": str(args.output.with_suffix('.evidence.json'))}), flush=True)
+            return
         if args.kind in {"results", "barrier-trials"}:
             source = ROOT + ("localresults" if args.kind == "results" else "btresult")
             page.goto(source, wait_until="domcontentloaded", timeout=60000)
