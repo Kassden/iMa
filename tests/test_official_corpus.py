@@ -3,10 +3,72 @@ import asyncio
 import json
 import tempfile
 from scrapy.http import HtmlResponse, Request
-from scrapper.official_corpus import CorpusSpider, canonical_url, parse_document, family, verify_race_context
+from scrapper.official_corpus import CorpusSpider, canonical_url, parse_document, family, verify_race_context, parse_movement_text
 
 
 class OfficialCorpusTests(unittest.TestCase):
+    def test_movement_pdf_scope_is_exact(self):
+        url = "https://racing.hkjc.com/general/-/media/Sites/JCRW/Page/content/conghua.pdf"
+        self.assertIsNotNone(canonical_url(url))
+        self.assertEqual(family(url), "movements")
+        for unsafe in (url.replace("conghua", "other"), url + "?token=secret", url + "?sc_lang=zh-HK",
+                       url + "?rev=not-a-source-revision", url.replace("racing.hkjc.com", "example.com")):
+            self.assertIsNone(canonical_url(unsafe))
+
+    def test_movement_stays_keep_context_and_standby_without_invented_id(self):
+        text = """HORSES STABLED IN CONGHUA SINCE LAST START
+SUNDAY 4 OCTOBER 2026 RACE MEETING
+Race Horse Number Horse Name Arrived in Conghua Returned to HK
+1 8 VIVA TASTE 06/08/2026 25/09/2026
+13 GO GO GO 09/09/2026 17/09/2026
+2 2 WOLF COMING 15/04/2026 11/06/2026
+26/06/2026 01/10/2026
+7 Standby 1 ISLAND HIGHFLYER 11/02/2026 01/10/2026
+"""
+        rows = parse_movement_text(text)
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(rows[1]["race_no"], 1)
+        self.assertEqual(rows[3]["horse_name"], "WOLF COMING")
+        self.assertEqual(rows[4]["standby_no"], 1)
+        self.assertIsNone(rows[4]["horse_no"])
+        self.assertTrue(all(r["horse_id"] is None and r["published_at"] is None for r in rows))
+        self.assertTrue(all(r["venue"] == "unknown" for r in rows))
+        other = parse_movement_text(text.replace("WOLF COMING", "ANOTHER HORSE"))
+        self.assertNotEqual(rows[3]["values"], other[3]["values"])
+        for bad in (text.replace("SUNDAY", "MONDAY"), text.replace("11/06/2026", "11/06/2027"),
+                    text.replace("Race Horse Number", "Changed Columns"),
+                    text + "BAD ROW 01/10/2026", text.replace("1 8 VIVA TASTE", "VIVA TASTE")):
+            with self.assertRaises(ValueError):
+                parse_movement_text(bad)
+
+    def test_corrupt_movement_pdf_remains_explicitly_unparsed(self):
+        from scrapy.http import Response
+        url = "https://racing.hkjc.com/general/-/media/Sites/JCRW/Page/content/conghua.pdf"
+        for body in (b"<html>No information</html>", b"%PDF-1.4\ncorrupt"):
+            record = parse_document(Response(url, body=body))
+            self.assertEqual(record["status"], "fetched_unparsed")
+            self.assertIn("parse_error", record)
+            self.assertNotIn("events", record)
+
+    def test_current_movement_pdf_refreshes_without_html_navigation(self):
+        from unittest.mock import patch
+        from scrapy.http import Response
+        url = "https://racing.hkjc.com/general/-/media/Sites/JCRW/Page/content/conghua.pdf"
+        async def collect(spider):
+            return [request async for request in spider.start()]
+        with tempfile.TemporaryDirectory() as directory:
+            spider = CorpusSpider(seeds=[url], output=directory)
+            try:
+                first = asyncio.run(collect(spider))[0]
+                self.assertEqual(first.priority, 100000)
+                with patch("scrapper.official_corpus.parse_document", return_value={
+                        "family": "movements", "horse_ids": [], "status": "fetched_parsed", "events": []}):
+                    self.assertEqual(list(spider.parse(Response(url, body=b"%PDF-1.4", request=first,
+                        headers={"Content-Type": "application/pdf"}))), [])
+                self.assertTrue(asyncio.run(collect(spider))[0].dont_filter)
+            finally:
+                spider.db.close()
+
     def test_legacy_eleven_columns_and_tnp_keep_complete_field(self):
         url = "https://racing.hkjc.com/en-us/local/information/localresults?racedate=2001/04/14&Racecourse=ST&RaceNo=1"
         body = '''<body><p>Race Meeting: 14/04/2001 Sha Tin</p><p>RACE 1 (512)</p>

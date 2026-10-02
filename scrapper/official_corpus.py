@@ -7,6 +7,7 @@ import json
 import math
 import re
 import sqlite3
+from io import BytesIO
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,7 +33,8 @@ ROUTES = {
     "sectional", "sectionaltime", "displaysectionaltime", "trackwork", "horseform", "newhorse",
     "racereportfull", "racereportext", "corunning", "trackworkotherresult", "oveotherhorse",
 }
-PARSER_VERSION = "official-corpus-v13"
+PARSER_VERSION = "official-corpus-v14"
+MOVEMENT_PDF = "/general/-/media/Sites/JCRW/Page/content/conghua.pdf"
 DAILY_JSON = re.compile(r"^/racing/information/json/TrackworkOneDayRecords/(\d{8})1E\.aspx$")
 DATE_LIST = "/racing/information/json/DateList/LocalResults.aspx"
 NONFINISHERS = {"PU", "UR", "FE", "DNF", "DISQ", "TNP"}
@@ -59,6 +61,13 @@ def canonical_url(value: str, base: str = ROOT) -> str | None:
     path = parts.path
     if any(p in {".", ".."} for p in unquote(path).split("/")):
         return None
+    if path == MOVEMENT_PDF:
+        query = dict(parse_qsl(parts.query))
+        if set(query) - {"rev", "sc_lang"} or (query.get("rev") and not re.fullmatch(r"[a-f0-9]{32}", query["rev"])):
+            return None
+        if query.get("sc_lang", "en-US") != "en-US":
+            return None
+        return urlunsplit(("https", HOST, path, urlencode(sorted(query.items())), ""))
     if path == DATE_LIST:
         if parse_qsl(parts.query) != [("lang", "en-us")]:
             return None
@@ -85,6 +94,8 @@ def canonical_url(value: str, base: str = ROOT) -> str | None:
 
 
 def family(url: str) -> str:
+    if urlsplit(url).path == MOVEMENT_PDF:
+        return "movements"
     if urlsplit(url).path == DATE_LIST:
         return "race_census"
     if DAILY_JSON.fullmatch(urlsplit(url).path):
@@ -324,8 +335,90 @@ def parse_sectionals(response, query):
     return events
 
 
+def parse_movement_text(text):
+    if "HORSES STABLED IN CONGHUA SINCE LAST START" not in text:
+        raise ValueError("Unrecognized Conghua movement report")
+    headers = re.findall(r"(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)\s+(\d{1,2} [A-Z]+ \d{4}) RACE MEETING", text)
+    meetings = set()
+    for weekday, value in headers:
+        date = datetime.strptime(value, "%d %B %Y")
+        if date.strftime("%A").upper() != weekday:
+            raise ValueError("Movement meeting weekday mismatch")
+        meetings.add(date.date().isoformat())
+    if len(meetings) != 1:
+        raise ValueError("Missing or conflicting movement meeting date")
+    if not re.search(r"Race\s+Horse Number\s+Horse Name\s+Arrived in Conghua\s+Returned to HK", text):
+        raise ValueError("Movement column schema mismatch")
+    meeting = meetings.pop()
+    events, race, previous = [], None, None
+    for line in text.splitlines():
+        line = " ".join(line.split())
+        dates = re.fullmatch(r"(.*?)\s*(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})", line)
+        if not dates:
+            if re.search(r"\d{2}/\d{2}/\d{4}", line):
+                raise ValueError("Unparsed movement date row")
+            continue
+        prefix, arrival, returned = dates.groups()
+        if prefix:
+            identity = re.fullmatch(r"(?:(\d{1,2})\s+)?(Standby\s+\d{1,2}|\d{1,2})\s+(.+)", prefix)
+            if not identity:
+                raise ValueError("Unparsed movement identity row")
+            if identity[1]:
+                race = int(identity[1])
+            if not race or not 1 <= race <= 20:
+                raise ValueError("Missing movement race context")
+            name = re.search(r"([A-Z][A-Z0-9 '&().-]*)$", identity[3])
+            if not name:
+                raise ValueError("Missing movement horse name")
+            standby = identity[2].startswith("Standby")
+            previous = {"race_no": race, "horse_no": None if standby else int(identity[2]),
+                        "standby_no": int(identity[2].split()[-1]) if standby else None,
+                        "horse_name": name[1].strip()}
+        if not previous:
+            raise ValueError("Orphan movement continuation")
+        arrival, returned = event_date(arrival), event_date(returned)
+        if not arrival or not returned or not arrival <= returned <= meeting:
+            raise ValueError("Movement stay dates inconsistent with meeting")
+        events.append(previous | {"horse_id": None, "meeting_date": meeting, "venue": "unknown",
+            "event_date": returned, "arrived_in_conghua": arrival, "returned_to_hk": returned,
+            "event_family": "movements", "identity_status": "meeting_race_saddle_name; verified_card_join_required",
+            "published_at": None, "availability_status": "historical_publication_unverified",
+            "values": {"source_row": line, "meeting_date": meeting, **previous,
+                       "arrived_in_conghua": arrival, "returned_to_hk": returned},
+            "table_index": len(events)})
+    if not events:
+        raise ValueError("No parsed movement stays")
+    return events
+
+
 def parse_document(response) -> dict:
     kind = family(response.url)
+    if urlsplit(response.url).path == MOVEMENT_PDF:
+        record = {"family": kind, "parser_version": PARSER_VERSION,
+                  "horse_ids": [], "tables": [], "status": "fetched_unparsed"}
+        try:
+            from pypdf import PdfReader
+            from pypdf.errors import PyPdfError
+            if not response.body.startswith(b"%PDF-") or len(response.body) > 5 * 1024 * 1024:
+                raise ValueError("Invalid or excessive movement PDF")
+            try:
+                reader = PdfReader(BytesIO(response.body))
+            except PyPdfError as exc:
+                raise ValueError(f"Invalid movement PDF: {exc}") from exc
+            if reader.is_encrypted or not 1 <= len(reader.pages) <= 20:
+                raise ValueError("Encrypted or excessive movement PDF pages")
+            texts = []
+            for page in reader.pages:
+                contents = page.get_contents()
+                if contents is None:
+                    raise ValueError("Missing PDF page content stream")
+                if len(contents.get_data()) > 5 * 1024 * 1024:
+                    raise ValueError("Excessive PDF content stream")
+                texts.append(page.extract_text() or "")
+            record.update(events=parse_movement_text("\n".join(texts)), status="fetched_parsed")
+        except (ValueError, TypeError, ImportError) as exc:
+            record["parse_error"] = str(exc)
+        return record
     source = response.text
     if urlsplit(response.url).path == DATE_LIST:
         record = {"family": "race_census", "parser_version": PARSER_VERSION,
@@ -536,6 +629,7 @@ class CorpusSpider(scrapy.Spider):
         for url in self.seed_urls:
             safe = canonical_url(url)
             if safe:
+                pdf = urlsplit(safe).path == MOVEMENT_PDF
                 urgent = (urlsplit(safe).path == DATE_LIST or DAILY_JSON.fullmatch(urlsplit(safe).path)
                           or urlsplit(safe).path.endswith("/trackworkonedayresult"))
                 captured = self.db.execute("SELECT 1 FROM pages WHERE url=?", (safe,)).fetchone()
@@ -544,8 +638,8 @@ class CorpusSpider(scrapy.Spider):
                 trial_lead = family(safe) == "barrier_trials" and event_date(query.get("date", ""))
                 # Fresh high-impact seeds must not wait behind an older persisted frontier.
                 yield scrapy.Request(safe, callback=self.parse, errback=self.failed,
-                    priority=100000 if urgent else 90000 if trial_lead else 75000 if meeting_lead else 50000 if family(safe) == "results" else 0,
-                    dont_filter=bool((urgent or trial_lead or meeting_lead) and not captured))
+                    priority=100000 if urgent or pdf else 90000 if trial_lead else 75000 if meeting_lead else 50000 if family(safe) == "results" else 0,
+                    dont_filter=bool(pdf or (urgent or trial_lead or meeting_lead) and not captured))
 
     def failed(self, failure):
         url = failure.request.url
@@ -597,7 +691,8 @@ class CorpusSpider(scrapy.Spider):
             if response.status in (401,403,429):
                 self.crawler.engine.close_spider(self, reason="access_or_rate_denied")
             return
-        if not any(value in record["content_type"].lower() for value in ("html", "json")):
+        allowed_pdf = urlsplit(response.url).path == MOVEMENT_PDF and "pdf" in record["content_type"].lower()
+        if not allowed_pdf and not any(value in record["content_type"].lower() for value in ("html", "json")):
             record.update(status="unsupported_content", family=family(response.url))
             self.store(record)
             return
@@ -619,6 +714,8 @@ class CorpusSpider(scrapy.Spider):
         temporary.write_text(json.dumps(record, indent=2))
         temporary.replace(normalized)
         self.store(record)
+        if allowed_pdf:
+            return
         if urlsplit(response.url).path == DATE_LIST:
             for entry in record.get("date_candidates", []):
                 if entry["date"] >= datetime.now(timezone.utc).date().isoformat():
