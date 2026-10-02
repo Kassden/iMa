@@ -124,6 +124,20 @@ class OfficialCorpusTests(unittest.TestCase):
         self.assertEqual(row["horse"]["horse_name"],"EIGHTEEN PALMS")
         self.assertEqual(row["status"],"fetched_parsed")
 
+    def test_profile_metadata_retains_pedigree_and_quarantines_conflicting_labels(self):
+        url = "https://racing.hkjc.com/en-us/local/information/otherhorse?horseid=HK_2022_H033"
+        body = b'''<span class="title_text">EIGHTEEN PALMS (H033) (Retired)</span>
+          <table><tr><td>Sire</td><td>:</td><td>El Roca</td></tr>
+          <tr><td>Dam</td><td>:</td><td>Buttermilk</td></tr>
+          <tr><td>Last Rating</td><td>:</td><td>62</td></tr>
+          <tr><td>Last Rating</td><td>:</td><td>63</td></tr></table>'''
+        horse = parse_document(HtmlResponse(url, body=body, encoding="utf8"))["horse"]
+        self.assertEqual(horse["profile_attributes"]["Sire"], "El Roca")
+        self.assertEqual(horse["profile_attributes"]["Dam"], "Buttermilk")
+        self.assertNotIn("Last Rating", horse["profile_attributes"])
+        self.assertEqual(horse["profile_attribute_conflicts"]["Last Rating"], ["62", "63"])
+        self.assertIn("snapshot-only", horse["profile_attributes_policy"])
+
     def test_legacy_cycle_alias_and_deregistered_title_keep_full_identity(self):
         url = "https://racing.hkjc.com/en-us/local/information/otherhorse?horseid=HK_2006_H227"
         body = b'<span class="title_text">SUPER BABY (CH227) (Deregistered)</span>'

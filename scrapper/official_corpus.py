@@ -32,7 +32,7 @@ ROUTES = {
     "sectional", "sectionaltime", "displaysectionaltime", "trackwork", "horseform", "newhorse",
     "racereportfull", "racereportext", "corunning", "trackworkotherresult", "oveotherhorse",
 }
-PARSER_VERSION = "official-corpus-v12"
+PARSER_VERSION = "official-corpus-v13"
 DAILY_JSON = re.compile(r"^/racing/information/json/TrackworkOneDayRecords/(\d{8})1E\.aspx$")
 DATE_LIST = "/racing/information/json/DateList/LocalResults.aspx"
 NONFINISHERS = {"PU", "UR", "FE", "DNF", "DISQ", "TNP"}
@@ -414,7 +414,15 @@ def parse_document(response) -> dict:
         if data.brand_code and not displayed_brand_matches(data.brand_code, query["horseid"]):
             record["parse_error"] = "Displayed horse brand differs from requested full identity"
         elif data.horse_name or data.form_records:
+            attributes = {}
+            for table in record["tables"]:
+                for row in table:
+                    if len(row) == 3 and row[1] == ":" and row[0]:
+                        attributes.setdefault(row[0], set()).add(row[2])
             record["horse"] = data.serializable() | {"canonical_brand": query["horseid"].rsplit("_", 1)[-1].upper(),
+                "profile_attributes": {label: next(iter(values)) for label, values in attributes.items() if len(values) == 1},
+                "profile_attribute_conflicts": {label: sorted(values) for label, values in attributes.items() if len(values) > 1},
+                "profile_attributes_policy": "source labels at capture; snapshot-only unless separately validated for historical use",
                 "registration_status_at_capture": "inactive" if re.search(r"\((?:Retired|Deregistered)\)", response.css("span.title_text").xpath("string()").get(""), re.I) else "unspecified"}
             record["status"] = "fetched_parsed"
     if kind == "results":
