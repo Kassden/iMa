@@ -1,11 +1,25 @@
 import signal
+import json
 import unittest
 from unittest.mock import patch
 
 from scripts.collect_official_corpus import run_segment
+from scripts.discover_official_seeds import result_selector_seeds
 
 
 class CollectorSupervisorTests(unittest.TestCase):
+    def test_result_selector_never_guesses_venue_or_collects_future_dates(self):
+        options = [{"value": json.dumps({"date": date, "venue": venue})} for date, venue in
+                   [("01/10/2026", ""), ("23/09/2026", "HV"), ("04/10/2026", "")]]
+        observed = "https://racing.hkjc.com/en-us/local/information/localresults?racedate=2026/10/01"
+        seeds = result_selector_seeds(options, observed, "2026-10-02")
+        self.assertEqual(len(seeds), 2)
+        self.assertNotIn("Racecourse", seeds[0])
+        self.assertIn("Racecourse=HV", seeds[1])
+        with self.assertRaisesRegex(ValueError, "verified date-only"):
+            result_selector_seeds(options, observed.replace("racing.hkjc.com", "example.com"), "2026-10-02")
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            result_selector_seeds(options, observed.replace("2026/10/01", "2026/09/22"), "2026-10-02")
     @patch("scripts.collect_official_corpus.subprocess.Popen")
     def test_segment_exit_propagates(self, popen):
         popen.return_value.wait.return_value = 2
