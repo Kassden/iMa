@@ -3,7 +3,7 @@ Description=iMa read-only official HKJC acquisition coverage audit
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/imaopt/acquisition/hkjc-20261002/release-r13
+WorkingDirectory=/home/imaopt/acquisition/hkjc-20261002/release-r14
 ExecStart=/home/imaopt/acquisition/hkjc-20261002/venv/bin/python -m scripts.audit_official_coverage --corpus /home/imaopt/acquisition/hkjc-20261002/corpus --reparse-cached --output /home/imaopt/acquisition/hkjc-20261002/coverage.json
 CPUQuota=50%
 MemoryMax=1G
