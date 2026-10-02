@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh iMa official source gap ledger every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=ima-hkjc-coverage.service
+
+[Install]
+WantedBy=timers.target
