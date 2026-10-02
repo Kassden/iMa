@@ -11,11 +11,25 @@ from urllib.parse import parse_qsl, urlsplit
 
 from scrapy.http import HtmlResponse
 
-from scrapper.official_corpus import DAILY_JSON, canonical_url, now, parse_document
+from scrapper.official_corpus import DAILY_JSON, PARSER_VERSION, canonical_url, event_date, family, now, parse_document
 
 
 FAMILIES = ("results", "horse", "trackwork", "barrier_trials", "veterinary",
             "veterinary_clearance", "movements", "sectionals", "incidents")
+
+
+def observed_race_numbers(response, race):
+    numbers = {race["race_no"]}
+    for href in response.css("a::attr(href)").getall():
+        url = canonical_url(href, response.url)
+        if not url or family(url) != "results":
+            continue
+        query = {k.lower(): v for k, v in parse_qsl(urlsplit(url).query)}
+        number = query.get("raceno", "")
+        if (number.isdigit() and int(number) > 0 and event_date(query.get("racedate", "")) == race["race_date"]
+                and query.get("racecourse", "").upper() == race["venue"]):
+            numbers.add(int(number))
+    return sorted(numbers)
 
 
 def load_documents(roots, reparse=False):
@@ -30,7 +44,10 @@ def load_documents(roots, reparse=False):
                 body = gzip.open(raw, "rb").read()
                 if hashlib.sha256(body).hexdigest() != document["body_hash"]:
                     raise ValueError(f"Corrupt raw blob: {raw}")
-                document.update(parse_document(HtmlResponse(url, body=body, encoding="utf8")))
+                response = HtmlResponse(url, body=body, encoding="utf8")
+                document.update(parse_document(response))
+                if document.get("status") == "fetched_parsed" and document.get("race"):
+                    document["observed_race_numbers"] = observed_race_numbers(response, document["race"])
             yield document
 
 
@@ -49,7 +66,7 @@ def audit(documents, snapshot=None):
             latest[key] = document
     groups = defaultdict(Counter)
     streams = defaultdict(dict)
-    census, gaps = {}, []
+    census, gaps, meetings = {}, [], {}
     for document in latest.values():
         family = document["family"]
         url = document["source_url"]
@@ -57,6 +74,11 @@ def audit(documents, snapshot=None):
         race = document.get("race", {})
         date = race.get("race_date")
         venue = race.get("venue", "unknown")
+        if document["status"] == "fetched_parsed" and race:
+            meeting = meetings.setdefault((date, venue), {"observed": set(), "parsed": set(), "sources": set()})
+            meeting["parsed"].add(race["race_no"])
+            meeting["observed"].update(document.get("observed_race_numbers", [race["race_no"]]))
+            meeting["sources"].add(url)
         # A requested event date is not sufficient evidence for accepted coverage.
         group = groups[(family, season(date) if date else "unknown", venue, "all")]
         group["fetched_pages"] += 1
@@ -120,8 +142,21 @@ def audit(documents, snapshot=None):
     matrix = [{"family": f, "season": s, "venue": v, "cohort": c,
                "expected_count": None, "denominator_status": "official_universe_not_established",
                **dict(counts)} for (f, s, v, c), counts in sorted(groups.items())]
-    return {"updated_at": now(), "policy": "read-only; no guessed venue/identity/publication; no optimizer mutation",
+    meeting_coverage = []
+    for (date, venue), meeting in sorted(meetings.items()):
+        missing = sorted(meeting["observed"] - meeting["parsed"])
+        meeting_coverage.append({"date": date, "venue": venue,
+            "source_observed_race_numbers": sorted(meeting["observed"]),
+            "parsed_race_numbers": sorted(meeting["parsed"]), "missing_observed_race_numbers": missing,
+            "source_urls": sorted(meeting["sources"]),
+            "scope": "observed official meeting navigation only; not exhaustive historical fixture census"})
+        if missing:
+            gaps.append({"family": "results", "date": date, "venue": venue,
+                         "reason": "missing_source_observed_meeting_races", "race_numbers": missing})
+    return {"updated_at": now(), "parser_version": PARSER_VERSION,
+            "policy": "read-only; no guessed venue/identity/publication; no optimizer mutation",
             "snapshot": summary, "coverage": matrix, "daily_streams": pagination,
+            "meeting_coverage": meeting_coverage,
             "date_candidates": list(sorted(census.values(), key=lambda r: r["date"])),
             "date_census_status": "not exhaustive; null venue is unresolved, not no meeting",
             "gaps": gaps}
