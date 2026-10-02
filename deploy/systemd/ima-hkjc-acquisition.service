@@ -5,9 +5,9 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-WorkingDirectory=/home/imaopt/acquisition/hkjc-20261002/release-r14
+WorkingDirectory=/home/imaopt/acquisition/hkjc-20261002/release-r15
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/imaopt/acquisition/hkjc-20261002/venv/bin/python -m scripts.collect_official_corpus --seed-file config/hkjc_official_seeds.json --additional-seed-file config/rendered-seeds-001.json --additional-seed-file config/archive-seeds-001.json --additional-seed-file config/result-index-seeds-001.json --horse-seed-file config/horse_seeds.json --retry-scope-errors --output /home/imaopt/acquisition/hkjc-20261002/corpus --limit 1500 --seconds 3600 --continuous
+ExecStart=/home/imaopt/acquisition/hkjc-20261002/venv/bin/python -m scripts.collect_official_corpus --seed-file config/hkjc_official_seeds.json --additional-seed-file config/rendered-seeds-001.json --additional-seed-file config/archive-seeds-001.json --additional-seed-file config/result-index-seeds-001.json --additional-seed-file config/trial-index-seeds-001.json --horse-seed-file config/horse_seeds.json --retry-scope-errors --output /home/imaopt/acquisition/hkjc-20261002/corpus --limit 1500 --seconds 3600 --continuous
 Restart=on-failure
 RestartPreventExitStatus=2
 RestartSec=300
