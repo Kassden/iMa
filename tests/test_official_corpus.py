@@ -41,6 +41,23 @@ class OfficialCorpusTests(unittest.TestCase):
                 self.assertFalse(requests[0].dont_filter)
             finally:
                 spider.db.close()
+
+    def test_resume_repairs_unfetched_verified_json_frontier(self):
+        url = "https://racing.hkjc.com/racing/information/json/TrackworkOneDayRecords/202610011E.aspx?PageNum=2"
+        async def collect(spider):
+            return [request async for request in spider.start()]
+        with tempfile.TemporaryDirectory() as directory:
+            spider = CorpusSpider(seeds=[], output=directory)
+            try:
+                spider.db.execute("INSERT INTO links VALUES (?,?,?)", (url.replace("=2", "=1"),url,"official_json_next"))
+                requests = asyncio.run(collect(spider))
+                self.assertEqual(len(requests), 1)
+                self.assertTrue(requests[0].dont_filter)
+                self.assertEqual(requests[0].priority, 200000)
+                spider.db.execute("INSERT INTO pages(url,status,metadata_json) VALUES (?,?,?)", (url,"denied","{}"))
+                self.assertEqual(asyncio.run(collect(spider)), [])
+            finally:
+                spider.db.close()
     def test_race_identity_is_verified_from_displayed_header_not_filename(self):
         response = HtmlResponse("https://racing.hkjc.com/en-us/local/information/localresults",
             body=b'<body><div>Race Meeting: 13/07/2025 Sha Tin</div><td>RACE 10 (837)</td></body>', encoding="utf8")
@@ -59,6 +76,23 @@ class OfficialCorpusTests(unittest.TestCase):
         self.assertIsNone(canonical_url("https://racing.hkjc.com:broken/en-us/local/information/horse"))
         self.assertEqual(canonical_url("horse?horseid=HK_2022_H033&b_cid=tracking#x"),
                          "https://racing.hkjc.com/en-us/local/information/horse?horseid=HK_2022_H033")
+
+    def test_current_results_context_comes_from_displayed_header(self):
+        url = "https://racing.hkjc.com/en-us/local/information/localresults"
+        body = b'<body><p>Race Meeting: 01/10/2026 Sha Tin</p><p>RACE 10 (80)</p></body>'
+        response = HtmlResponse(url, body=body, encoding="utf8")
+        self.assertEqual(verify_race_context(response, {}), ("2026-10-01", "ST", 10))
+        self.assertEqual(verify_race_context(response, {"raceno": "10"}), ("2026-10-01", "ST", 10))
+        with self.assertRaisesRegex(ValueError, "date/venue"):
+            verify_race_context(response, {"racecourse": "HV"})
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            verify_race_context(HtmlResponse(url, body=body.replace(b'</body>',
+                b'<p>Race Meeting: 30/09/2026 Happy Valley</p></body>'), encoding="utf8"), {})
+        with self.assertRaisesRegex(ValueError, "race number"):
+            verify_race_context(HtmlResponse(url, body=body.replace(b'</body>',
+                b'<p>RACE 1 (71)</p></body>'), encoding="utf8"), {})
+        with self.assertRaisesRegex(ValueError, "date/venue"):
+            verify_race_context(HtmlResponse(url, body=b'<body>navigation only</body>', encoding="utf8"), {})
 
     def test_family_and_unparsed_are_not_empty(self):
         url = "https://racing.hkjc.com/en-us/local/information/ovehorse?horseid=HK_2022_H033"

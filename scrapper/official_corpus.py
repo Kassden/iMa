@@ -32,7 +32,7 @@ ROUTES = {
     "sectional", "sectionaltime", "displaysectionaltime", "trackwork", "horseform", "newhorse",
     "racereportfull", "racereportext", "corunning", "trackworkotherresult", "oveotherhorse",
 }
-PARSER_VERSION = "official-corpus-v10"
+PARSER_VERSION = "official-corpus-v11"
 DAILY_JSON = re.compile(r"^/racing/information/json/TrackworkOneDayRecords/(\d{8})1E\.aspx$")
 DATE_LIST = "/racing/information/json/DateList/LocalResults.aspx"
 NONFINISHERS = {"PU", "UR", "FE", "DNF", "DISQ", "TNP"}
@@ -129,16 +129,22 @@ def event_date(value):
 def verify_race_context(response, query):
     visible = "\n".join(" ".join(text.split()) for text in response.xpath(
         "//body//text()[not(ancestor::script) and not(ancestor::style) and not(ancestor::select)]").getall())
-    date = datetime.strptime(query.get("racedate", "").replace("/", "-"), "%Y-%m-%d").date().isoformat()
     meetings = re.findall(r"Race Meeting:\s*(\d{1,2}/\d{1,2}/\d{4})\s+(Sha Tin|Happy Valley)", visible, re.I)
     contexts = {(event_date(d), "ST" if venue.lower() == "sha tin" else "HV") for d, venue in meetings}
-    venue = query.get("racecourse", "").upper()
-    if contexts != {(date, venue)}:
+    if len(contexts) != 1:
+        raise ValueError("Displayed race date/venue missing or ambiguous")
+    date, venue = contexts.pop()
+    requested_date = query.get("racedate")
+    if requested_date and datetime.strptime(requested_date.replace("/", "-"), "%Y-%m-%d").date().isoformat() != date:
+        raise ValueError("Requested race date/venue not verified in displayed meeting header")
+    if query.get("racecourse") and query["racecourse"].upper() != venue:
         raise ValueError("Requested race date/venue not verified in displayed meeting header")
     numbers = {int(n) for n in re.findall(r"^RACE\s+(\d+)\s+\(\d+\)$", visible, re.M | re.I)}
-    number = int(query.get("raceno", "0"))
-    if numbers != {number}:
-        raise ValueError(f"Requested race number {number} differs from displayed {sorted(numbers)}")
+    if len(numbers) != 1:
+        raise ValueError("Displayed race number missing or ambiguous")
+    number = numbers.pop()
+    if query.get("raceno") and int(query["raceno"]) != number:
+        raise ValueError(f"Requested race number {query['raceno']} differs from displayed {number}")
     return date, venue, number
 
 
@@ -484,6 +490,16 @@ class CorpusSpider(scrapy.Spider):
         """)
 
     async def start(self):
+        pending_streams = self.db.execute("""
+            SELECT links.source, links.destination FROM links
+            LEFT JOIN pages ON pages.url = links.destination
+            WHERE pages.url IS NULL AND links.method IN
+              ('official_json_next','verified_public_script_endpoint')
+        """).fetchall()
+        for source, destination in pending_streams:
+            if canonical_url(destination) and DAILY_JSON.fullmatch(urlsplit(destination).path):
+                yield scrapy.Request(destination, callback=self.parse, errback=self.failed,
+                    dont_filter=True, priority=200000, meta={"discovered_from": source})
         if self.retry_scope_errors:
             for url, in self.db.execute("SELECT url FROM pages WHERE status IN ('request_error','scope_denied')"):
                 if canonical_url(url):
