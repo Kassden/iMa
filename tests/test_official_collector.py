@@ -4,10 +4,19 @@ import unittest
 from unittest.mock import patch
 
 from scripts.collect_official_corpus import run_segment
-from scripts.discover_official_seeds import result_selector_seeds
+from scripts.discover_official_seeds import result_selector_seeds, trial_selector_seeds
 
 
 class CollectorSupervisorTests(unittest.TestCase):
+    def test_trial_selector_keeps_observed_archive_route_and_date_format(self):
+        options = [{"value": "09/09/2025"}, {"value": "29/09/2026"}, {"value": "04/10/2026"}]
+        observed = "https://racing.hkjc.com/en-us/local/information/archive/btresult?Date=2025/09/09"
+        seeds = trial_selector_seeds(options, observed, "2026-10-02")
+        self.assertEqual(len(seeds), 2)
+        self.assertTrue(all("/archive/btresult" in s for s in seeds))
+        self.assertTrue(seeds[0].endswith("Date=2025%2F09%2F09"))
+        with self.assertRaisesRegex(ValueError, "displayed options"):
+            trial_selector_seeds(options, observed.replace("2025/09/09", "2025/09/10"), "2026-10-02")
     def test_result_selector_never_guesses_venue_or_collects_future_dates(self):
         options = [{"value": json.dumps({"date": date, "venue": venue})} for date, venue in
                    [("01/10/2026", ""), ("23/09/2026", "HV"), ("04/10/2026", "")]]

@@ -38,6 +38,18 @@ def result_selector_seeds(options, observed, today):
     return list(dict.fromkeys(seeds))
 
 
+def trial_selector_seeds(options, observed, today):
+    parts = urlsplit(observed)
+    query = dict(parse_qsl(parts.query))
+    if not canonical_url(observed) or family(observed) != "barrier_trials" or set(query) != {"Date"}:
+        raise ValueError("Trial selector did not navigate to the verified dated route")
+    dates = [event_date(o["value"]) for o in options]
+    if not all(dates) or event_date(query["Date"]) not in dates:
+        raise ValueError("Trial navigation differs from displayed options")
+    return list(dict.fromkeys(urlunsplit(parts._replace(query=urlencode({"Date": date.replace("-", "/")})))
+                              for date in dates if date <= today))
+
+
 def archive_links(profiles, cutoff):
     edges = {}
     inspected = 0
@@ -78,7 +90,7 @@ def archive_links(profiles, cutoff):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--kind", choices=("trackwork", "archive-links", "results"), default="trackwork")
+    parser.add_argument("--kind", choices=("trackwork", "archive-links", "results", "barrier-trials"), default="trackwork")
     parser.add_argument("--profiles", type=Path)
     parser.add_argument("--before-date", default="2008-04-02")
     args = parser.parse_args()
@@ -98,23 +110,27 @@ def main():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
-        if args.kind == "results":
-            source = ROOT + "localresults"
+        if args.kind in {"results", "barrier-trials"}:
+            source = ROOT + ("localresults" if args.kind == "results" else "btresult")
             page.goto(source, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_function("document.querySelector('#selectId')?.options.length > 0", timeout=30000)
             options = page.locator("#selectId option").evaluate_all("els => els.map(e => ({value:e.value,text:e.text}))")
             today = datetime.now(timezone.utc).date().isoformat()
-            chosen = next(o for o in options if event_date(json.loads(o["value"])["date"]) < today and
-                          json.loads(o["value"])["venue"] == "")
+            if args.kind == "results":
+                chosen = next(o for o in options if event_date(json.loads(o["value"])["date"]) < today and
+                              json.loads(o["value"])["venue"] == "")
+            else:
+                chosen = min((o for o in options if event_date(o["value"]) and event_date(o["value"]) <= today),
+                             key=lambda o: event_date(o["value"]))
             page.locator("#selectId").select_option(chosen["value"])
             page.locator("#submitBtn").click()
-            page.wait_for_url("**/localresults?**", timeout=30000)
+            page.wait_for_url("**/" + ("localresults" if args.kind == "results" else "btresult") + "?**", timeout=30000)
             observed = canonical_url(page.url)
-            seeds = result_selector_seeds(options, observed or "", today)
+            seeds = (result_selector_seeds if args.kind == "results" else trial_selector_seeds)(options, observed or "", today)
             evidence = {"captured_at": now(), "source_url": source, "observed_navigation": observed,
                 "selected_option": chosen, "options": options,
                 "method": "actual public date-selector Search click; no guessed venue",
-                "policy": "Date leads include unresolved/nonlocal dates; accept only verified local race headers"}
+                "policy": "Selector dates are leads; verify displayed date and source context on every fetched page"}
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(seeds, indent=2))
             args.output.with_suffix(".evidence.json").write_text(json.dumps(evidence, indent=2))
