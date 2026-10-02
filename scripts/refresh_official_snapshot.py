@@ -41,10 +41,16 @@ def input_digest(archive, profiles, corpora):
     return digest.hexdigest()
 
 
-def refresh(archive, profiles, corpora, output):
+def refresh(archive, profiles, corpora, output, baseline_runners=None, baseline_manifest=None):
+    if bool(baseline_runners) != bool(baseline_manifest):
+        raise ValueError("Baseline runners and manifest must be supplied together")
     output.mkdir(parents=True, exist_ok=True)
     with FileLock(output / "refresh.lock", timeout=0):
         fingerprint = input_digest(archive, profiles, corpora)
+        if baseline_runners:
+            fingerprint = hashlib.sha256(json.dumps([fingerprint,
+                hashlib.sha256(baseline_runners.read_bytes()).hexdigest(),
+                hashlib.sha256(baseline_manifest.read_bytes()).hexdigest()]).encode()).hexdigest()
         receipt_path = output / "latest_verified.json"
         previous = json.loads(receipt_path.read_text()) if receipt_path.exists() else None
         base = None
@@ -54,6 +60,8 @@ def refresh(archive, profiles, corpora, output):
                 raise ValueError("Previous snapshot lies outside acquisition output")
             verify(base)
             if previous["input_digest"] == fingerprint:
+                if baseline_runners:
+                    verify(base, baseline_runners, baseline_manifest)
                 return previous | {"action": "unchanged_verified_inputs"}
             if previous["parser_version"] != PARSER_VERSION:
                 base = None
@@ -61,7 +69,7 @@ def refresh(archive, profiles, corpora, output):
         snapshot = output / f"snapshot-{stamp}-{uuid4().hex[:8]}"
         build(SimpleNamespace(archive=archive, profiles=profiles, corpus=corpora,
                               base_snapshot=base, output=snapshot))
-        report = verify(snapshot)
+        report = verify(snapshot, baseline_runners, baseline_manifest)
         report_path = snapshot.with_suffix(".readback.json")
         report_path.write_text(json.dumps(report, indent=2))
         receipt = {"snapshot": str(snapshot.resolve()), "parser_version": PARSER_VERSION,
@@ -70,6 +78,10 @@ def refresh(archive, profiles, corpora, output):
                    "runners": report["runners"], "policy": "acquisition only; no optimizer promotion"}
         # This is a rebuild trigger, not the snapshot identity: acquisition can advance during a build.
         receipt["input_digest_scope"] = "inputs at job start; immutable dataset identity is its manifest and lineage"
+        if baseline_runners:
+            receipt.update(baseline_runners=str(baseline_runners.resolve()),
+                           baseline_manifest=str(baseline_manifest.resolve()),
+                           baseline_runner_keys_retained=report["baseline_runner_keys_retained"])
         temporary = receipt_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(receipt, indent=2))
         temporary.replace(receipt_path)
@@ -82,8 +94,11 @@ def main():
     parser.add_argument("--profiles", type=Path, required=True)
     parser.add_argument("--corpus", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--baseline-runners", type=Path)
+    parser.add_argument("--baseline-manifest", type=Path)
     args = parser.parse_args()
-    print(json.dumps(refresh(args.archive, args.profiles, args.corpus, args.output), indent=2))
+    print(json.dumps(refresh(args.archive, args.profiles, args.corpus, args.output,
+                             args.baseline_runners, args.baseline_manifest), indent=2))
 
 
 if __name__ == "__main__":

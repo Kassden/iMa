@@ -65,6 +65,32 @@ class SnapshotRefreshTests(unittest.TestCase):
                 with self.assertRaises(Timeout):
                     refresh(root, root, [root], root)
 
+    @patch("scripts.refresh_official_snapshot.input_digest", return_value="input-a")
+    @patch("scripts.refresh_official_snapshot.verify")
+    @patch("scripts.refresh_official_snapshot.build")
+    def test_baseline_gate_is_required_for_build_and_unchanged_skip(self, build, verify, digest):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runners, manifest = root / "baseline.parquet", root / "baseline.json"
+            runners.write_bytes(b"verified baseline runners")
+            manifest.write_text("{}")
+            verify.return_value = {"races": 2, "runners": 20, "baseline_runner_keys_retained": 20}
+            first = refresh(root, root, [root], root, runners, manifest)
+            self.assertEqual(verify.call_args.args[0].resolve(), Path(first["snapshot"]))
+            self.assertEqual(verify.call_args.args[1:], (runners, manifest))
+            self.assertEqual(first["baseline_runner_keys_retained"], 20)
+            self.assertEqual(refresh(root, root, [root], root, runners, manifest)["action"],
+                             "unchanged_verified_inputs")
+            verify.assert_called_with(Path(first["snapshot"]), runners, manifest)
+            # A changed baseline must force a rebuild, not reuse the unchanged-input shortcut.
+            runners.write_bytes(b"expanded verified baseline runners")
+            verify.side_effect = [verify.return_value, ValueError("baseline attrition")]
+            with self.assertRaisesRegex(ValueError, "baseline attrition"):
+                refresh(root, root, [root], root, runners, manifest)
+            self.assertEqual(build.call_count, 2)
+            self.assertEqual(json.loads((root / "latest_verified.json").read_text())["snapshot"],
+                             first["snapshot"])
+
 
 if __name__ == "__main__":
     unittest.main()
