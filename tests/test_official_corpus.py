@@ -151,6 +151,31 @@ class OfficialCorpusTests(unittest.TestCase):
         self.assertEqual(row["status"], "fetched_unparsed")
         self.assertNotIn("events", row)
 
+    def test_trial_batch_context_is_not_confused_with_each_horses_time(self):
+        url = "https://racing.hkjc.com/en-us/local/information/archive/btresult?Date=2025/09/09"
+        body = b'''<body><select><option selected>09/09/2025</option></select>
+          <table><tr><td>Batch 1 - SHA TIN ALL WEATHER TRACK - 1200m</td></tr>
+          <tr><td>Going: WET SLOW</td><td>Time: 1.10.86</td></tr>
+          <tr><td>Sectional Time: 24.5 23.2 23.1</td></tr></table>
+          <table><tr><td>Horse</td><td>Jockey</td><td>Trainer</td><td>Draw</td><td>Time</td></tr>
+          <tr><td><a href="horse?horseid=HK_2024_K362">HORSE</a></td><td>J</td><td>T</td><td>5</td><td>1.10.93</td></tr></table>
+          <table><tr><td>Batch 2 - CONGHUA TURF TRACK - 1000m</td></tr></table>
+          <table><tr><td>Horse</td><td>Jockey</td><td>Trainer</td><td>Draw</td><td>Time</td></tr>
+          <tr><td><a href="horse?horseid=HK_2024_K363">OTHER HORSE</a></td><td>J</td><td>T</td><td>2</td><td>---</td></tr></table></body>'''
+        row = parse_document(HtmlResponse(url, body=body, encoding="utf8"))
+        self.assertEqual(row["status"], "fetched_parsed")
+        first, second = row["events"]
+        self.assertEqual(first["venue"], "ST")
+        self.assertEqual(first["distance_metres"], 1200)
+        self.assertEqual(first["going"], "WET SLOW")
+        self.assertAlmostEqual(first["batch_winner_time_seconds"], 70.86)
+        self.assertAlmostEqual(first["trial_finish_seconds"], 70.93)
+        self.assertEqual(first["batch_sectional_seconds"], [24.5, 23.2, 23.1])
+        self.assertEqual(second["trial_venue_name"], "CONGHUA")
+        self.assertNotIn("going", second)
+        self.assertIsNone(second["trial_finish_seconds"])
+        self.assertIsNone(first["published_at"])
+
     def test_redirected_horse_identity_mismatch(self):
         url = "https://racing.hkjc.com/en-us/local/information/otherhorse?horseid=HK_2022_H033"
         body = b'<span class="title_text">SOME OTHER HORSE (J542)</span>'

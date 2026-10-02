@@ -17,7 +17,7 @@ from lxml import etree
 from scrapy.exceptions import IgnoreRequest
 
 from scrapper.historical.results import parse_race
-from scrapper.horse_pages import parse_profile_and_form
+from scrapper.horse_pages import parse_profile_and_form, _finish_seconds
 
 ROOT = "https://racing.hkjc.com/en-us/local/information/"
 HOST = "racing.hkjc.com"
@@ -32,7 +32,7 @@ ROUTES = {
     "sectional", "sectionaltime", "displaysectionaltime", "trackwork", "horseform", "newhorse",
     "racereportfull", "racereportext", "corunning", "trackworkotherresult", "oveotherhorse",
 }
-PARSER_VERSION = "official-corpus-v11"
+PARSER_VERSION = "official-corpus-v12"
 DAILY_JSON = re.compile(r"^/racing/information/json/TrackworkOneDayRecords/(\d{8})1E\.aspx$")
 DATE_LIST = "/racing/information/json/DateList/LocalResults.aspx"
 NONFINISHERS = {"PU", "UR", "FE", "DNF", "DISQ", "TNP"}
@@ -201,7 +201,7 @@ def parse_events(response, kind, query):
         "trackwork": ("Date", "Type", "Racecourse/Track", "Workouts", "Gear"),
         "movements": ("From", "To", "Arrival Date"),
     }
-    events, recognized, batch = [], False, None
+    events, recognized, batch, batch_context = [], False, None, {}
     for table in response.css("table"):
         rows = table.xpath("./tr|./thead/tr|./tbody/tr|./tfoot/tr")
         if not rows:
@@ -211,6 +211,23 @@ def parse_events(response, kind, query):
         header = texts[0]
         if header and header[0].startswith("Batch "):
             batch = header[0]
+            batch_context = {}
+            match = re.fullmatch(r"Batch\s+(\d+)\s*-\s*(SHA TIN|HAPPY VALLEY|CONGHUA)\s+(.+?)\s*-\s*(\d+)m", batch, re.I)
+            if match:
+                venue_name = match[2].upper()
+                batch_context.update(batch_no=int(match[1]), trial_venue_name=venue_name,
+                    venue={"SHA TIN": "ST", "HAPPY VALLEY": "HV"}.get(venue_name, "unknown"),
+                    track=match[3].upper(), distance_metres=int(match[4]))
+            summary = " ".join(" ".join(row) for row in texts)
+            going = re.search(r"Going:\s*(.*?)\s*Time:", summary, re.I)
+            time = re.search(r"\bTime:\s*(\d+\.\d{2}\.\d{2})", summary, re.I)
+            splits = re.search(r"Sectional Time:\s*((?:\d+(?:\.\d+)?\s*)+)", summary, re.I)
+            if going:
+                batch_context["going"] = going[1].strip()
+            if time:
+                batch_context["batch_winner_time_seconds"] = _finish_seconds(time[1])
+            if splits:
+                batch_context["batch_sectional_seconds"] = [float(v) for v in splits[1].split()]
         schema = schemas.get(kind)
         if kind == "veterinary" and header and header[0].lower() == "date" and any("detail" in c.lower() for c in header):
             schema = tuple(header)
@@ -243,6 +260,10 @@ def parse_events(response, kind, query):
             events.append({"horse_id": horse.upper(), "event_date": date,
                 "published_at": None, "availability_status": "historical_publication_unverified",
                 "values": values, "batch": batch, "table_index": len(events)})
+            if kind == "barrier_trials":
+                events[-1].update(batch_context)
+                seconds = _finish_seconds(values.get("Time", ""))
+                events[-1]["trial_finish_seconds"] = seconds if seconds and math.isfinite(seconds) and seconds > 0 else None
             passed = event_date(values.get("Passed On", values.get("Passed Date", "")))
             if kind == "veterinary" and passed:
                 events.append({"horse_id": horse.upper(), "event_date": passed,
@@ -512,10 +533,11 @@ class CorpusSpider(scrapy.Spider):
                 captured = self.db.execute("SELECT 1 FROM pages WHERE url=?", (safe,)).fetchone()
                 query = {k.lower(): v for k, v in parse_qsl(urlsplit(safe).query)}
                 meeting_lead = family(safe) == "results" and query.get("racedate") and not query.get("raceno")
+                trial_lead = family(safe) == "barrier_trials" and event_date(query.get("date", ""))
                 # Fresh high-impact seeds must not wait behind an older persisted frontier.
                 yield scrapy.Request(safe, callback=self.parse, errback=self.failed,
-                    priority=100000 if urgent else 75000 if meeting_lead else 50000 if family(safe) == "results" else 0,
-                    dont_filter=bool((urgent or meeting_lead) and not captured))
+                    priority=100000 if urgent else 90000 if trial_lead else 75000 if meeting_lead else 50000 if family(safe) == "results" else 0,
+                    dont_filter=bool((urgent or trial_lead or meeting_lead) and not captured))
 
     def failed(self, failure):
         url = failure.request.url
