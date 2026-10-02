@@ -58,6 +58,20 @@ class OfficialCorpusTests(unittest.TestCase):
                 self.assertEqual(asyncio.run(collect(spider)), [])
             finally:
                 spider.db.close()
+    def test_date_only_meeting_lead_overtakes_old_general_frontier(self):
+        url = "https://racing.hkjc.com/en-us/local/information/localresults?racedate=2026/09/23"
+        async def collect(spider):
+            return [request async for request in spider.start()]
+        with tempfile.TemporaryDirectory() as directory:
+            spider = CorpusSpider(seeds=[url], output=directory)
+            try:
+                requests = asyncio.run(collect(spider))
+                self.assertEqual(requests[0].priority, 75000)
+                self.assertTrue(requests[0].dont_filter)
+                spider.db.execute("INSERT INTO pages(url,status,metadata_json) VALUES (?,?,?)", (requests[0].url,"fetched_parsed","{}"))
+                self.assertFalse(asyncio.run(collect(spider))[0].dont_filter)
+            finally:
+                spider.db.close()
     def test_race_identity_is_verified_from_displayed_header_not_filename(self):
         response = HtmlResponse("https://racing.hkjc.com/en-us/local/information/localresults",
             body=b'<body><div>Race Meeting: 13/07/2025 Sha Tin</div><td>RACE 10 (837)</td></body>', encoding="utf8")

@@ -510,10 +510,12 @@ class CorpusSpider(scrapy.Spider):
                 urgent = (urlsplit(safe).path == DATE_LIST or DAILY_JSON.fullmatch(urlsplit(safe).path)
                           or urlsplit(safe).path.endswith("/trackworkonedayresult"))
                 captured = self.db.execute("SELECT 1 FROM pages WHERE url=?", (safe,)).fetchone()
+                query = {k.lower(): v for k, v in parse_qsl(urlsplit(safe).query)}
+                meeting_lead = family(safe) == "results" and query.get("racedate") and not query.get("raceno")
                 # Fresh high-impact seeds must not wait behind an older persisted frontier.
                 yield scrapy.Request(safe, callback=self.parse, errback=self.failed,
-                    priority=100000 if urgent else 50000 if family(safe) == "results" else 0,
-                    dont_filter=bool(urgent and not captured))
+                    priority=100000 if urgent else 75000 if meeting_lead else 50000 if family(safe) == "results" else 0,
+                    dont_filter=bool((urgent or meeting_lead) and not captured))
 
     def failed(self, failure):
         url = failure.request.url
@@ -634,8 +636,11 @@ class CorpusSpider(scrapy.Spider):
                 continue
             with self.db:
                 self.db.execute("INSERT OR IGNORE INTO links VALUES (?,?,?)", (response.url,target,method))
+            target_query = {k.lower(): v for k, v in parse_qsl(urlsplit(target).query)}
+            meeting = record.get("race", {}).get("race_date")
+            sibling = meeting and event_date(target_query.get("racedate", "")) == meeting and family(target) in {"results", "sectionals"}
             yield scrapy.Request(target, callback=self.parse, errback=self.failed,
-                                 priority=100000 if method == "verified_public_script_endpoint" else 0,
+                                 priority=100000 if method == "verified_public_script_endpoint" else 65000 if sibling else 0,
                                  meta={"discovered_from":response.url})
 
     def closed(self, reason):
