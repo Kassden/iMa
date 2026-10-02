@@ -14,6 +14,8 @@
 5. Reparse cached pages with the corrected adapter before fetching again. Preserve old snapshots and collector revisions; compare coverage deltas and source disagreements.
 6. Promote into a new immutable dataset only after full-field, identity, point-in-time, contamination and reproducibility gates pass. Never swap the active optimizer's dataset implicitly.
 7. Continue while a recoverable gap or new official frontier remains. Exhausted/unavailable/denied sources remain explicitly unresolved; neither a running daemon nor 99.8% of the existing cache proves complete historical source coverage.
+- Discovery amplification gate: for every recovered control/endpoint/layout, cross-check sibling races, adjacent source-observed dates, both verified venues, old/retired cohorts and linked source families. Record the observed control/URL, actual parsed facts, rejected/empty outcomes, newly recovered identities and downstream links. Reuse the same adapter only after independent source-context checks; never propagate a guess or assume another source uses the same schema.
+- Verified result selector navigation (2026-10-02): selecting 23/09/2026 with blank venue navigated to `localresults?racedate=2026/09/23`. Recover missing venue/race number from displayed headers rather than guessing either venue. The 162 nonfuture selector dates are discovery leads, not 162 confirmed local meetings; some can be simulcast/nonlocal and must remain rejected or unresolved.
 - Public JSON workout pagination is a distinct source stream, not another HTML navigation link. Complete the current dated stream before broad traversal; verify advancing pagination and report incomplete streams after a bounded segment.
 - Name-only daily workout records are not full horse identities. Confirm against independently captured official horse-page workout records or dated official registration evidence; reject fuzzy/name-only joins.
 - Record available_at conservatively from first public capture where historical publication is unknown. This can support later races, but must not be backdated into earlier races.
@@ -56,6 +58,7 @@
 - Proven C10: cached official profile titles use old B/C cycle-prefixed brands (CA018) and `(Deregistered)`, not only `(Retired)`. The legacy parser misread these titles and the strict brand check rejected dated form ratings. Normalize only these source-observed title/alias forms for the already linked full ID; preserve displayed alias and registration status at capture. Never merge different full IDs by their shared trailing brand.
 - Proven C11: stopping the continuous service interrupted its subprocess wait; the parent exited while the crawler only logged Closing spider and no closed.json appeared. Likely H3: systemd then terminated the remaining child before its queue/readback flush completed. Use an isolated child session, main-only initial signal (KillMode=mixed), explicit SIGINT forwarding and parent wait. Test real stop/resume and require closed.json plus scheduler readback; a shutdown-start log is not proof of graceful completion.
 - Likely H1: inactive horse pages need otherhorse, archive, season and related-entity navigation. User-described routes are hypotheses to verify and preserve as fixtures.
+- Proven C12: the current-results landing URL omits date/venue/race number while its displayed result header supplies them. The parser incorrectly required all URL parameters. Recover missing context only from one unambiguous displayed meeting and race header; continue rejecting every supplied parameter that conflicts with the source. Raw replay must verify the actual landing page before rollout.
 - Possible H2: older workout/veterinary pages have retention limits or changed layouts, and backfilled current pages cannot prove historical availability.
 - Missing evidence: oldest accessible official seasons per source, complete live DOM route inventory, archival event publication timing and authoritative retired identity coverage.
 - Minimum evidence: raw page hashes/headers, URL path/query, requested versus displayed dates, selectors/form options, route outcomes, identity match method, collector/parser revision and per-family date distribution.
@@ -79,14 +82,18 @@ Planned Touch Files:
 - `scripts/build_official_dataset.py`
 - `scripts/audit_official_coverage.py`
 - `scripts/verify_official_snapshot.py`
+- `scripts/refresh_official_snapshot.py`
 - `tests/test_official_corpus.py`
 - `tests/test_official_dataset.py`
 - `tests/test_official_coverage.py`
 - `tests/test_official_collector.py`
+- `tests/test_official_snapshot_refresh.py`
 - `config/hkjc_official_seeds.json`
 - `deploy/systemd/ima-hkjc-acquisition.service`
 - `deploy/systemd/ima-hkjc-coverage.service`
 - `deploy/systemd/ima-hkjc-coverage.timer`
+- `deploy/systemd/ima-hkjc-snapshot.service`
+- `deploy/systemd/ima-hkjc-snapshot.timer`
 - `ima/rich_features.py`
 - `pyproject.toml`
 - `docs/HKJC_OFFICIAL_CORPUS_PLAN.md`
@@ -237,6 +244,7 @@ Planned Touch Files:
 - Planned Touch Files: scripts/collect_official_corpus.py, docs/HKJC_OFFICIAL_CORPUS_VALIDATION.md, deploy/systemd/ima-hkjc-acquisition.service, deploy/systemd/ima-hkjc-coverage.service, deploy/systemd/ima-hkjc-coverage.timer, own imaopt acquisition launch configuration under separate path; no training unit changes.
 - Tests: full relevant unittest suite, graceful resume, network/denial/disk tests, own-user live bounded canary and protected dataset hash readback.
 - Success Criteria: bulk run observed retrieving/parsing records, source coverage improves, restart works and resource/rate limits remain honored.
+- Autonomous normalization extension: add scripts/refresh_official_snapshot.py and its focused tests plus own-user snapshot service/timer. Read existing official archive/profile caches without modification, hash input artifacts and normalization code, build a new immutable snapshot only after inputs change, independently verify it before updating the acquisition-only latest receipt. Reuse only same-parser verified bases; failed builds retain evidence and never change the latest verified receipt. One exclusive job, separate offline-installed dependencies, CPU 2 cores and memory maximum 8 GiB; hourly systemd scheduling, no V5 dataset or service changes.
 - Checklist:
   - [ ] Transfer dependencies through Tailscale into separate venv; verify egress route before remote fetching.
   - [ ] Begin small pilot, inspect semantic records, then durable low-resource bulk job with daily/status reports.
