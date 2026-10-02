@@ -35,6 +35,7 @@ ima-optimize = "scripts.optimize:main"
 [project.optional-dependencies]
 acquisition = [
   "scrapy>=2.13,<3",
+  "pypdf>=6,<7",
 ]
 features = [
   "featuretools==1.31.0",
