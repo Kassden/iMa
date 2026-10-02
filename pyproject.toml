@@ -33,6 +33,9 @@ ima-train = "scripts.train:main"
 ima-optimize = "scripts.optimize:main"
 
 [project.optional-dependencies]
+acquisition = [
+  "scrapy>=2.13,<3",
+]
 features = [
   "featuretools==1.31.0",
   "feature-engine==1.9.4",
