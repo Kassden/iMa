@@ -12,7 +12,26 @@ from parsel import Selector
 from scrapper.official_corpus import HORSE_ID, WITHDRAWN, canonical_url
 
 
-def verify(snapshot):
+def check_baseline_roster(runners, baseline_runners, baseline_manifest):
+    manifest = json.loads(baseline_manifest.read_text())
+    if manifest.get("source_policy") != "HKJC-only; raw replay; no third-party values":
+        raise ValueError("Baseline is not an official-only snapshot")
+    if hashlib.sha256(baseline_runners.read_bytes()).hexdigest() != manifest["files"]["runners.parquet"]:
+        raise ValueError("Baseline runner hash mismatch")
+    baseline = pd.read_parquet(baseline_runners)
+    if not baseline["source"].eq("official:hkjc-results").all() or baseline.duplicated(["race_id", "horse_id"]).any():
+        raise ValueError("Invalid baseline source or duplicate runner")
+    keys = pd.MultiIndex.from_frame(baseline[["race_id", "horse_id"]])
+    missing = keys.difference(pd.MultiIndex.from_frame(runners[["race_id", "horse_id"]]))
+    if len(missing):
+        raise ValueError(f"Verified baseline runner attrition: {len(missing)} missing keys; sample {list(missing[:5])}")
+    return {"baseline_runner_keys_retained": len(baseline),
+            "baseline_races_retained": int(baseline["race_id"].nunique())}
+
+
+def verify(snapshot, baseline_runners=None, baseline_manifest=None):
+    if bool(baseline_runners) != bool(baseline_manifest):
+        raise ValueError("Baseline runners and manifest must be supplied together")
     manifest = json.loads((snapshot / "manifest.json").read_text())
     for name, digest in manifest["files"].items():
         if hashlib.sha256((snapshot / name).read_bytes()).hexdigest() != digest:
@@ -22,6 +41,7 @@ def verify(snapshot):
             raise ValueError(f"Captured code hash mismatch: {name}")
     runners = pd.read_parquet(snapshot / "runners.parquet")
     features = pd.read_parquet(snapshot / "features.parquet")
+    baseline_report = check_baseline_roster(runners, baseline_runners, baseline_manifest) if baseline_runners else {}
     if not runners["source"].eq("official:hkjc-results").all():
         raise ValueError("Nonofficial runner source")
     if not runners["horse_id"].map(lambda v: bool(HORSE_ID.fullmatch(v))).all():
@@ -80,7 +100,7 @@ def verify(snapshot):
         receipts.append({"race_id": source["race_id"], "runners": len(roster),
                          "body_hash": source["source_body_hash"]})
     horses = sorted(verified_horses)[:20]
-    return {"snapshot": str(snapshot), "races": int(runners["race_id"].nunique()),
+    return {"snapshot": str(snapshot), **baseline_report, "races": int(runners["race_id"].nunique()),
             "runners": len(runners), "feature_races": int(features["race_id"].nunique()),
             "feature_attrition_rows": len(runners) - len(features), "raw_meeting_samples": receipts,
             "identity_samples": horses, "verdict": "passed; sampled raw roster readback, not exhaustive website coverage"}
@@ -90,8 +110,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("snapshot", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--baseline-runners", type=Path)
+    parser.add_argument("--baseline-manifest", type=Path)
     args = parser.parse_args()
-    report = verify(args.snapshot)
+    report = verify(args.snapshot, args.baseline_runners, args.baseline_manifest)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
