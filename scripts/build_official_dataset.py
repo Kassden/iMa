@@ -267,7 +267,7 @@ def build(args):
                     "source_body_hash": document["body_hash"], "fetched_at": cached["fetched_at"],
                     "available_at": cached.get("first_fetched_at", cached["fetched_at"]),
                     "availability_evidence": "first_observed_public_capture; not historical publication proof"}
-                key = json.dumps([event["family"], event["horse_id"], event["event_date"], event["values"]], sort_keys=True)
+                key = json.dumps([event["family"], event["horse_id"], event["event_date"], event.get("batch"), event["values"]], sort_keys=True)
                 previous = events.get(key)
                 if previous and previous["available_at"] < event["available_at"]:
                     event["available_at"] = previous["available_at"]
