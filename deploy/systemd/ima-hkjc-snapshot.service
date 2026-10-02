@@ -1,0 +1,16 @@
+[Unit]
+Description=iMa acquisition-only immutable official dataset build and independent readback
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/imaopt/acquisition/hkjc-20261002/snapshot-release-r1
+Environment=PYTHONUNBUFFERED=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+ExecStart=/home/imaopt/acquisition/hkjc-20261002/snapshot-venv/bin/python -m scripts.refresh_official_snapshot --archive /home/imaopt/iMa/data/historical/hkjc-2005-2025 --profiles /home/imaopt/iMa/data/historical/horse-profiles --corpus /home/imaopt/acquisition/hkjc-20261002/corpus --output /home/imaopt/acquisition/hkjc-20261002/snapshots
+TimeoutStartSec=7200
+CPUQuota=200%
+MemoryHigh=6G
+MemoryMax=8G
+TasksMax=32
+NoNewPrivileges=true
+UMask=0077
+

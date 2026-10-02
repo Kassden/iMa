@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh verified official acquisition datasets hourly
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+Unit=ima-hkjc-snapshot.service
+
+[Install]
+WantedBy=timers.target
