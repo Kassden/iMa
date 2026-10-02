@@ -1,11 +1,28 @@
 import unittest
 import pandas as pd
 
-from scripts.build_official_dataset import race_rows, merge_form, merge_country, resolve_workout_identities
+from scripts.build_official_dataset import race_rows, merge_form, merge_country, resolve_workout_identities, group_workout_observations
 from ima.rich_features import prepare_rich_runner_dataset
 
 
 class OfficialDatasetTests(unittest.TestCase):
+    def test_workout_formats_share_key_without_losing_source_evidence(self):
+        values = {"Type": "Trotting", "Racecourse/Track": "Sha Tin SmT", "Workouts": "SmT 1 Round", "Gear": "H"}
+        horse = {"family": "trackwork", "horse_id": "HK_2025_L121", "horse_name": "THUNDER KIT",
+                 "event_date": "2026-10-01", "values": values, "source_url": "horse-page"}
+        daily = horse | {"source_url": "daily-page", "horse_name": None,
+            "values": {"Horse": "thunder kit", "Type": "trotting", "Racecourse_Track": "Sha Tin SmT", "Workouts": "SmT 1 Round", "Gear": "H"}}
+        unknown = daily | {"horse_id": None}
+        different = horse | {"values": values | {"Gear": "B"}}
+        events = [horse, daily, unknown, different]
+        report = group_workout_observations(events)
+        self.assertEqual(report["resolved_equivalence_groups"], 2)
+        self.assertEqual(report["repeated_source_observations"], 1)
+        self.assertEqual(horse["workout_equivalence_key"], daily["workout_equivalence_key"])
+        self.assertNotEqual(horse["workout_equivalence_key"], different["workout_equivalence_key"])
+        self.assertNotIn("workout_equivalence_key", unknown)
+        self.assertEqual(len(events), 4)
+        self.assertEqual(daily["source_url"], "daily-page")
     def test_country_is_immutable_attributed_and_conflicts_remain_unknown(self):
         countries = {}
         source = {"source_url": "official-country", "body_hash": "a" * 64}

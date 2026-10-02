@@ -84,26 +84,28 @@ def merge_form(ratings, horse, form, document):
         ratings[key] = value
 
 
+def workout_signature(event):
+    values = event["values"]
+    name = event.get("horse_name") or values.get("Horse")
+    fields = (name, values.get("Type"), values.get("Racecourse/Track", values.get("Racecourse_Track")),
+              values.get("Workouts"), values.get("Gear"))
+    if not all(isinstance(v, str) for v in fields) or not all(fields[:4]):
+        return None
+    return (event["event_date"], *(" ".join(v.upper().split()) for v in fields))
+
+
 def resolve_workout_identities(events):
-    def signature(event):
-        values = event["values"]
-        name = event.get("horse_name") or values.get("Horse")
-        fields = (name, values.get("Type"), values.get("Racecourse/Track", values.get("Racecourse_Track")),
-                  values.get("Workouts"), values.get("Gear"))
-        if not all(isinstance(v, str) for v in fields) or not all(fields[:4]):
-            return None
-        return (event["event_date"], *(" ".join(v.upper().split()) for v in fields))
 
     evidence = {}
     for event in events:
-        key = signature(event) if event["family"] == "trackwork" else None
+        key = workout_signature(event) if event["family"] == "trackwork" else None
         if key and event.get("horse_id") and event.get("identity_evidence") == "requested_full_id_and_displayed_brand":
             evidence.setdefault(key, {})[event["horse_id"]] = event
     resolved = 0
     for event in events:
         if event["family"] != "trackwork" or event.get("horse_id"):
             continue
-        matches = evidence.get(signature(event), {})
+        matches = evidence.get(workout_signature(event), {})
         if len(matches) != 1:
             event["identity_status"] = "ambiguous_official_confirmation" if matches else "official_confirmation_missing"
             continue
@@ -113,6 +115,26 @@ def resolve_workout_identities(events):
                                             "source_body_hash": confirmed["source_body_hash"]})
         resolved += 1
     return resolved
+
+
+def group_workout_observations(events):
+    groups = Counter()
+    for event in events:
+        if event["family"] != "trackwork":
+            continue
+        signature = workout_signature(event)
+        horse = event.get("horse_id")
+        if not signature or not horse or not HORSE_ID.fullmatch(horse):
+            continue
+        # Preserve source observations; equal official descriptions need not prove one physical event.
+        key = json.dumps([horse, signature], ensure_ascii=True, separators=(",", ":"))
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        event["workout_equivalence_key"] = digest
+        groups[digest] += 1
+    return {"resolved_equivalence_groups": len(groups),
+            "resolved_source_observations": sum(groups.values()),
+            "repeated_source_observations": sum(count - 1 for count in groups.values()),
+            "policy": "Exact full-ID/date/name/type/track/workout/gear equivalence; source observations retained; not proof of unique physical events"}
 
 
 def merge_country(countries, horse, country, document):
@@ -280,6 +302,7 @@ def build(args):
     features.to_parquet(staging / "features.parquet", index=False)
     features.to_csv(staging / "features.csv", index=False)
     newly_resolved_workouts = resolve_workout_identities(list(events.values()))
+    workout_groups = group_workout_observations(list(events.values()))
     pd.DataFrame(events.values()).to_json(staging / "events.jsonl", orient="records", lines=True)
     imported = args.output.parent / "raw-import"
     imported.mkdir(exist_ok=True)
@@ -318,6 +341,7 @@ def build(args):
         "mutable_profile_policy": "age/sex/trainer/current rating/model_features retained only in profiles.jsonl snapshots, not copied into historical runners",
         "events_collected": len(events), "events_used_in_historical_features": 0,
         "daily_workouts_identity_confirmed": newly_resolved_workouts,
+        "workout_observation_groups": workout_groups,
         "events_identity_unresolved": sum(not e.get("horse_id") for e in events.values()),
         "events_by_family": dict(event_counts),
         "target_only_columns": ["result", "finishing_status", "finish_time", "finish_seconds", "speed_ratio_raw", "lengths_raw", "late_gain_raw"],
