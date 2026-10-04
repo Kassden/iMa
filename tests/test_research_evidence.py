@@ -22,6 +22,40 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
 
 
 class ResearchEvidenceTests(unittest.TestCase):
+    def test_replay_resolves_registered_and_legacy_protocols(self):
+        from scripts.replay_dataset_champions import read_protocol
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "protocol.json"
+            parameters = {"min_train_races": 30, "calibration_races": 10,
+                          "score_races": 10, "max_folds": 2,
+                          "whole_meeting_boundaries": True, "fold_selection": "latest"}
+            path.write_text(json.dumps({"spec": dict(parameters, final_confirmation_races=5),
+                                        "protocol_id": "fixture", "folds": []}))
+            self.assertEqual(parameters, read_protocol(path))
+            path.write_text(json.dumps(parameters))
+            self.assertEqual(parameters, read_protocol(path))
+
+    def test_replay_reads_champions_without_creating_a_missing_ledger(self):
+        from scripts.replay_dataset_champions import read_champions
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaises(FileNotFoundError):
+                read_champions(root)
+            self.assertEqual([], list(root.iterdir()))
+
+    def test_replay_predictions_require_identical_runner_populations(self):
+        import pandas as pd
+        from scripts.replay_dataset_champions import paired_prediction_summary
+        with tempfile.TemporaryDirectory() as directory:
+            left, right = Path(directory) / "a.csv", Path(directory) / "b.csv"
+            frame = pd.DataFrame({"fold_id": ["f1", "f1"], "race_id": ["r1", "r1"],
+                                  "horse_no": [1, 2], "model_probability": [.4, .6]})
+            frame.to_csv(left, index=False)
+            frame.iloc[::-1].to_csv(right, index=False)
+            self.assertTrue(paired_prediction_summary(left, right)["prediction_parity"])
+            frame.iloc[:1].to_csv(right, index=False)
+            self.assertFalse(paired_prediction_summary(left, right)["comparable"])
+
     def test_metric_value_reads_nested_numeric_paths(self):
         self.assertEqual(2.0, metric_value({"a": {"b": 2}}, "a.b"))
         self.assertIsNone(metric_value({"a": {"b": True}}, "a.b"))

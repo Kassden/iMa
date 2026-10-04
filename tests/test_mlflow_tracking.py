@@ -32,6 +32,19 @@ class DummyProbabilityModel:
 
 
 class MLflowTrackingTests(unittest.TestCase):
+    def test_large_v6_feature_recipe_is_hashed_in_params_not_truncated_silently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            recipe = PipelineRecipe(schema_version=3,
+                extra_numeric_features=tuple(f"measurement_{i}" for i in range(1000)))
+            package = ResearchModelPackage(DummyProbabilityModel(), recipe,
+                                          protocol_id="p", code_revision="r")
+            package_dir = package.save(Path(directory) / "package")
+            params = research_run_parameters(package_dir, {}, attempt_id="a")
+            value = params["recipe.extra_numeric_features"]
+            self.assertTrue(value.startswith("sha256:"))
+            self.assertIn("see recipe.json", value)
+            self.assertLess(len(value), 5000)
+
     def test_cycle_trace_preview_keeps_mixed_objectives_separate(self):
         summary = _cycle_result_summary([
             {
