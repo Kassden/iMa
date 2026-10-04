@@ -1,7 +1,7 @@
 import multiprocessing
 import tempfile
-import time
 import unittest
+from unittest.mock import patch
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -21,13 +21,25 @@ def build():
     return PreparedFold({"train_x":np.array([[1.],[2.]]),"calibration_x":np.array([[3.]]),"score_x":np.array([[4.]])},("x",),{"train":("a","b"),"calibration":("c",),"score":("d",)},fitted_state={"value":1})
 
 
-def concurrent_prepare(root):
+def concurrent_prepare(arguments):
+    import fcntl
+    root, ready, blocked = arguments
+    original_flock = fcntl.flock
+    def observed_flock(*args):
+        try:
+            return original_flock(*args)
+        except BlockingIOError:
+            blocked.set()
+            raise
     def builder():
         with open(Path(root)/"build_count","a") as stream:
             stream.write("build\n")
-        time.sleep(.15)
+        if not blocked.wait(timeout=30):
+            raise TimeoutError("No competing worker reached the preparation lock")
         return build()
-    artifact = PreparationCache(root).prepare_fold(key(),builder)
+    ready.wait(timeout=30)
+    with patch("ima.research_preparation.fcntl.flock", side_effect=observed_flock):
+        artifact = PreparationCache(root).prepare_fold(key(),builder)
     return artifact.cache_status,artifact.load_arrays()["train_x"].tolist()
 
 
@@ -62,8 +74,11 @@ class PreparationTests(unittest.TestCase):
 
     def test_concurrent_miss_only_builds_once(self):
         with tempfile.TemporaryDirectory() as root:
-            with ProcessPoolExecutor(max_workers=3,mp_context=multiprocessing.get_context("spawn")) as pool:
-                outcomes = list(pool.map(concurrent_prepare,[root]*3))
+            context = multiprocessing.get_context("spawn")
+            with context.Manager() as manager:
+                ready, blocked = manager.Barrier(3), manager.Event()
+                with ProcessPoolExecutor(max_workers=3,mp_context=context) as pool:
+                    outcomes = list(pool.map(concurrent_prepare,[(root,ready,blocked)]*3))
             self.assertEqual(1,(Path(root)/"build_count").read_text().count("build"))
             self.assertEqual(1,sum(status == "miss" for status,_ in outcomes))
             self.assertTrue(any(status == "wait" for status,_ in outcomes))
