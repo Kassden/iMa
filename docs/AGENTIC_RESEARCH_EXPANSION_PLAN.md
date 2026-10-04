@@ -438,7 +438,7 @@ The stages are probability estimation -> price/payout model -> edge/EV -> portfo
 ## Phase 3: Dataset Lifecycle
 ### Subphase 3.1: Requests, registry and verified builds
 - Objective: automatic dataset construction as a durable planner action.
-- Planned Touch Files: `ima/dataset_specs.py` (new), `ima/dataset_registry.py` (new), `ima/research_store.py`, `scripts/build_research_dataset.py` (new isolated consumer of immutable official snapshots), `scripts/build_official_dataset.py`, `scripts/refresh_official_snapshot.py`, `scripts/verify_official_snapshot.py`, `tests/test_dataset_registry.py` (new), `tests/test_official_snapshot_refresh.py`.
+- Planned Touch Files: `ima/dataset_specs.py` (new), `ima/dataset_registry.py` (new), `ima/research_store.py`, `scripts/build_research_dataset.py` (new isolated consumer of immutable official snapshots), `scripts/build_official_dataset.py`, `scripts/refresh_official_snapshot.py`, `scripts/verify_official_snapshot.py`, `tests/test_dataset_registry.py` (new), `tests/test_dataset_registry_adversarial.py` (new independent leakage and lifecycle audit), `tests/test_official_snapshot_refresh.py`.
 - Commit: `feat(data): build and validate immutable dataset requests`.
 - Tests: `.venv/bin/python -m unittest tests.test_dataset_registry tests.test_official_snapshot_refresh tests.test_official_snapshot_verifier tests.test_research_store`.
 - Success Criteria: durable IDs resolve to verified/rejected artifact; partial/crashed/duplicate requests cannot overwrite verified data.
@@ -640,6 +640,8 @@ The stages are probability estimation -> price/payout model -> edge/EV -> portfo
 - Handoff: approved SHA/campaign/run/trace/model links, resource timeline, unchanged protected state and tested rollback.
 
 ## Execution Order And Done Rule
+Implementation guard decisions from the source and adversarial audit: V6 freezes shared entity histories before the meeting, retains validated categorical context separately from numeric formula inputs, and uses explicit pound units for official weight fields. Confirmation races are frozen from the source before filtering and inherited across successors; catalog hashes participate in immutable dataset identity. Unknown planner cost blocks new paid planning. Explicitly delayed result publication and dead-heat races unsupported by the current single-winner likelihood are excluded as whole races with reasons, never silently relabeled; original evidence remains in the official snapshot. These exclusions and publication assumptions must appear in the dataset report and are not claims of complete point-in-time coverage.
+
 1. Baseline -> event normalization/joins/source-specific speed -> dataset lifecycle/replay -> formulas/selection -> graph core/ensembles/speed-distributions/conference-probit -> controller/telemetry -> pool adapters/EV/Kelly -> end-to-end gates -> approved rollout.
 2. Contract work may be prepared independently after baseline, but land tested atomic units in dependency order. One controller owns each campaign ledger; no detached proposal/trainer loops without automatic feedback.
 3. New modules/CLI options/tests named here are planned, not claimed to exist. Implement and test --help/contracts before invoking planned commands as proof.
