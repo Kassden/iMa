@@ -10,6 +10,329 @@ does not certify the whole plan or V6 launch.
 
 ## Evidence Status
 
+### Current Accepted Data, Frozen Paid Work
+
+Parent/Sagan independently PASSED fresh V4
+`dataset-19aaa959e948d6e145ce62c8160413087b46ba3c2578e0de15c452054d9a83db`.
+Builder source remains `6245f3ca5a3e37116a13cc7420839bb6dc05f55b`; the persisted
+row-hash metadata is corrected. Parent reports feature Parquet bytes identical
+to V3 (recorded feature SHA256
+`2321218048ffb1f2b9d9ea9a357ec8a753775420f9808385dc323741ad1795a1`).
+Accepted V4 manifest SHA256:
+`bbe54689bf9e13d1b1afd06122baf1caa9c67e61ddb007be106ea33eb771ce65`.
+Observer 52555 reported registry verified at 10:06:44.882104 UTC and then
+completed normally. Parent/Sagan acceptance is independent evidence supplied by
+parent, not a second exhaustive audit by this OPS role. V3 is preserved unchanged
+and remains unaccepted; the corrected V4 acceptance does not rewrite V3 history.
+
+The explicitly authorized isolated 52a paid transport/proposal invocation FAILED.
+It is not full-release acceptance and did not train or launch production. Tested
+runner SHA256 `25df6c8f2dcb9d8774b480eac8405eb54e0ff554f2c536d50e8317d96eb53fed`
+matched; full production private SDK PYTHONPATH was used, not partial overlays.
+Prepared/approved bundle SHA256:
+`def76f1ac902f3e56afcce68f724af13ed3cc192f17a4fa6837f560e1d5a8acd`.
+Paid unit `ima-v6-paid-52a-v4-paid.service`, invocation
+`02cef1414d7e4fc192ed0dab0519a655`, ran 10:14:43-10:16:57 UTC; exit 1,
+CPU 9.786325s, MemoryPeak 1,572,839,424 bytes. Fresh two-sample headroom and
+pre-exec gates proved actual two CPUs/8GB decimal/270s/Restart=no. Error was
+`OpenRouter bounded request failed: TimeoutError:` at planner deadline 120s,
+not a unit hard-timeout/OOM. One invocation, no persisted HTTP completion
+receipts or generation ID; cost is UNKNOWN, not zero. No retry performed.
+
+Private SQLite trace `tr-be5d73c9b6a5caf6ba39cbcdd8883efb` is OK, zero outbox
+pending/errors, but no native USD/cost attributes. No runs/model versions,
+fits/dataset builds or production MLflow writes. All ten protection hashes,
+original V5 PID/invocation and STOP absence matched. Independent terminal receipt
+at `canaries/acceptance-runner-owned-52a3c3e/official-v4-once-ops/independent-terminal-receipt.json`,
+SHA256 `981c26818a3cf7bfa761d104d72bf20d6e918a1c25591223fe6598831519c08a`.
+
+Non-charged GET diagnostics 10:22:02-15 UTC: same HTTPX 0.28.1/private origin,
+all eight upper/lowercase proxy-presence flags false. Models/default IPv6
+200/6.0652s, forced IPv4 200/2.6455s, forced IPv6 200/2.0070s; TCP/TLS
+successful for each. Approved model exists. Both DNS families use tailscale0,
+table 52, online exit 100.88.109.45. Own MLflow health GET 200. Key/credits GET
+200, minimal counters only, no secrets. No pre-call baseline or saved generation
+ID allows precise billing attribution with concurrent V5 usage. Failed POST
+phase was not instrumented; generation delay is a hypothesis, not proven cause.
+No IPv4-forcing/host-route change justified or made. Diagnostic receipt SHA256:
+`5d452f7976344a4dc06786d0e3e53f778370244543a7a76bb3eb534cb4e2d54a`.
+
+Further paid calls, training and cutover remain FROZEN. Parent reports helper
+`7876d830bd762a8e5beba3b7b20e0848f7889567` committed/pushed/tested/CI green;
+Parent subsequently reports local canary v2 PASS: ten trials, actual paper-study
+WIN/PLACE/QIN/TRI outputs, later planner feedback received, no outboxes/paper
+pending. Paper engine committed `1fabe3f9bfdd6d69aab860f1fa9b33198968329f`.
+Controller agent released its source; parent tests and final commit remain
+pending. This is parent-supplied local fixture evidence, not a Linux rerun,
+paid acceptance or official-data training proof by this role.
+Nietzsche owns the controls unit; no unit mutation is assigned to this OPS role.
+Next final SHA needs exact immutable transfer, refreshed builder hash binding and
+fresh integrated Linux fixture `--paper-study --max-trials 10` on private MLflow:
+ten FINISHED trial runs/linked READY versions, all traces OK, zero pending/errors/
+tells/paper studies, WIN/PLACE/QIN/TRI study outputs and later planner feedback.
+Future paid actual-data/new-graph and
+actual training require new explicit scope; none is proven by the old 52a attempt.
+All this role's required observer/exec sessions completed. No remote action or
+paid request occurred during this documentation reconciliation.
+
+### Historical V4 Launch And 52a Source
+
+V4 request was transferred and started from exact committed builder
+`6245f3ca5a3e37116a13cc7420839bb6dc05f55b`, 09:38:58 UTC. Own unit
+`ima-v6-dataset-build-6245f3ca-v4.service`, invocation
+`dafcc8e3278f4e2eb21766146765528e`, PID 1030588. Pre-execution readback proved
+actual 7200s hard timeout, two-CPU quota, MemoryMax 8,000,000,000 and zero swap;
+two conservative fresh headroom samples passed. Request wall budget 5400s.
+At historical observer readback 10:03:12 UTC it was building, no request error,
+CPU 1453.074507s, peak 1,981,923,328 bytes. That sample was not final peak or
+acceptance; completion and independent acceptance are now recorded above.
+Observer session 52555 was successfully polled in this role's namespace; parent
+cannot access that local session and independently monitors the durable unit.
+
+Then-designated final 52a transfer also passed independent PAX/tree/blob/mode and
+extracted readback; exact SHA `52a3c3eecb7cf3342d0b690b059e55a8f67e1845`.
+231 committed files, 2,467,840 archive bytes; archive SHA256
+`f1aa0c7985774cc781c3d90473c226a1f677654d1b013cce308edd87d0adbdba`;
+package receipt SHA256
+`d8e46711f0e06cb5814687c7a12e979e97e77f1be10c678991bf856102b12a7e`.
+Receipt at `v6-staging/52a3c3eecb7cf3342d0b690b059e55a8f67e1845/package-receipt.json`.
+All 11 builder module hashes match 624/52a; 130/133 runtime files match old e23
+fixture, with registry/orchestrator/expansion differences retained explicitly.
+Full fixture equivalence is NOT claimed. Exact 52a CI runs 37192679625 and
+37192676301 were read back successful. V3 remains unchanged and unaccepted;
+parent/Sagan proved eight signed NaNs/four columns explain its hash discrepancy.
+
+### Future Bounded Actual Training Preparation Only
+
+Runbook now specifies separate immutable bounded/continuous own-ops configs,
+production MLflow port 5000, audited V4 manifest paths, future assigned final SHA and real
+campaign. No training, paid call, remote config installation or V5 STOP executed.
+V4 identity is now accepted; config bytes/hashes await the final integration SHA.
+The attempted 52a private paid gate failed. Parent must assign a fresh scoped
+acceptance after final fixture and separately authorize actual training.
+
+Actual local isolated contract verification used AST-extracted classes/loader/
+identity function from exact committed 52a, not dirty working files: nine checks
+passed (both configs valid, invalid 260/5 budget and two-program queue rejected,
+same identity accepted, data/protocol/revision/environment drift rejected).
+Prepared Python recipe compiled. Identity test isolated the portfolio-version
+lookup; this is not a full runtime/MLflow/full-data canary. Source SHA256:
+optimizer `c9ec8d711f519066511f2df6feb879135bf41a17ececc66467bf1c01e9e8fcd0`;
+identity owner `c2a199650fafa6773ee65ec67ffaecd9bb10a0bdaff4bcacd00c1fe1778e511d`.
+Operational settings do not enter campaign identity. Package dependencies and
+production backend/model require separate equality receipts because environment
+identity is Python/platform-only and backend/model are not identity fields.
+
+### Historical Prepared V4 Request
+
+Explicit preparation assignment created `.tmp/v6-dataset-request-v4.json`, new ID
+`v6-initial-strict-fullhistory-latest-v4`, with rationale for the parent-committed
+ordered-row hash representation repair. Structured JSON comparison proves ONLY
+`request_id` and `rationale` differ from v3. Population/full history/strict policy,
+protocol, five targets, raw manifest identity/watermark and 5400s budget are
+identical. Actual local DatasetRequest schema validation passed; normalized
+fingerprint `a58032954cb8153444959fcf985af15ff773bb5cd1c71c2b0f3149fc190b0f7a`;
+artifact SHA256 `28d4d52e16fa97e287609702db4bf939490c6b282f513e76995743e2da051d30`.
+Prepared runbook recipe retains verified-before-exec 7200s timeout, 8GB decimal
+and two CPU quota/native threads 1, exact committed packaging and independent
+persisted-Parquet row-hash acceptance. Kierkegaard owns the repair; no new builder
+SHA/execution assignment had been received at that preparation checkpoint;
+subsequent 624 build/transfer and limited paid attempt are recorded above.
+The pending immutable V3 candidate, v2/v3 state and protected units were not
+changed. The later signed-NaN cause proof and fresh V4 repair supersede the
+then-unresolved disposition without modifying those historical artifacts.
+
+### Historical Terminal Receipt: Fixture Passed, V3 Held
+
+Historical accepted fixture source is exact committed SHA
+`2a87784a52be31c2e16272fe2791b5e7b58ed9b7`. Immutable release:
+`/home/imaopt/research-v2/live-releases/ima-v6-2a87784a52be31c2e16272fe2791b5e7b58ed9b7`.
+Actual archive: 231 committed files, 2,457,600 bytes; committed verifier and
+target PAX/tree/blob/mode/post-extraction readback passed. Archive SHA256
+`c65d27e570555c603a16f0174354726222af7b0ffd34b113df534b8604bf92b9`;
+package receipt SHA256
+`000138dba154b25b4a5ef043390b5675e41d56ac2f1165aeebc76fd9c691dcd7`.
+Parent reported corrected CI run `37191680881` GREEN. No staging/commit by
+this role; dirty protected workspace files were never archive inputs.
+
+The executed fixture source remains
+`e23c2e629ce131c9b1d9e7affe7a3f9df65ab257`, not relabeled as 2a. Actual
+extracted SHA256 and committed mode/blob equality passed for all 133 runtime
+files under ima/scripts/deploy/config in the two immutable releases. Runtime
+tree SHA256 `7d266bef1c429468ea817732fd5ce41b5a68f1b584e37deca773294fc8498f15`.
+Parent explicitly accepted this binding in place of a redundant fixture because
+the successor changed only the preparation concurrency test.
+
+Fixture root `/home/imaopt/research-v2/canaries/agentic_v6_e23c2e62_fixture5`;
+unit `ima-v6-fixture-e23c2e62.service`, invocation
+`a76cfb7d4d954ac89fb724ada5fd758e`, started 09:24:07 UTC after fresh two-sample
+headroom passed (28,673,970,176 / 28,656,803,840 available vs
+24,536,166,400 / 24,514,252,800 required). Before execution, verified
+MemoryMax 8,000,000,000, CPU quota two, swap 0, timeout 900s and expected
+MemoryHigh page rounding. Unit/resource proof is `evidence/unit-before-exec.json`.
+Status complete at 09:25:04.508802 UTC; five completed attempts, all uploaded/told,
+zero failed/errors/pending tells/tracking/trace delivery. Backend read-only SQLite
+acceptance: FIVE FINISHED physical runs, FIVE READY versions linked to exactly
+those runs, SIX traces all OK, and zero undelivered trace outbox entries. All
+runs record e23 and unchanged environment hash
+`2827ddd042f17d0f82dfb5473fddd8fff1ebd512694e24110b2b1290d6f539c4`.
+Journal CPU 100.858s / wall 60.405s / reported peak 935.1M; status observed exact
+memory peak 980,627,456 bytes. Backend/status, not CLI exit alone, establishes
+fixture acceptance. Synthetic two-family work is not official-data training,
+paid planning, production MLflow authorization or advanced graph acceptance.
+
+Durable terminal receipt:
+`/home/imaopt/research-v2/v6-staging/2a87784a52be31c2e16272fe2791b5e7b58ed9b7/fixture-runtime-binding-receipt.json`,
+SHA256 `73cb7d3d5d1985d0754b086c1fc12d83576ea51466357a8dd73b81977ed21396`.
+It retains run/version/trace IDs, runtime file hashes, original source revisions,
+environment identity and all ten matching protected SHA256 values. V5 STOP absent;
+no protected V5 unit/configuration change or paid/live launch performed.
+
+V3 registry published `dataset-62744fab4a46cbeada2488be5d15a2112d3d364d8148331ccd48f6dda736a4e8`
+at 09:18:54.853585 UTC, with 171,782 development rows / 13,924 races from
+178,718 source rows / 14,488 races. Registry report: 564 excluded races / 6,936
+rows, 6,258 confirmation rows quarantined, three folds, zero unaccounted source
+keys and no confirmation labels published. Recorded build time 1611.606s;
+unit journal CPU 1614.815s / wall 1648.860s (includes resource wait gate), reported
+peak 3.9G. Unit is inactive; no operator cancellation occurred. Original build
+SHA remains d45; its 11 builder-identity file hashes match e23, which matches 2a
+runtime. Published directory is under
+`campaigns/agentic_v6_research/datasets/datasets/<dataset-id>`.
+
+**Historical V3 disposition:** publication and registry `verified`
+state are NOT final independent data acceptance. Parent/Sagan audit reports
+declared ordered-row hash `f19ba...` differs from persisted-row hash `f6ddb...`
+(abbreviated values supplied by parent, not full hash receipts). File checksum,
+dtypes and provenance checks reportedly passed. Parent/Sagan later proved eight
+signed NaNs/four columns explain the discrepancy; corrected fresh V4 passed.
+Do not silently replace hashes or promote the retained V3. Another build/transfer
+still requires an explicit parent SHA/request. Unsupported data requirements
+remain as disclosed by the builder;
+no optional preparation benchmark was run. The older checkpoints below preserve
+their timing and must not override the current accepted-V4/frozen-paid disposition.
+
+### Historical e23 Transfer And Queue
+
+Parent authorized exact final code SHA
+`e23c2e629ce131c9b1d9e7affe7a3f9df65ab257`, reporting full 668 tests passing
+in 158.656s, exit 0; those are parent-supplied suite results, not this role's
+rerun. The authorized next execution is a fresh five-trial/two-worker Linux
+fixture with private SQLite and 8GB/two-CPU resource-before-exec gates. No paid
+planner, production tracking authorization or V5 cutover has been assigned.
+
+Actual committed archive: 231 files, 2,457,600 bytes, archive SHA256
+`0642cae49685b77200b5e32ccf56e3f0d32b2a5cbf1d7070172cf39f8a0d5eea`;
+receipt SHA256 `fdf7f6736b66820138cc66a6cade93729cf64cc6716b4399f7e2b4cd8127f21e`.
+Committed verifier/source readiness and target PAX/tree/blob/mode/post-extraction
+readback passed. Read-only release:
+`/home/imaopt/research-v2/live-releases/ima-v6-e23c2e629ce131c9b1d9e7affe7a3f9df65ab257`;
+receipts under `v6-staging/e23c2e629ce131c9b1d9e7affe7a3f9df65ab257`.
+Local artifacts:
+`/var/folders/wq/tn0d0r417cb3kghxltyqhjt80000gn/T/ima-v6-final-release-92ghxp27`.
+All 11 dataset-identity builder file SHA256 values match the interim d45 release;
+exact values are retained in `builder-hash-comparison.json`. This permits explicit
+builder-identity reuse after valid dataset readback, not provenance relabeling.
+
+Parallel fixture NOT started: headroom samples at 09:08:45/50 UTC failed the
+conservative simultaneous-unit guard. Available 30,998,769,664 / 30,979,428,352
+bytes vs required 33,991,254,016 / 33,990,488,064. Requirement includes new canary
+8GB + host reserve 8GB + possible V5 growth to its unchanged 107,374,182,400 cap
++ remaining active build allowance to 8GB (current 1,153,503,232). Host pressure
+avg10 0 does not override failed capacity. `parallel-canary-headroom.json` records
+both samples. At this checkpoint fixture queued until build completion; its later
+fresh guard/execution/backend pass is recorded above. Do not lower caps/reserve,
+stop V5 or claim fixture tracking acceptance from this transfer receipt.
+
+Mandatory backend acceptance: exactly five completed/zero failed attempts,
+five FINISHED runs, five READY model versions linked to those physical runs,
+nonempty traces all OK, no result/tracking errors, no pending outbox/tells.
+Exit zero, READY versions or an empty outbox alone are insufficient. At this
+historical checkpoint fixture was QUEUED; terminal acceptance is recorded above.
+Paid/live gates remain separately held.
+Parent subsequently reported e23 hosted CI run `37190999593` failed ONLY
+`test_concurrent_miss_only_builds_once`: sleep-based `any(wait)` assertion was
+flaky, while actual build count 1/cache checks and model telemetry passed. Parent
+is replacing the test timing assumption with an explicit spawn barrier, not
+changing production runtime. Two actual-archive checks were skipped in CI.
+The final runtime e23 remains the assigned fixture target; corrected test-only
+release/green CI are later gates. Earlier local 668/focused Linux passes do not
+override the failed clean-checkout suite. No production cutover; queued fixture
+is evidence gathering only.
+
+Targeted dependency reuse receipt `dependency-reuse-receipt.json` verifies four
+accepted frozen receipt/version-manifest hashes unchanged, without rescanning
+46,947 files. Actual imports: NumPy 2.5.3, pandas 2.3.3, PyArrow 25.0.1,
+Pydantic 2.13.5, MLflow 3.16.1, scikit-learn 1.9.1, LightGBM 4.7.0,
+JupyterLab 4.6.2, Graphviz 0.21, Plotly 7.1.0, all from private dependency paths;
+ima/scripts from the exact final release. Ten protected hashes still match.
+Optional XGBoost is absent and is not a declared requirement here; it was not
+installed or falsely included in the successful import receipt.
+
+### Historical Interim v3 Build Start
+
+DATA-BUILD ONLY assignment: exact committed SHA
+`d45dc21649d3931d615282565b5517f388160acc`, incorporating parent builder repair
+`df07382` and future-event-empty fast path `d45dc21`. Parent supplied 65 passing
+event/speed/data tests; this role did not rerun that suite. This interim SHA is
+NOT the final production controller/tracking release and authorizes no MLflow
+fixture, paid planner or live V5/V6 change.
+
+Actual archive from Git commit only: 230 files, 2,375,680 bytes. Committed verifier
+source integrity, required paths, PAX/tree/blob/mode and target extracted readback
+passed. Archive SHA256
+`816366ccf7f4956b7f626203cc9852369fa77696bc9251c60f2cdf6174506ede`;
+package receipt SHA256
+`3f5556dab034c51aa68323b9773f056d6d8472fe231e6f62816837f0e1f4d88f`.
+Read-only release:
+`/home/imaopt/research-v2/live-releases/ima-v6-d45dc21649d3931d615282565b5517f388160acc`.
+Staging/evidence:
+`/home/imaopt/research-v2/v6-staging/d45dc21649d3931d615282565b5517f388160acc`.
+Local generated artifacts:
+`/var/folders/wq/tn0d0r417cb3kghxltyqhjt80000gn/T/ima-v6-build-v3-_op0je9u`.
+No dirty/uncommitted source included; no mutable release alias changed.
+
+Later parent-reported gates belong to OTHER revisions: hosted Linux suite/package
+verification green on `d1925c9`; immutable MLflow code-copy repair committed as
+`024b0bd`, with 18 tests passing on Linux. Global trace SDK/provider race repair
+was then parent-owned/in progress and later included in e23. These reports alone
+do not certify this interim
+data-build SHA for production. Final release must pass its own full suite and a
+fresh five-trial private SQLite Linux fixture with five FINISHED runs, zero
+tracking errors and no pending tells/tracking. That canary has NOT been run on
+the interim assignment. Production tracking authorization and actual paid
+decision/graph acceptance are later separate gates, after valid data.
+
+Separately assigned request `inputs/dataset-request-v3.json`, SHA256
+`4e7bfe3ce72ddc489185a896a60d32faa57fdb4dcacfc87452196f87b7cabdd3`;
+normalized fingerprint
+`83bf59f02f89fa142f2288c5fb5a18877c026ae3f0f7c53258e34869b68ddff9`.
+Same full-history strict population/protocol/500-race quarantine; request budget
+5400s. Source is frozen `inputs/official-snapshot`, all 17 copy hashes reverified,
+manifest SHA256 unchanged. V2 request bytes and staging are preserved; all ten
+protection hashes match, V5 active original PID/invocation and no STOP.
+
+Two headroom samples passed: MemAvailable 32,431,144,960 / 32,519,340,032 bytes
+against required 27,918,581,760 / 27,941,584,896; full pressure avg10 0.
+Dedicated unit `ima-v6-dataset-build-d45dc216-v3.service`, invocation
+`d8bbfe34b0e146f9a5815ba9711d9ae8`, PID 1023674, started behind an explicit
+pre-execution gate. Before builder execution, systemd readback verified
+RuntimeMaxUSec `2h` (7200s), MemoryMax 8,000,000,000, MemoryHigh 6,000,000,000,
+swap 0 and CPU quota two. Kernel `memory.high` 5,999,996,928 is the verified
+4096-byte page rounding; memory.max 8,000,000,000, swap.max 0, cpu.max
+`200000 100000`. Initial exact high-limit equality assertion paused the gate;
+page-rounding verification then opened it without a unit restart.
+Proof `build-unit-before-exec.json` and `resource-gate-approved.json` records
+builder-not-executed at readback. `build-command.json` records exact wrapper and
+builder argv; durable output is in the own unit journal (no SSH-bound pipe).
+
+Gate opened 08:52:00.657842 UTC; registry requested 08:52:01.586336 and building
+08:52:01.591512 UTC. First builder process readback was CPU-active, peak
+398,610,432 bytes / CPU 11.203s. Final dataset verification, raw manifest object
+and byte provenance, units, source accounting, target eligibility and immutable
+payload readback were PENDING at this start checkpoint. Publication later completed,
+but independent row-hash audit now holds promotion as recorded above. No optional
+benchmark was run.
+
 ### Authorized Committed Linux Checkpoint
 
 Parent authorized source/build/fixture execution for exact commit
@@ -616,12 +939,12 @@ retraining or scoring controls on the V6/common population as new comparisons.
 | Requirement | Required concrete proof before acceptance | This role's result |
 |---|---|---|
 | Events and speed sources | Publication/coverage-aware joins; race/workout/trial units; whole-race quality audit | Not independently verified |
-| Dataset lifecycle | Request -> validated immutable artifact; failed build cannot promote; baseline retention | Official baseline captured; V6 lifecycle unverified |
+| Dataset lifecycle | Request -> validated immutable artifact; failed build cannot promote; baseline retention | Fresh V4 independently accepted by parent/Sagan; V2 cancelled and V3 unaccepted artifacts retained |
 | Features and selection | Novel formula reuse; >32 eligible selected; trained-only selectors; leakage rejection | Unverified |
 | Graphs and performance models | Chronological OOF, controls, scale/identification, valid joint outcomes and packaged replay | Unverified |
 | Controller and budget | Planning during busy fits; continuous refill; idempotent restart and retirement | Legacy scheduler observed; V6 unverified |
-| MLflow | Paid plan and linked snapshot; native USD field API/UI; one physical call charged once; current comparable champions | Health/experiment API only |
-| Paper EV and Kelly | Quote modes, source-backed units, exact settlement, joint portfolio/solver/no-lookahead controls | Unverified; no bets submitted |
+| MLflow | Paid plan and linked snapshot; native USD field API/UI; one physical call charged once; current comparable champions | Historical fixture backend passed; paid 52a private trace OK but USD/cost unknown, acceptance failed; no production write |
+| Paper EV and Kelly | Typed controller-selected action plus quote/settlement/portfolio/no-lookahead proof | Parent local ten-trial paper-study v2 passed; final controller commit and fresh Linux --paper-study fixture pending; no bets submitted |
 | Performance | Equal concurrency cold/warm repeated full-history benchmark, cgroup peak/PSS/USS/I/O/pagefaults | V5 resource baseline only |
 | Recovery | Builder/controller/worker/uploader restart drills; no duplicate spend/allocation/registration | Not run |
 | Deployment | Exact release/data/protocol/environment identities; multiple real decisions and completed graph; protection readback | Parent-owned, pending |

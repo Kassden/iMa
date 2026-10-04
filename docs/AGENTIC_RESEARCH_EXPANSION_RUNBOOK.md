@@ -5,10 +5,111 @@ isolated dependency setup, exact committed source transfer/read-only extraction,
 Linux fixture canary and a guarded official dataset build. These operations
 have been performed; the first official build was explicitly cancelled after
 parent-confirmed builder defects. Only dedicated own-user
-fixture/build transient units were started. V5 STOP/configuration/unit mutation,
-acquisition mutation, paid planning and production V6 launch remain held pending
-the repaired release and acceptance gates. Existing effective V5 dependency
+fixture/build transient units were started initially; a later explicitly assigned
+isolated paid proposal canary also ran and failed. V5 STOP/configuration mutation,
+acquisition mutation, further paid calls, training and production V6 launch remain
+held. Existing effective V5 dependency
 versions were preserved; its three missing requirements were repaired privately.
+
+## Current Disposition
+
+V4 is complete and independently ACCEPTED by parent/Sagan:
+`dataset-19aaa959e948d6e145ce62c8160413087b46ba3c2578e0de15c452054d9a83db`.
+It used builder `6245f3ca5a3e37116a13cc7420839bb6dc05f55b`; observer reported
+`verified` at 10:06:44.882104 UTC and exited normally. The signed-NaN persisted
+row-hash metadata repair is accepted; parent reports features byte-identical to
+V3. V3 is retained unchanged as unaccepted forensic evidence, not promoted.
+Accepted V4 manifest SHA256:
+`bbe54689bf9e13d1b1afd06122baf1caa9c67e61ddb007be106ea33eb771ce65`.
+
+The isolated 52a paid transport/proposal canary FAILED at the 120s planner
+deadline: no completion/generation ID, no physical completion receipt and
+UNKNOWN COST, not zero. Further paid work is frozen. One delivered private
+SQLite trace is OK, zero pending/errors, but native USD is absent. This is not
+paid-planner acceptance, actual training or production-backend acceptance.
+No fits, dataset build, production MLflow write or V5 STOP occurred in that call.
+
+Parent reports transport/header helper
+`7876d830bd762a8e5beba3b7b20e0848f7889567` committed/pushed with tests and CI
+green. Parent subsequently reported local canary v2 PASS: ten trials, actual
+paper-study execution for WIN/PLACE/QIN/TRI, later planner feedback received,
+zero outboxes/paper pending. Paper engine commit is
+`1fabe3f9bfdd6d69aab860f1fa9b33198968329f`. Controller agent released its work;
+parent tests/commit are pending, so this is not yet a final immutable release or
+Linux acceptance. Preserve the failed
+52a root/marker/unknown-cost evidence; no retry or generation-cost assumption.
+Nietzsche owns the controls unit; this OPS role must not edit/start/stop it.
+Parent coordinates any later cutover. No 52a full-goal completion claim is valid.
+
+Next acceptance requires an explicitly supplied exact final committed SHA,
+immutable archive/readback and fresh Linux fixture after integration, then
+separately authorized paid actual-data/new-graph and bounded training gates.
+Recheck all 11 builder hashes against 624 before reusing V4. A green helper CI,
+working paper CLI or older runtime-equivalent fixture cannot prove the missing
+typed controller action. Next Linux fixture must use `--paper-study` with ten
+trials, private MLflow, ten FINISHED trial runs/linked READY versions, all traces
+OK, zero pending/errors/tells/paper studies, actual WIN/PLACE/QIN/TRI study output
+and later planner feedback. Controls/recovery/live feedback remain separate.
+
+Prepared future fixture CLI (NOT run here; inspect `--help` on final committed
+release before use):
+
+```bash
+"$IMA_V6_PYTHON" -B -m scripts.run_research_expansion_canary \
+  --output "$IMA_V6_FIXTURE_ROOT" --planner fixture --paper-study \
+  --max-trials 10 --max-concurrent-trials 2 \
+  --mlflow-tracking-uri "sqlite:///${IMA_V6_FIXTURE_ROOT}/mlflow.db"
+```
+
+Use a fresh own root/private writable TMPDIR, exact committed runtime/private
+dependencies, resource-before-exec two-CPU/8GB headroom gate, no credential source
+and no production MLflow 5000. Do not archive pending dirty controller/script
+changes or execute this before final SHA authorization. The local script currently
+requires fixture planner and at least ten trials for `--paper-study`; final
+committed CLI/readback must prove this same contract. CD tool preparation is the
+next assignment after this documentation handoff, not a source transfer now.
+
+### Historical Fixture And Data Checkpoints
+
+Historical accepted fixture release is exact
+`2a87784a52be31c2e16272fe2791b5e7b58ed9b7`; immutable archive/readback passed,
+and parent reported CI run `37191680881` GREEN. Executed private SQLite fixture
+remains e23, explicitly bound to 2a by 133 matching runtime files across
+ima/scripts/deploy/config. It PASSED: five completed, five FINISHED physical runs,
+five linked READY versions, six all-OK traces, zero errors/outbox/tells/tracking.
+It started 09:24:07 UTC after build completion and fresh resource/headroom gates;
+the earlier parallel headroom failure/queue is historical, not current status.
+No duplicate fixture was run or provenance relabeled. Terminal receipt is
+`v6-staging/2a87784a52be31c2e16272fe2791b5e7b58ed9b7/fixture-runtime-binding-receipt.json`.
+See validation for exact hashes/IDs and synthetic-fixture acceptance boundaries.
+
+At the historical V3 checkpoint, data promotion and paid/cutover work were held.
+Parent/Sagan V3 data
+audit reports declared row hash `f19ba...` vs persisted `f6ddb...` despite passing
+file checksums/dtypes/provenance. Sagan subsequently proved eight signed NaNs in
+four columns account for the discrepancy, with restored hash and `.equalsTrue`.
+These are parent-supplied abbreviated hashes, not full receipts. The canonical
+persisted-hash repair was committed in 624 and fresh V4 later passed independent
+acceptance as recorded above. Registry publication alone does not override
+independent audit. Never rewrite the retained V3 identity; any new build/transfer
+or paid/production call still requires its own assigned scope. V5 stays protected.
+
+Completed data assignment used interim committed SHA
+`d45dc21649d3931d615282565b5517f388160acc`, not the production release. Exact
+archive/immutable transfer passed; v3 builder started 08:52:01 UTC from frozen
+`campaigns/agentic_v6_research/inputs/official-snapshot`. Request v3 budget is
+5400s. Dedicated unit `ima-v6-dataset-build-d45dc216-v3.service` has a verified
+7200s hard timeout, 8,000,000,000-byte memory cap and two-CPU quota BEFORE builder
+execution: an explicit wait gate opens only after resource readback succeeds.
+Kernel MemoryHigh rounds down to its 4096-byte page boundary; verify that rounding
+instead of confusing it with a changed policy. V2 cancellation evidence is kept.
+Registry published V3 at 09:18:54 UTC: dataset
+`dataset-62744fab4a46cbeada2488be5d15a2112d3d364d8148331ccd48f6dda736a4e8`,
+171,782 rows / 13,924 races; three folds, zero unaccounted source keys reported.
+Its 11 builder identity hashes match the later runtime, but original build SHA
+stays d45. V3 independent acceptance failed on the row-hash discrepancy; accepted
+fresh V4 supersedes it without modifying V3.
+No paid launch or optional benchmark occurred. Preserve V2 cancellation evidence.
 
 Subsequent assignment authorized exact committed source
 `5b63862360f5380b6f247bf1c4da0a0854528aa6`, separate bounded fixture and
@@ -19,15 +120,17 @@ trace error. This is not a clean tracking gate. Dataset build ran under
 8,000,000,000 bytes/two CPU quota and was cancelled at 08:41:16 UTC; no candidate
 was published or accepted. The 1800s request budget and actual hard timeout were
 1800s; attempts to apply the subsequently specified 3600s timeout did not load.
-Future builds must read back the intended 3600s before starting. See validation for
+Future builds must read back the newly assigned timeout before starting (7200s
+was verified for v3). See validation for
 proof paths; V5 STOP, V5 unit/config change, paid planner and live V6 launch
 remain explicitly unauthorized. Earlier prepared-only sections are historical
 recipes, not statements that the assigned transfer/fixture never occurred.
-GitHub CI on that SHA is currently failed (parent identified two clean-checkout
+GitHub CI on that historical SHA failed (parent identified two clean-checkout
 archive-fixture assumptions). Parent owns the corrected/new committed release.
 Do not cut over, reuse the cancelled staging data, or relabel its provenance.
 Parent identified raw-manifest variable shadowing and event distance unit metadata
-defects; await a repaired committed release and fresh request v3. Preserve old
+defects; the repaired interim build/fresh request v3 above later published, but
+independent V3 row-hash audit held its promotion. Preserve old
 request/staging and cancellation evidence. The optional full-row preparation
 benchmark was NOT run: it requires a valid immutable candidate first.
 
@@ -39,6 +142,80 @@ all file hashes. Preserve the dataset manifest's original acquisition source pat
 the parent launcher is adding hash-verified relocation support, not a path rewrite.
 
 ## Identity And Integration API
+
+### V4 Launch And Historical 52a Source Receipt
+
+Superseding execution receipt: V4 was authorized and started 2026-10-04
+09:38:58 UTC from exact builder commit
+`6245f3ca5a3e37116a13cc7420839bb6dc05f55b`. Unit
+`ima-v6-dataset-build-6245f3ca-v4.service`, PID 1030588, invocation
+`dafcc8e3278f4e2eb21766146765528e`, passed the pre-execution kernel/systemd gate:
+actual RuntimeMaxUSec 2h, MemoryMax 8,000,000,000, CPU quota two, swap zero.
+Two fresh headroom samples passed. Request budget was 5400s. Build subsequently
+completed and parent/Sagan independently accepted V4; an active-build checkpoint
+alone was not acceptance.
+V3 remains immutable forensic evidence, not a reused or patched candidate.
+
+Then-designated final 52a source transfer/read-only extraction also completed:
+`52a3c3eecb7cf3342d0b690b059e55a8f67e1845`, 231 committed files.
+Immutable root is
+`/home/imaopt/research-v2/live-releases/ima-v6-52a3c3eecb7cf3342d0b690b059e55a8f67e1845`.
+Archive SHA256 is
+`f1aa0c7985774cc781c3d90473c226a1f677654d1b013cce308edd87d0adbdba`;
+`v6-staging/52a3c3eecb7cf3342d0b690b059e55a8f67e1845/package-receipt.json`
+SHA256 is `d8e46711f0e06cb5814687c7a12e979e97e77f1be10c678991bf856102b12a7e`.
+PAX/tree/blob/mode and extracted readback passed. All 11 builder hashes match
+624 and 52a. Compared with the accepted e23 fixture, 130/133 runtime files match;
+registry, orchestrator and expansion controller differ. Do not claim the old
+fixture proves unchanged full 52a runtime. Exact 52a CI runs 37192679625 and
+37192676301 were read back successful. A later limited paid canary failed, as
+recorded below; no training or production launch occurred.
+
+### Historical V4 Preparation
+
+Parent assigned preparation of `.tmp/v6-dataset-request-v4.json`, not remote
+transfer/build execution. Request `v6-initial-strict-fullhistory-latest-v4` differs
+from v3 ONLY in request_id/rationale; strict availability, full history, population,
+protocol, five targets, raw SHA, watermark and 5400s budget are unchanged.
+Artifact SHA256
+`28d4d52e16fa97e287609702db4bf939490c6b282f513e76995743e2da051d30`;
+normalized fingerprint
+`a58032954cb8153444959fcf985af15ff773bb5cd1c71c2b0f3149fc190b0f7a`.
+Local DatasetRequest schema validation and structured v3/v4 comparison passed.
+At that preparation checkpoint, Kierkegaard's builder repair SHA had not yet been
+assigned. The later 624 execution and accepted V4 above supersede that status.
+
+Original prepared sequence below was subsequently executed under the assignment
+recorded above; its acceptance checks remain mandatory:
+
+1. Receive the parent's full committed repair SHA and execution assignment.
+   Archive only that commit using Committed Deployment Package/Exact Transfer
+   procedures below; verifier must come from that same SHA, never dirty files.
+   Retain new PAX/tree/blob/mode and independent extracted readback receipts.
+2. Copy v4 as a separate request artifact over the same Tailscale route into
+   `campaigns/agentic_v6_research/inputs/dataset-request-v4.json`; verify its exact
+   SHA256/schema/fingerprint before use. Do not overwrite any v2/v3 request,
+   published V3 candidate, old staging, cancellation evidence or confirmation set.
+3. Reuse the frozen `inputs/official-snapshot`; manifest bytes must still hash to
+   `fcbb6a3f9b83ae06add78dcb674649c8ebbb202e86c32157d4efed1616efaee7`.
+   Verify accepted dependency receipts/version manifest and actual import origins;
+   no new full 46k-file scan is required absent drift. Refresh protected hashes
+   and two-sample host/ancestor headroom immediately before the dedicated unit.
+4. Use a new v4 unit and fresh revision-bound pre-execution gate. Actual readback
+   MUST show RuntimeMaxUSec `2h`, MemoryMax 8,000,000,000, swap 0, CPU quota two,
+   expected MemoryHigh page rounding and native threads 1 before exec. Request
+   wall budget stays 5400s; hard timeout is 7200s. Use durable own journal output.
+5. Build in the same V6 registry with the fresh v4 request; preserve the published
+   V3 directory without any rewrite. Capture source/build/request/environment
+   identity and whole-source row/key/exclusion/quarantine/protocol/target receipts.
+   Independently recompute the declared ordered-row hash FROM persisted Parquet
+   under the repaired canonical representation, in a fresh reader, and require
+   exact equality alongside payload checksums/dtypes/provenance before promotion.
+
+The builder API below remains the contract; set `IMA_V6_DATASET_REQUEST` to the
+assigned v4 input only after execution authorization. A newly changed source SHA
+must not inherit the e23-to-2a runtime-canary binding automatically; parent owns
+any updated controller/prompt and corresponding runtime/paid/live gates.
 
 Host/account: `imaopt@100.95.24.121`. Keep pinned V5 campaign, release, dependencies
 and service unchanged. Use a separate `agentic_v6_*` campaign with immutable
@@ -291,7 +468,14 @@ command, bounded destination/resources and expected completion/tracking counts.
 Native-thread caps, private dependency `PYTHONPATH` and bytecode-disabled imports
 are required; verify `ima` and `scripts` import from this committed release.
 
-## Guarded Server Dataset Build: Prepared, Not Started
+## Guarded Server Dataset Build Procedure
+
+The feasibility notes and initial recipe below are historical preparation, not
+current execution status. V2 ran and was cancelled; interim V3 completed but
+failed independent row-hash acceptance. Fresh V4 used the explicit
+resource-before-exec gate/verified 7200s timeout and later passed independent
+acceptance. Do not execute another build without the
+parent's new SHA/request assignment.
 
 Read-only feasibility at `2026-10-04T07:23:58.863161+00:00`: own user manager
 is running, systemd 259.5, `Delegate=yes` with cpu/memory/pids; `systemd-run
@@ -356,12 +540,42 @@ PY_BUILD_GUARD
 ```
 
 The 0.5% avg10 pressure cutoff is an operational guard, not a measured guarantee.
-Even a pass can become stale. Run the following ONLY after parent assignment,
-with `set -euo pipefail` so a failed guard prevents the launch. All placeholders
-are required non-secret parent choices, not defaults or existing output claims:
+Even a pass can become stale. A direct `systemd-run` of the builder is NOT the
+current procedure: it can begin work before the requested limits are read back.
+The v3 execution records exact `systemd_run_argv` and `builder_argv` in
+`v6-staging/d45dc21649d3931d615282565b5517f388160acc/build-command.json`.
+Its wrapper waits up to 300s for a fresh revision-bound resource approval receipt;
+only then does `os.execv` replace it with the builder. No `--pipe` is used; output
+stays in the own unit journal. Do not reuse an existing approval file for a new
+unit or revision.
+
+Required sequence for another assigned build:
+
+1. Verify committed source, request, frozen source hashes and protection baseline;
+   pass the two-sample headroom guard immediately before the dedicated unit.
+2. Start a fresh unit with a waiting wrapper, MemoryMax 8,000,000,000, MemoryHigh
+   6,000,000,000, swap 0, CPUQuota 200%, native threads 1, and assigned timeout
+   (7200s for v3 and prepared v4). Use own private dependency overlay plus exact immutable release.
+3. Verify wrapper is still the MainPID before builder execution. Read systemd
+   RuntimeMaxUSec `2h`, CPUQuotaPerSecUSec `2s` and configured byte limits. Check
+   kernel memory.max/swap.max/cpu.max independently; memory.high must equal
+   `6000000000 // page_size * page_size`, not unrounded policy bytes.
+4. Persist `build-unit-before-exec.json`, then atomically publish the fresh
+   `resource-gate-approved.json` with matching revision and gate verdict. Failure
+   must leave the gate closed, not proceed or silently recreate a unit.
+5. Observe registry state and journal until completion; independently verify all
+   provenance/payload hashes before accepting a candidate. Never equate systemd
+   Result success, a PID, or a staging directory with a verified dataset.
+
+Builder integration API (executed only inside the assigned gated unit;
+v3 used its v3 input, prepared v4 will use its separately assigned v4 input):
 
 ```bash
-systemd-run --user --no-ask-password --service-type=exec --wait --pipe --unit="ima-v6-dataset-build-$RESEARCH_RELEASE_SHA" --working-directory="$IMA_V6_RELEASE" --property=MemoryAccounting=yes --property=CPUAccounting=yes --property=MemoryHigh=6000000000 --property=MemoryMax=8000000000 --property=MemorySwapMax=0 --property=CPUQuota=200% --property=TasksMax=128 --property=Nice=10 --property=RuntimeMaxSec=3600 --property=TimeoutStopSec=60 --setenv="PYTHONPATH=$IMA_V6_DEPENDENCIES:$IMA_V6_RELEASE" --setenv=PYTHONNOUSERSITE=1 --setenv=PYTHONDONTWRITEBYTECODE=1 --setenv=OMP_NUM_THREADS=1 --setenv=OPENBLAS_NUM_THREADS=1 --setenv=MKL_NUM_THREADS=1 --setenv=NUMEXPR_NUM_THREADS=1 "$IMA_V6_PYTHON" -B -m scripts.build_research_dataset --request "$IMA_V6_DATASET_REQUEST" --registry "$IMA_V6_CAMPAIGN/datasets" --source-snapshot /home/imaopt/acquisition/hkjc-20261002/snapshots/snapshot-20261004T050721Z-122062e8 --raw-manifest /home/imaopt/acquisition/hkjc-20261002/snapshots/snapshot-20261004T050721Z-122062e8/manifest.json
+"$IMA_V6_PYTHON" -B -m scripts.build_research_dataset \
+  --request "$IMA_V6_DATASET_REQUEST" \
+  --registry "$IMA_V6_CAMPAIGN/datasets" \
+  --source-snapshot "$IMA_V6_CAMPAIGN/inputs/official-snapshot" \
+  --raw-manifest "$IMA_V6_CAMPAIGN/inputs/official-snapshot/manifest.json"
 ```
 
 Capture exit/stdout/stderr and invocation; read back the transient unit's actual
@@ -670,6 +884,215 @@ independent readback receipt is outside the snapshot, named
 too. The full snapshot plus that receipt totals 776,220,106 bytes.
 Compression size is unmeasured; do not substitute the parquet size for the CSV
 or whole-snapshot download requirement. No snapshot was downloaded by this role.
+
+## Isolated 52a Paid Failure And Transport Evidence
+
+Explicit GO covered one proposal/transport invocation only, not final acceptance,
+fits, production MLflow or cutover. Tested runner SHA256
+`25df6c8f2dcb9d8774b480eac8405eb54e0ff554f2c536d50e8317d96eb53fed` was unchanged.
+Full private dependency PYTHONPATH plus immutable 52a was used, not the earlier
+partial SDK overlay. Output root:
+`/home/imaopt/research-v2/canaries/acceptance-runner-owned-52a3c3e/official-v4-once`;
+operator evidence is the sibling `official-v4-once-ops` directory.
+Printed/approved bundle SHA256:
+`def76f1ac902f3e56afcce68f724af13ed3cc192f17a4fa6837f560e1d5a8acd`.
+
+Prepare and paid units each passed fresh two-sample headroom and pre-exec
+kernel/systemd gates: CPU quota two, MemoryMax 8,000,000,000, RuntimeMax 270s,
+Restart=no. The paid unit was `ima-v6-paid-52a-v4-paid.service`, invocation
+`02cef1414d7e4fc192ed0dab0519a655`, 10:14:43 to 10:16:57 UTC, exit 1.
+Actual failure: `OpenRouter bounded request failed: TimeoutError:` at the
+runner's 120s planner deadline, NOT the 270s unit timeout. Unit peak
+1,572,839,424 bytes, CPU 9.786325s. One plan invocation entered; zero persisted
+completion receipts is not proof of zero HTTP attempts or zero billed usage.
+
+Private trace `tr-be5d73c9b6a5caf6ba39cbcdd8883efb` is OK, zero trace outbox
+pending/errors, no native cost attributes/USD; no runs/model versions or fits.
+Independent terminal receipt SHA256:
+`981c26818a3cf7bfa761d104d72bf20d6e918a1c25591223fe6598831519c08a`.
+All ten protected hashes and original V5 PID/invocation/STOP absence matched.
+Further paid execution is frozen; preserve the exclusive started marker and
+failed bundle. Never reset/reuse it or insert a fabricated zero-cost receipt.
+
+Non-charged GET diagnostics at 10:22:02-15 UTC used the same HTTPX 0.28.1/private
+environment, with all upper/lowercase proxy-presence flags false. Models GET
+returned 200 for default SDK transport (IPv6, 6.0652s), forced IPv4 (2.6455s)
+and forced IPv6 (2.0070s), all TCP/TLS successful. Both DNS families routed via
+tailscale0/table 52; exit 100.88.109.45 was online. The exact approved model was
+present. Own MLflow health GET returned 200. No production transport or route
+change was made: this evidence does not support an IPv6-failure workaround.
+
+Authenticated non-charged key/credits GETs returned 200 with minimal counters
+only, never credentials. No pre-call credit baseline was captured; concurrent
+V5 traffic prevents precise delta attribution. The failed non-stream POST saved
+no generation ID/header or network-phase telemetry, so TCP/TLS delay versus
+generation wait cannot be determined retrospectively. Do not retry to diagnose.
+Parent owns cost reconciliation; later header-helper integration cannot repair
+missing IDs from this historical call. Diagnostic receipt
+`official-v4-once-ops/noncharged-transport-diagnostics.json` SHA256:
+`5d452f7976344a4dc06786d0e3e53f778370244543a7a76bb3eb534cb4e2d54a`.
+All observer/exec sessions completed; no abandoned required process remains.
+
+## Prepared Official Five-Trial Canary (Not Executed)
+
+This is the next assignment's recipe, not execution authorization. Parent first
+has accepted the independent V4 persisted row-hash/data audit; the attempted
+private one-shot paid-planner gate FAILED and requires new explicit scope after
+final integration. Do not run training, source provider credentials,
+install configs remotely or stop V5 until the parent gives the next GO. No fixture
+planner, private SQLite or V3 candidate substitutes for this actual-data gate.
+
+Use the future parent-assigned exact final SHA, accepted private dependency
+receipts and the real campaign
+`/home/imaopt/research-v2/campaigns/agentic_v6_research`. Both bounded and continuous
+configs use production MLflow `http://100.95.24.121:5000`, the same audited V4
+manifest's `features_path` and `protocol_path`, strict full-history policy and
+`deepseek/deepseek-v4.1-flash`. Do not use a mutable dataset alias or truncate rows.
+
+Prepare two separate immutable config files, never rewrite the bounded one:
+`ops/bounded-training-<final-sha>-v4.json` and `ops/continuous-<final-sha>-v4.json`,
+plus `ops/training-config-receipt-<final-sha>-v4.json`. Preparation is
+local/template-only now; final bytes/hashes await the assigned final code SHA.
+The future generation recipe is below. V4_MANIFEST must name the independently
+accepted registry artifact, not a request/staging file. Exclusive file creation
+prevents silent replacement; interrupted preparation requires evidence review.
+
+```python
+import hashlib, json, os, re
+from pathlib import Path
+from scripts.optimize import _load_config
+from ima.optimizer import CampaignConfig
+
+sha = os.environ["V6_RELEASE_SHA"]
+assert re.fullmatch(r"[0-9a-f]{40}", sha)
+release = Path("/home/imaopt/research-v2/live-releases") / ("ima-v6-" + sha)
+assert (release / "REVISION").read_text().strip() == sha
+campaign = Path("/home/imaopt/research-v2/campaigns/agentic_v6_research")
+manifest_path = Path(os.environ["V4_MANIFEST"]).resolve(strict=True)
+registry = campaign / "datasets/datasets"
+assert manifest_path.name == "manifest.json"
+assert manifest_path.is_relative_to(registry.resolve(strict=True))
+manifest = json.loads(manifest_path.read_text())
+assert manifest["status"] == "verified"
+assert manifest["request_id"] == "v6-initial-strict-fullhistory-latest-v4"
+full = json.loads((release / "config/agentic_research_expansion.json").read_text())
+full.update(dataset_path=manifest["features_path"], protocol_path=manifest["protocol_path"])
+bounded = dict(full, max_trials=5, max_trials_per_decision=5,
+    max_concurrent_trials=2, cpu_thread_budget=2, ram_budget_gib=8,
+    memory_budget_gb_decimal=10, host_reserve_cpu_threads=1,
+    host_reserve_ram_gib=0.5, max_total_cost_usd=0.25,
+    timeout_minutes=180, max_active_preparations=1)
+ops = campaign / "ops"
+ops.mkdir(exist_ok=True)
+receipt = {"code_revision": sha, "dataset_id": manifest["dataset_id"],
+    "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+    "prepared_only": True, "configs": {}}
+for name, values in ((f"bounded-training-{sha}-v4.json", bounded),
+                     (f"continuous-{sha}-v4.json", full)):
+    path = ops / name
+    with path.open("x") as handle:
+        handle.write(json.dumps(values, sort_keys=True, indent=2) + "\n")
+    args = _load_config(path)
+    for key in ("dataset_path", "protocol_path", "reference_campaign_dir",
+                "dataset_registry_path", "official_snapshot_path"):
+        if args.get(key):
+            args[key] = Path(args[key])
+    CampaignConfig(campaign_dir=campaign, **args).validate()
+    path.chmod(0o444)
+    receipt["configs"][name] = hashlib.sha256(path.read_bytes()).hexdigest()
+with (ops / f"training-config-receipt-{sha}-v4.json").open("x") as handle:
+    handle.write(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
+(ops / f"training-config-receipt-{sha}-v4.json").chmod(0o444)
+```
+
+`max_trials_per_decision=5` is REQUIRED: the CLI maps it to proposal_batch_size;
+260 with max_trials 5 fails CampaignConfig validation. max_inflight_programs stays
+24 (the validator requires at least 5), not an invalid value of 2. Preparation
+concurrency is reduced to one; simultaneous fits remain a ceiling of two, not a
+promise that measured memory admission will allow both. Existing planner budgets
+and pending programs are durable and must be read back before first admission.
+The $0.25 limit checks previous reported spend, not a guaranteed billing cap;
+unknown spend blocks admission and a single admitted call can overshoot. Record
+parent's preceding paid calls separately without fabricating controller spend.
+
+After separate GO, direct CLI argv is:
+
+```bash
+"$IMA_V6_PYTHON" -B -m scripts.optimize run \
+  --campaign /home/imaopt/research-v2/campaigns/agentic_v6_research \
+  --config "/home/imaopt/research-v2/campaigns/agentic_v6_research/ops/bounded-training-${V6_RELEASE_SHA}-v4.json"
+```
+
+Run only inside a new revision-bound own-user transient training unit assigned
+by parent/controls owner (never the frozen 52a paid unit):
+CPUQuota=200%, MemoryMax=8000000000, MemoryHigh=6000000000, MemorySwapMax=0,
+RuntimeMaxSec=14400, TimeoutStopSec=1800, Restart=no, KillMode=control-group,
+TasksMax=128, Nice=10, UMask=0077, accounting and durable journal enabled. Reuse
+the proven explicit wait-gate technique: bind expected invocation/PID/command,
+config hash, accepted manifest and SHA, then verify systemd AND kernel resource
+limits before opening the gate. Do not start fit and subsequently adjust limits.
+Keep a new own writable TMPDIR/cache; set IMA_CODE_REVISION to full assigned SHA,
+PYTHONPATH to private dependencies plus that immutable release, PYTHONNOUSERSITE=1,
+PYTHONDONTWRITEBYTECODE=1, OMP/BLAS/MKL/NUMEXPR threads=1. Load only the audited
+own OpenRouter env in the execution wrapper, without printing values or copying
+credentials into receipt/command-line arguments. Do not use the full production
+launcher: its minimum reserve 4 CPU/8 GiB intentionally rejects this small canary.
+
+The requested config RAM 8 GiB and decimal ceiling 10 GB are intentionally
+distinct from the unit's 8,000,000,000-byte hard cap (7.45058 GiB). The lower
+cgroup headroom wins admission; record all three, not an invented 8-GiB unit cap.
+Repeat the conservative two-sample host/ancestor gate including possible V5
+growth to its unchanged cap and other own active build/canary caps. Do not overlap
+with V4 until independent completion/audit and fresh safe headroom. The 180-minute
+controller timeout stops admission but does not prove active fits have drained;
+four hours is the hard last-resort bound, not a measured fit-time guarantee.
+
+Acceptance is actual status `complete`, exactly five completed attempts, zero
+failed, running/reserved, pending tells, model outbox and trace delivery; no
+tracking errors or unknown spend. CLI exit 0 also permits blocked_tracking and is
+not acceptance. Query ledger read-only and inspect current status timestamps;
+production MLflow must acknowledge all five physical FINISHED runs and five
+linked READY versions for THIS campaign/attempts, every delivered trace OK, no
+duplicates or unrelated fixture counts. Record final invocation/exit/resource
+peaks, full-fold data hashes, physical call costs and backend IDs. If admission
+cannot fit, spend blocks, timeout/OOM occurs or tracking remains pending, hold
+cutover and preserve evidence; no automatic restart or config-cap expansion.
+
+### Resume Identity And Parent Cutover
+
+Verified exact 52a `_validate_campaign_identity` binds dataset byte hash, canonical
+protocol parameters, code revision, environment hash, policy/portfolio and
+target/metric contracts. It excludes max_trials, concurrency, CPU/RAM/reserves,
+timeouts, spend threshold and other operational queue settings. Thus after the
+five-trial proof, continuous config can resume the SAME campaign with 24 CPU,
+26 worker ceiling, 100 decimal GB and max_trials null, not a renamed/new campaign.
+Its completion budget is cumulative: never reuse bounded max_trials 5 to claim
+five additional trials. Keep the original bounded config receipt because
+campaign.json is overwritten by the next invocation. Preserve identity and
+Optuna/ledger/decision/tracking state; do not remove programs to force replanning.
+
+Important limits: environment identity currently hashes Python/platform only,
+NOT all packages; MLflow URI/model/provider configuration are NOT identity fields.
+Compare accepted dependency lock/setup receipts, import origins, source runtime
+and backend/model/policy/config hashes separately. Exact final revision must
+stay the assigned final SHA across bounded/continuous runs; a changed SHA fails
+identity even if runtime byte-equivalent. Revalidate these contracts on that
+future release rather than assume 52a proves new integration behavior. Do not
+relabel e23/2a fixtures as the real campaign. Check same V4 paths/bytes, canonical
+protocol, environment receipt, policy and production backend before resumption.
+
+Parent alone authorizes cutover after data, private paid-planner, bounded actual
+training/backend, CI and source gates pass. Capture protected hashes and V5
+watermarks; request only the pinned V5 graceful STOP using the next section.
+Wait for admissions cessation, fits/planner/uploads/tells/outboxes drained and
+clean V5 exit; a marker or healthy MLflow is insufficient. If blocked, keep V6
+continuous held. Nietzsche owns controls/unit changes; OPS must not mutate its
+unit. After fresh freed-headroom readback, parent/Nietzsche installs the own
+V6 unit/env using the separate continuous config, sets CPUQuota=2400% as well
+as the existing 90/100-decimal-GB limits, and verifies effective properties before
+launch. No automatic V5 restart, alias replacement or STOP removal. Continuous
+V6 needs multiple real feedback windows and independent restart/recovery proof;
+the bounded gate alone does not establish unattended operation.
 
 ## V5 Graceful Handoff Procedure
 
