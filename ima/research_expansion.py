@@ -31,6 +31,7 @@ class PlannerDecision(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     decision_id: str
     evidence_id: str
+    research_memo_sha256: str | None = None
     trial_budget: int = Field(ge=0, strict=True)
     programs: tuple[ResearchProposal, ...] = ()
     extensions: dict[str, StrictInt] = Field(default_factory=dict)
@@ -1323,6 +1324,7 @@ def _planner_spend(directory):
 
 
 def _capabilities(config,dataset,*,dataset_digest=None,registry=None):
+    from .research_memo import research_memo_context
     manifest_path = Path(dataset).parent/"manifest.json"
     manifest = core._read_json(manifest_path) if manifest_path.is_file() else {}
     protocol_path = getattr(config,"protocol_path",None)
@@ -1357,7 +1359,8 @@ def _capabilities(config,dataset,*,dataset_digest=None,registry=None):
                 inputs["known_feature_definition_ids"].append(features.get(path.stem).content_id())
             except (OSError,ValueError):
                 continue
-    return {"recipe_schema":PipelineRecipe.model_json_schema(),
+    return {"research_memo":research_memo_context(),
+            "recipe_schema":PipelineRecipe.model_json_schema(),
             "parent_trial_id_contract":{
                 "sole_valid_source":"completed_trial_index[].attempt_id",
                 "references":"Historical context only. Reference champion attempt IDs are not valid parent_trial_ids unless also present in completed_trial_index.",
