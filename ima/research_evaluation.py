@@ -120,7 +120,7 @@ def validate_fold(frame: pd.DataFrame, fold: ResearchFold) -> None:
     if groups[0] & groups[1] or groups[0] & groups[2] or groups[1] & groups[2]:
         raise ResearchEvaluationError(f"Fold {fold.fold_id} has overlapping race IDs")
     order = race_order(frame)
-    position = {str(row.race_id): index for index, row in order.iterrows()}
+    position = {str(race_id): index for index, race_id in enumerate(order["race_id"])}
     missing = sorted(set().union(*groups) - set(position))
     if missing:
         raise ResearchEvaluationError(f"Fold {fold.fold_id} references unknown races: {missing}")
