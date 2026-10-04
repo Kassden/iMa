@@ -5,10 +5,61 @@ import hashlib
 import json
 import math
 import sqlite3
+import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from .research_store import utc_now
+
+
+_TRACKING_OPERATION_LOCK = threading.RLock()
+_TRACING_INITIALIZATION = None
+
+
+@contextmanager
+def tracking_operation():
+    """Serialize trace emission with model logging's process-global provider swaps."""
+    with _TRACKING_OPERATION_LOCK:
+        yield
+
+
+def initialize_required_tracing(config):
+    """Initialize V6 tracing before workers; never override disabled tracing/sampling."""
+    global _TRACING_INITIALIZATION
+    if not config.mlflow_tracking_uri:
+        return None
+    from .mlflow_tracking import _mlflow
+    from .research_controller import _tracking_names
+    from mlflow.environment_variables import MLFLOW_TRACE_SAMPLING_RATIO
+    from mlflow.tracing.context import _USER_TRACE_CONTEXT
+    from mlflow.tracing.provider import _get_tracer, is_tracing_enabled
+    context = _USER_TRACE_CONTEXT.get()
+    if context is not None and context.enabled is False:
+        raise RuntimeError("Required V6 tracing is explicitly disabled in this context")
+    ratio = MLFLOW_TRACE_SAMPLING_RATIO.get()
+    if ratio is not None and ratio != 1:
+        raise RuntimeError("Required V6 traces cannot use partial or disabled sampling; sampling policy was not changed")
+    with tracking_operation():
+        # Check before changing destinations: MLflow can reset the provider there.
+        if not is_tracing_enabled():
+            raise RuntimeError("Required V6 tracing provider is disabled; policy was not changed")
+        mlflow = _mlflow()
+        key = (config.mlflow_tracking_uri, config.research_policy)
+        if (_TRACING_INITIALIZATION is not None and _TRACING_INITIALIZATION[0] == key
+                and mlflow.get_tracking_uri() == config.mlflow_tracking_uri):
+            _get_tracer(__name__)
+            return dict(_TRACING_INITIALIZATION[1])
+        mlflow.set_tracking_uri(config.mlflow_tracking_uri)
+        experiment = mlflow.set_experiment(_tracking_names(config.research_policy)[0])
+        # MLflow 3.15/3.16 has no public span-free initializer. This pinned SDK
+        # accessor uses its once lock without creating a synthetic trace.
+        _get_tracer(__name__)
+        if not is_tracing_enabled():
+            raise RuntimeError("Required V6 tracing provider is disabled; policy was not changed")
+        report = {"tracking_uri":config.mlflow_tracking_uri,"experiment_id":str(experiment.experiment_id),"tracing_enabled":True}
+        _TRACING_INITIALIZATION = (key, report)
+        return dict(report)
 
 
 def comparison_key(result: dict, recipe: dict) -> str:
@@ -271,7 +322,15 @@ def _verify_or_restore_trace(mlflow, tracking_uri, receipt, trace_json):
         raise RuntimeError("Trace upload completed without readable backend evidence")
 
 
+def _require_recording_span(span):
+    from mlflow.entities import NoOpSpan
+    if isinstance(span,NoOpSpan):
+        raise RuntimeError("MLflow returned NoOpSpan; no recording trace was created. Delivery remains pending; check tracing enablement, sampling and provider initialization.")
+
+
 def _serialize_trace(span, experiment_id, tags, name, preview, campaign, usage):
+    # NoOpSpan inherits a serializer that assumes a recording OpenTelemetry span.
+    _require_recording_span(span)
     from mlflow.entities import Span, Trace, TraceData, TraceInfo, TraceLocation, TraceState
     metadata = {"mlflow.trace.session": str(campaign.resolve())}
     tokens = {k: usage[k] for k in ("input_tokens", "output_tokens", "total_tokens")
@@ -298,6 +357,11 @@ def _serialize_trace(span, experiment_id, tags, name, preview, campaign, usage):
 
 
 def _emit_trace(campaign: Path, payload: dict, config, *, role: str, number: int, persist) -> tuple[dict, dict]:
+    with tracking_operation():
+        return _emit_trace_locked(campaign,payload,config,role=role,number=number,persist=persist)
+
+
+def _emit_trace_locked(campaign: Path, payload: dict, config, *, role: str, number: int, persist) -> tuple[dict, dict]:
     from .mlflow_tracking import _mlflow
     from .research_controller import _tracking_names
     mlflow = _mlflow()
@@ -330,6 +394,7 @@ def _emit_trace(campaign: Path, payload: dict, config, *, role: str, number: int
         tags["planner_cost_usd"] = str(cost)
         preview = f"Planner ${cost:.9f} USD | {preview}"
     with mlflow.start_span(name=name, span_type="LLM" if role == "decision" and not fixture else "CHAIN") as span:
+        _require_recording_span(span)
         trace_id = span.trace_id
         mlflow.update_current_trace(tags=tags, session_id=str(campaign.resolve()),
                                    request_preview=name, response_preview=preview)

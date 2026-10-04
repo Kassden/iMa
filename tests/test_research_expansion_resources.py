@@ -24,6 +24,30 @@ def executors(**kwargs):
 
 
 class ExpansionResourceIntegrationTests(unittest.TestCase):
+    def test_v6_upload_holds_trace_lock_and_releases_after_failure(self):
+        from contextlib import contextmanager
+        from ima.research_expansion import _upload_result_with_tracing_lock
+        events = []
+
+        @contextmanager
+        def lock():
+            events.append("locked")
+            try:
+                yield
+            finally:
+                events.append("released")
+
+        def upload(*args):
+            self.assertEqual("locked", events[-1])
+            raise RuntimeError("retryable upload failure")
+
+        with patch("ima.research_telemetry.tracking_operation", lock), \
+                patch("ima.research_v5.upload_result", side_effect=upload) as uploader:
+            with self.assertRaisesRegex(RuntimeError, "retryable upload failure"):
+                _upload_result_with_tracing_lock(self.config, self.dataset, {"attempt_id":"one"})
+        self.assertEqual(["locked", "released"], events)
+        uploader.assert_called_once_with(self.config, self.dataset, {"attempt_id":"one"})
+
     def test_native_threads_share_budget_with_deep_queue(self):
         recipe = proposal(trials=40).recipe
         self.assertEqual(4, _native_threads(recipe, 178000, 24))
@@ -32,6 +56,10 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
         self.assertEqual(4, _native_threads(recipe, 178000, 24, pending_trials=3))
 
     def setUp(self):
+        # Controller fixtures use an intentionally nonexistent tracking server.
+        startup = patch("ima.research_telemetry.initialize_required_tracing")
+        self.tracing_startup = startup.start()
+        self.addCleanup(startup.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
@@ -296,6 +324,7 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
         self.assertEqual(1,len(uploaded))
         self.assertEqual(0,result["pending_tracking"])
         self.assertEqual(0,result["pending_tells"])
+        self.tracing_startup.assert_called_once_with(config)
 
     def test_trace_outage_blocks_and_restart_drains_transient_error(self):
         from dataclasses import replace

@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from ima.research_telemetry import champions, comparison_key, drain_trace_outbox, evidence_snapshot, log_snapshot, next_trace_number
+from ima.research_telemetry import champions, comparison_key, drain_trace_outbox, evidence_snapshot, log_snapshot, next_trace_number, _serialize_trace
 
 
 def recipe(model="benter_conditional_logit", **target_parameters):
@@ -275,6 +275,29 @@ class SnapshotCostTests(unittest.TestCase):
         self.assertEqual(drain_trace_outbox(self.campaign, self.config)["delivered"], 0)
         self.assertEqual(self.mlflow.start_span.call_count, 1)
 
+    def test_actual_noop_span_stays_pending_without_receipt_and_retries(self):
+        from mlflow.entities import NoOpSpan
+        self.mlflow.start_span.return_value.__enter__.return_value = NoOpSpan()
+        payload = self.payload()
+        with self.assertRaisesRegex(RuntimeError,"NoOpSpan; no recording trace"):
+            log_snapshot(self.campaign,payload,self.config,role="decision",number=1)
+        row, = self.outbox_rows()
+        self.assertEqual(0,row["delivered"])
+        self.assertIsNone(row["receipt"])
+        self.assertIsNone(row["trace_json"])
+        self.assertEqual(payload,json.loads(row["payload"]))
+        self.assertFalse((self.campaign/"traces"/"decision-000001.json").exists())
+        self.mlflow.update_current_trace.assert_not_called()
+        self.mlflow.start_span.return_value.__enter__.return_value = self.span
+        self.assertEqual({"delivered":1,"pending":0,"errors":[]},drain_trace_outbox(self.campaign,self.config))
+        self.assertEqual(2,self.outbox_rows()[0]["attempts"])
+        self.assertEqual(1,len([call for call in self.span.set_attribute.call_args_list if call.args[0]=="mlflow.llm.cost"]))
+
+    def test_direct_serializer_rejects_actual_noop_before_inherited_context_access(self):
+        from mlflow.entities import NoOpSpan
+        with self.assertRaisesRegex(RuntimeError,"Delivery remains pending"):
+            _serialize_trace(NoOpSpan(),"1",{},"test","test",self.campaign,{})
+
     def test_flush_failure_reuses_persisted_remote_identity_and_cost(self):
         self.mlflow.flush_trace_async_logging.side_effect = [RuntimeError("flush offline"), None]
         with self.assertRaisesRegex(RuntimeError, "flush offline"):
@@ -450,6 +473,141 @@ class SnapshotCostTests(unittest.TestCase):
 
 
 class LocalMLflowReadbackTests(unittest.TestCase):
+    def test_required_tracing_preserves_disabled_and_sampling_policies(self):
+        import mlflow
+        from ima.research_telemetry import initialize_required_tracing
+        config = SimpleNamespace(research_policy="expansion_v6", mlflow_tracking_uri="sqlite:///unused.sqlite")
+        from mlflow.tracing.provider import is_tracing_enabled
+        previously_enabled = is_tracing_enabled()
+        try:
+            with patch("ima.mlflow_tracking._mlflow") as backend:
+                with mlflow.tracing.context(enabled=False):
+                    with self.assertRaisesRegex(RuntimeError, "explicitly disabled"):
+                        initialize_required_tracing(config)
+                with patch.dict("os.environ", {"MLFLOW_TRACE_SAMPLING_RATIO": "0.5"}):
+                    with self.assertRaisesRegex(RuntimeError, "sampling policy was not changed"):
+                        initialize_required_tracing(config)
+                    self.assertEqual("0.5", __import__("os").environ["MLFLOW_TRACE_SAMPLING_RATIO"])
+                mlflow.tracing.disable()
+                with self.assertRaisesRegex(RuntimeError, "provider is disabled"):
+                    initialize_required_tracing(config)
+                self.assertFalse(is_tracing_enabled())
+                backend.assert_not_called()
+        finally:
+            if previously_enabled:
+                mlflow.tracing.enable()
+
+    def test_actual_model_disable_overlap_and_locked_five_trace_readback(self):
+        import mlflow
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+        from mlflow.entities import NoOpSpan
+        from mlflow.tracing.provider import trace_disabled, provider, is_tracing_enabled
+        from ima.research_telemetry import initialize_required_tracing, tracking_operation
+        previous_uri = mlflow.get_tracking_uri()
+        previously_enabled = is_tracing_enabled()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = SimpleNamespace(research_policy="expansion_v6", mlflow_tracking_uri=f"sqlite:///{root/'tracking.sqlite'}")
+            client = mlflow.MlflowClient(tracking_uri=config.mlflow_tracking_uri)
+            client.create_experiment("ima-agentic-v6-research", artifact_location=(root/"artifacts").as_uri())
+            entered, release, trace_started = threading.Event(), threading.Event(), threading.Event()
+
+            @trace_disabled
+            def held_model_operation():
+                entered.set()
+                if not release.wait(10):
+                    raise TimeoutError("Test model operation was not released")
+
+            def locked_model_operation():
+                with tracking_operation():
+                    held_model_operation()
+
+            def emit(number):
+                trace_started.set()
+                return log_snapshot(root/"campaign", {"decision_id":f"D{number:06d}",
+                                    "evidence_id":f"evidence-{number}",
+                                    "planner_usage":{"cost_status":"fixture"}}, config,
+                                    role="decision", number=number)
+            try:
+                initialized = initialize_required_tracing(config)
+                initial_provider = provider.get()
+                self.assertEqual(initialized, initialize_required_tracing(config))
+                self.assertIs(initial_provider, provider.get())
+                with ThreadPoolExecutor(max_workers=2) as workers:
+                    # Reproduce the SDK's real global swap without the application lock.
+                    model = workers.submit(held_model_operation)
+                    try:
+                        self.assertTrue(entered.wait(5))
+                        with mlflow.start_span(name="disabled-overlap-proof") as span:
+                            self.assertIsInstance(span, NoOpSpan)
+                    finally:
+                        release.set()
+                    model.result(timeout=10)
+                    entered.clear()
+                    release.clear()
+                    model = workers.submit(locked_model_operation)
+                    try:
+                        self.assertTrue(entered.wait(5))
+                        trace = workers.submit(emit, 1)
+                        self.assertTrue(trace_started.wait(5))
+                        self.assertFalse(trace.done())
+                    finally:
+                        release.set()
+                    model.result(timeout=10)
+                    receipts = [trace.result(timeout=20)]
+                    receipts.extend(emit(number) for number in range(2, 6))
+                self.assertEqual({"delivered":0,"pending":0,"errors":[]},
+                                 drain_trace_outbox(root/"campaign",config))
+                for number, receipt in enumerate(receipts, 1):
+                    actual = client.get_trace(receipt["trace_id"])
+                    self.assertEqual(f"evidence-{number}", actual.info.tags["ima.evidence_id"])
+                    self.assertEqual(1, len(actual.data.spans))
+                with sqlite3.connect(root/"campaign"/"trace-outbox.sqlite") as conn:
+                    self.assertEqual((5,5,0), conn.execute(
+                        "SELECT count(*),sum(delivered),sum(last_error IS NOT NULL) FROM traces").fetchone())
+            finally:
+                release.set()
+                mlflow.set_tracking_uri(previous_uri)
+                if previously_enabled:
+                    mlflow.tracing.enable()
+                else:
+                    mlflow.tracing.disable()
+
+    def test_disabled_actual_tracing_context_preserves_pending_then_readback_recovers(self):
+        import mlflow
+        from mlflow.tracing.provider import is_tracing_enabled
+        previous_uri = mlflow.get_tracking_uri()
+        previously_enabled = is_tracing_enabled()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = SimpleNamespace(research_policy="expansion_v6",mlflow_tracking_uri=f"sqlite:///{root/'tracking.sqlite'}")
+            client = mlflow.MlflowClient(tracking_uri=config.mlflow_tracking_uri)
+            client.create_experiment("ima-agentic-v6-research",artifact_location=(root/"artifacts").as_uri())
+            campaign = root/"private-noop-recovery"
+            payload = {"decision_id":"D000001","evidence_id":"exact-evidence","planner_usage":{"cost_status":"fixture"}}
+            try:
+                with mlflow.tracing.context(enabled=False):
+                    with self.assertRaisesRegex(RuntimeError,"NoOpSpan; no recording trace"):
+                        log_snapshot(campaign,payload,config,role="decision",number=1)
+                with sqlite3.connect(campaign/"trace-outbox.sqlite") as conn:
+                    delivered,receipt,body = conn.execute("SELECT delivered,receipt,trace_json FROM traces").fetchone()
+                self.assertEqual((0,None,None),(delivered,receipt,body))
+                report = drain_trace_outbox(campaign,config)
+                self.assertEqual({"delivered":1,"pending":0,"errors":[]},report)
+                receipt = json.loads((campaign/"traces"/"decision-000001.json").read_text())
+                trace = client.get_trace(receipt["trace_id"])
+                self.assertIsNotNone(trace)
+                self.assertEqual("exact-evidence",trace.info.tags["ima.evidence_id"])
+                self.assertEqual(1,len(trace.data.spans))
+                self.assertEqual(0,drain_trace_outbox(campaign,config)["delivered"])
+            finally:
+                mlflow.set_tracking_uri(previous_uri)
+                if not previously_enabled:
+                    mlflow.tracing.disable()
+                else:
+                    mlflow.tracing.enable()
+
     def test_actual_v6_package_logs_lineage_manifest_reports_and_long_recipe_descriptor(self):
         import hashlib
         import mlflow

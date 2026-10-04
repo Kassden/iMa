@@ -467,11 +467,18 @@ def _reference_context(path):
     return list(champions(terminal)["champions_by_family"].values())
 
 
+def _upload_result_with_tracing_lock(config, dataset, attempt):
+    from .research_telemetry import tracking_operation
+    from .research_v5 import upload_result
+    with tracking_operation():
+        return upload_result(config, dataset, attempt)
+
+
 def run_expansion_campaign(config):
     """Continuous planning/preparation/fit/upload with deterministic resource dispatch."""
     from .research_resources import JobEstimator, observe_cgroup, observe_process_tree, ProgressiveCapacity
     from .research_scheduler import ResourceAdmission, fair_program_order, memory_budget_gib
-    from .research_v5 import discovery_evidence, upload_result
+    from .research_v5 import discovery_evidence
     config.validate()
     if not config.dataset_path or not config.protocol_path:
         raise ValueError("V6 requires immutable dataset and explicit protocol paths")
@@ -540,6 +547,8 @@ def run_expansion_campaign(config):
                                       emergency_gib=config.host_reserve_ram_gib,
                                       max_preparations=config.max_active_preparations,max_fits=ramp.cap)
         core._write_json_atomic(directory/"campaign.json", config.serializable())
+        from .research_telemetry import initialize_required_tracing
+        initialize_required_tracing(config)
         with ProcessPoolExecutor(max_workers=jobs, mp_context=multiprocessing.get_context("spawn"),
                                  max_tasks_per_child=config.worker_max_tasks) as fits, \
              ThreadPoolExecutor(max_workers=1) as planner, \
@@ -596,7 +605,7 @@ def run_expansion_campaign(config):
                     outbox = ledger.pending_outbox()
                     feasible_outbox = [row for row in outbox if upload_failures.get(row["attempt_id"],0)<3]
                     if feasible_outbox:
-                        uploading = (uploader.submit(upload_result,config,dataset,feasible_outbox[0]),feasible_outbox[0]["attempt_id"])
+                        uploading = (uploader.submit(_upload_result_with_tracing_lock,config,dataset,feasible_outbox[0]),feasible_outbox[0]["attempt_id"])
                 if config.mlflow_tracking_uri and uploading is None and tracing is None and now>=next_trace_retry and trace_failures<3 and not drain_expired and _pending_trace_count(directory):
                     from .research_telemetry import drain_trace_outbox
                     tracing = uploader.submit(drain_trace_outbox,directory,config,limit=20)
