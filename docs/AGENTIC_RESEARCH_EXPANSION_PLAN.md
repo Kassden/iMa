@@ -610,6 +610,25 @@ The stages are probability estimation -> price/payout model -> edge/EV -> portfo
   - [ ] Expose optional portfolio_sizing graph/output action to the planner with policy-bound freedom and clear paper-only status; leave chance-constrained mixed-integer research optional.
 - Handoff: equation/page traceability, solver diagnostics, exact arithmetic cases, correlated portfolio report and no-lookahead bankroll backtest.
 
+### Subphase 7.4: Close Planner-To-Paper-Research Integration
+- Objective: finish the Phase 7 action boundary identified by the independent 2026-10-04 fulfillment audit. A working standalone EV CLI is not evidence that the planner can request or learn from paper research.
+- Proven gap: `PlannerDecision` and `PipelineRecipe` reject betting-policy fields; the controller does not dispatch paper EV/sizing work or return those reports in its evidence. Predictive joint-order graphs are implemented separately.
+- Planned Touch Files: `ima/research_betting.py` (new), `ima/research_expansion.py`, `ima/research_telemetry.py`, `ima/openrouter_orchestrator.py`, `tests/test_research_betting.py` (new), `tests/test_research_expansion.py`, `tests/test_research_expansion_resources.py`, `tests/test_research_telemetry.py`.
+- Ownership: paper action contract/engine is separate from controller integration; both reuse existing outcome-distribution, EV and Kelly APIs. The controller remains the only durable decision/dispatch owner.
+- Commit: `feat(research): dispatch planner-selected paper betting studies`.
+- Contract: typed paper-only requests cite current completed attempts and immutable evidence; ensemble inputs must have compatible target, population, probability basis, dataset and protocol. No arbitrary paths, sources, Python, credentials or wagering. Missing quotes produce fair-price-only output; explicitly hypothetical scenario payouts never become historical market observations.
+- Dispatch: persist accepted actions before asynchronous execution; keep research allocation distinct from fit concurrency and the 80/20 predictive lanes. Bound and advertise action queues, admit work through measured resources, reconcile retries idempotently, and drain pending actions on STOP.
+- Feedback: store report, source attempts, assumptions, coverage, quote mode, sizing diagnostics and failure status; include compatible completed paper results in subsequent planner evidence. Link a no-extra-LLM-cost `betting.evaluate` trace to its origin decision.
+- Tests: `.venv/bin/python -m unittest tests.test_research_betting tests.test_research_expansion tests.test_research_expansion_resources tests.test_research_telemetry`; then the complete suite and Linux canary.
+- Checklist:
+  - [ ] Validate typed requests and comparable multi-model probability pooling before any decision mutation.
+  - [ ] Reuse joint-order, fair-price, scenario EV and correlated fractional-Kelly machinery without fabricated quote history.
+  - [ ] Execute and reconcile queued paper actions durably, with bounded resource admission and clean shutdown/recovery.
+  - [ ] Return action results in planner evidence and verify actual origin-linked traces without duplicate cost.
+  - [ ] Test mismatched populations, tainted probabilities, missing prices, duplicate/replayed actions, failures and STOP.
+- Success Criteria: an accepted agent-selected paper study executes using stored development predictions, writes a replayable report, becomes visible to the next planner decision, and never submits a wager. New live campaign source is pinned only after this integration passes.
+- Handoff: exact action schema/API, deterministic report and execution/recovery evidence; original dataset producers and prior campaign identities remain unchanged.
+
 ## Phase 8: Verification And Approved Rollout
 ### Subphase 8.1: Adversarial integration and measured performance
 - Objective: prove mechanisms together before replacing a campaign.
