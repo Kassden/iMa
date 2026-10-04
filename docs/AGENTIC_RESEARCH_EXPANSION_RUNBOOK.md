@@ -15,6 +15,29 @@ versions were preserved; its three missing requirements were repaired privately.
 
 ## Current Disposition
 
+Latest user-authorized bounded session used actual `gpt-6-luna` with `high`
+reasoning as an external session orchestrator, not OpenRouter or fixture seeds.
+Runtime `376964fab8ba18f4e493824a3fa7702f9e4848e2` adds an evidence-bound
+`planner_mode=external` inbox. Campaign `agentic_v6_luna_session_20261004`
+completed five trainings: two Benter programs with two trials each and one
+boosted pilot. Its second decision was review-only with zero new allocation.
+Backend readback confirms five FINISHED runs, five READY versions 6-10 and
+31 OK traces (two decisions, 29 execution snapshots), no pending deliveries,
+no OOM, clean unit exit 0. This is a supervised five-trial session, not a claim
+of unattended session-agent operation. External session billing is unavailable;
+no OpenRouter requests were made for these decisions.
+
+User subsequently authorized stopping V5. After graceful STOP left eight long
+trials draining, parent backed up its ledger/status/config/identity and stopped
+only its own service. V5 is inactive; 469 completed results remain preserved.
+Eight interrupted ledger rows still say running and must not be counted as
+successful fits or silently resumed. Snapshot: `ops-parent/v5-stop-20261004`.
+Completed V4/V5 audit: `docs/V4_V5_RESEARCH_HANDOFF_TO_V6.md`; copied to the
+Luna campaign's `research-handoffs/`, hash-readback verified, and Luna explicitly
+consumed it. Feedback is saved there as `LUNA_FEEDBACK.md`. No additional
+training budget was allocated after the five trials.
+
+The following C1 records describe earlier gates, not the latest session revision.
 Runtime is pinned to `c1eb224fffd302e47f450b90c233b44a97c9193f`.
 Its full suite passed 750 tests and 226 subtests; both GitHub CI checks passed.
 The exact Linux private fixture passed ten fits, ten linked READY model versions,

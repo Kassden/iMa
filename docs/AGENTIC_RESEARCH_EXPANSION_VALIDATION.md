@@ -10,6 +10,45 @@ does not certify the whole plan or V6 launch.
 
 ## Evidence Status
 
+### Luna High Session And Legacy Research Handoff
+
+User explicitly requested Luna 6 High as orchestrator for a few real trainings.
+Actual subagent `01a106f3-d5e3-71e2-bba4-37773eb3149f` ran on `gpt-6-luna`,
+reasoning `high`; accepted evidence-bound decisions were relayed into the V6
+external inbox. Exact runtime `376964fab8ba18f4e493824a3fa7702f9e4848e2`.
+Local full regression passed 752 tests / 230 subtests; the subsequently added
+immutable-config test passed in the focused three-test/four-subtest suite,
+also passing on the exact Linux release. Both GitHub research checks passed.
+
+Campaign `agentic_v6_luna_session_20261004`: five completed, zero failures,
+zero pending tells/models/traces; mode complete, own unit inactive/exit 0,
+no OOM and terminal cgroup peak 7.63 decimal GB under its 10 GB cap.
+Independent production MLflow experiment 7 readback confirms five FINISHED
+runs, five linked READY registered versions 6-10, and 31 OK backend traces:
+two external decision traces plus 29 execution snapshots.
+Receipt: `v6-cd-owned/376964fab8ba18f4e493824a3fa7702f9e4848e2/luna-session-20261004-terminal-receipt.json`.
+SHA256 `dea86d489ad0d4a58e5d177091dac93c9f237ee97b45b9ccfb99d9ad9dbb701d`.
+
+Best Luna loss 2.176621 narrowly misses matched C1 best 2.176278. Its boosted
+pilot 2.181632 improves matched C1 boosted 2.188142 but not the overall Benter
+reference or calibrated market 2.000519. No independent confirmation or
+market-beating result. No OpenRouter request was sent for session decisions;
+session billing is unavailable, not a fabricated API USD zero.
+
+User authorized V5 stop: graceful STOP followed by own-unit cancellation after
+snapshotting eight long-running attempts. Service inactive/PID 0; source/data/
+config/unit-definition hashes unchanged. Preserve 469 completed, two failed and
+eight interrupted ledger records separately. Snapshot `ops-parent/v5-stop-20261004`,
+ledger backup SHA256 `e9ea47f520bc4db03a03bfce675a0fa465e652a2f59ab00015f491218b5ec93d`.
+
+Detailed audited handoff `docs/V4_V5_RESEARCH_HANDOFF_TO_V6.md`, SHA256
+`bcdd074861678857760fac3056bef6c65f1f888d1600c6cc6dfc72bdb1fd8b5e`,
+was copied to the server with matching readback and explicitly read by Luna.
+Its receipt and next hypotheses appear in `.tmp/luna-v6-session/feedback.md`
+and the campaign's `research-handoffs/LUNA_FEEDBACK.md`. Five trials were the
+entire allocation; no continuing autonomous session-agent service is claimed.
+The original OpenRouter qualification incidents stay frozen, not retried.
+
 ### C1 Integration And Official Controls
 
 Exact runtime: `c1eb224fffd302e47f450b90c233b44a97c9193f`. Full suite:
