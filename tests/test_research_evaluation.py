@@ -23,6 +23,21 @@ FIXTURE = Path(__file__).parent / "fixtures" / "research_races.csv"
 
 
 class ResearchEvaluationTests(unittest.TestCase):
+    def test_latest_fold_selection_is_explicit_and_legacy_default_is_unchanged(self):
+        parameters = dict(min_train_races=2, calibration_races=1, score_races=1, max_folds=1)
+        default = build_expanding_folds(self.frame, **parameters)
+        earliest = build_expanding_folds(self.frame, **parameters, fold_selection="earliest")
+        latest = build_expanding_folds(self.frame, **parameters, fold_selection="latest")
+        self.assertEqual(default, earliest)
+        self.assertEqual(("R4",), earliest[0].score_race_ids)
+        self.assertEqual(("R6",), latest[0].score_race_ids)
+        self.assertEqual("fold-001", latest[0].fold_id)
+        self.assertEqual(("R1", "R2", "R3", "R4"), latest[0].train_race_ids)
+        self.assertNotEqual(make_protocol_manifest(self.frame, **parameters).protocol_id,
+                            make_protocol_manifest(self.frame, **parameters, fold_selection="latest").protocol_id)
+        with self.assertRaises(ResearchEvaluationError):
+            build_expanding_folds(self.frame, **parameters, fold_selection="random")
+
     def setUp(self):
         self.frame = pd.read_csv(FIXTURE, parse_dates=["date"])
 
