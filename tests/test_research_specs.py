@@ -138,5 +138,46 @@ class ResearchSpecTests(unittest.TestCase):
             )
 
 
+class ResearchExpansionRecipeTests(unittest.TestCase):
+    def test_unused_graph_node_does_not_spend_the_experimental_lane(self):
+        from ima.research_controller import _portfolio_identity
+        recipe = PipelineRecipe(schema_version=3,
+            model={"kind": "benter_conditional_logit"},
+            pipeline_graph={"graph_id": "ancestry", "primary_node_id": "benter",
+                "output_node_id": "benter", "nodes": [
+                    {"node_id": "benter", "kind": "estimator", "parameters": {"model_kind": "benter_conditional_logit"}},
+                    {"node_id": "unused", "kind": "estimator", "parameters": {"model_kind": "boosted"}},
+                ]})
+        self.assertEqual("benter", _portfolio_identity(recipe, "expansion_v6")["lane"])
+        self.assertEqual("none", recipe.calibration.kind)
+        self.assertEqual("none", recipe.blend.kind)
+
+    def test_distribution_adapter_is_explicit_and_not_a_silent_point_model(self):
+        from ima.research_specs import PerformanceDistributionSpec
+        recipe = PipelineRecipe(
+            schema_version=3,
+            target={"kind": "adjusted_finish_time_or_speed"},
+            model={"kind": "ridge_regressor"},
+            calibration={"kind": "none"}, blend={"kind": "none"},
+            performance_distribution={"kind": "shared_residual"},
+        )
+        runtime = PerformanceDistributionSpec.model_validate(recipe.performance_distribution).runtime_payload()
+        self.assertNotIn("scale_shrinkage", runtime)
+        self.assertNotIn("parameters", runtime)
+        with self.assertRaises(ValidationError):
+            PipelineRecipe(schema_version=3, performance_distribution={"kind": "shared_residual"})
+        with self.assertRaises(ValidationError):
+            PipelineRecipe(
+                schema_version=3, target={"kind": "adjusted_finish_time_or_speed"},
+                model={"kind": "ridge_regressor"}, calibration={"kind": "none"},
+                blend={"kind": "none"}, performance_distribution={"kind": "made_up"},
+            )
+
+    def test_current_finish_measurements_cannot_be_fundamental_features(self):
+        for name in ("finish_seconds", "current_speed_mps", "lengths_raw", "finishing_status"):
+            with self.subTest(feature=name), self.assertRaises(ValidationError):
+                PipelineRecipe(schema_version=3, extra_numeric_features=(name,))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -122,5 +122,20 @@ class ResearchModelTests(unittest.TestCase):
         self.assertTrue(np.isfinite(regressor.predict(odds)).all())
 
 
+class NativeThreadBudgetTests(unittest.TestCase):
+    def test_worker_budget_is_explicit_and_legacy_default_unchanged(self):
+        import os
+        from unittest.mock import patch
+        from ima.research_models import _thread_override
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual({}, _thread_override("thread_count"))
+        with patch.dict(os.environ, {"IMA_RESEARCH_THREADS": "1"}):
+            self.assertEqual({"thread_count": 1}, _thread_override("thread_count"))
+        for value in ("0", "-1", "auto", "100000"):
+            with self.subTest(value=value), patch.dict(os.environ, {"IMA_RESEARCH_THREADS": value}):
+                with self.assertRaises(ValueError):
+                    _thread_override("n_jobs")
+
+
 if __name__ == "__main__":
     unittest.main()
