@@ -124,7 +124,12 @@ cd "$IMA_V6_RELEASE"
 # Reject accidental predecessor reuse before loading credentials or creating state.
 "$IMA_V6_PYTHON" - <<'PY'
 import os
+import hashlib
+import json
+import math
 from pathlib import Path
+import pandas as pd
+from ima.dataset_registry import DatasetRegistry, _digest, _keys, file_sha256
 from ima.optimizer import CampaignConfig
 from scripts.optimize import _load_config
 
@@ -156,10 +161,32 @@ if (release / 'REVISION').read_text().strip() != os.environ['IMA_V6_REVISION']:
     raise SystemExit('V6 release revision mismatch')
 values = _load_config(config_path)
 policy = os.environ['IMA_V6_RESEARCH_POLICY']
-if policy in {'legacy', 'benter_v3', 'feature_v4', 'discovery_v5'}:
-    raise SystemExit('V6 must use its implemented successor controller policy')
-if values.get('research_policy') != policy:
+if policy != 'expansion_v6' or values.get('research_policy') != policy:
     raise SystemExit('V6 config research_policy mismatch')
+if values.get('policy') != 'agentic' or values.get('planner_mode') != 'openrouter':
+    raise SystemExit('Production V6 requires agentic policy and openrouter planner')
+
+def bounded(name, default, ceiling, *, integer=False):
+    value = values.get(name, default)
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or not 0 < value <= ceiling
+            or (integer and not isinstance(value, int))):
+        raise SystemExit(f'Production V6 invalid {name}: ceiling {ceiling}')
+    return value
+
+bounded('max_total_cost_usd', None, 5)
+bounded('max_concurrent_trials', 1, 26, integer=True)
+cpu = bounded('cpu_thread_budget', 24, 24, integer=True)
+memory = bounded('memory_budget_gb_decimal', 100, 100)
+ram = bounded('ram_budget_gib', 80, memory * 1e9 / 1024**3)
+bounded('max_active_preparations', 2, 2, integer=True)
+bounded('worker_max_tasks', 1, 1, integer=True)
+reserve_cpu = values.get('host_reserve_cpu_threads', 4)
+reserve_ram = values.get('host_reserve_ram_gib', 8)
+if (type(reserve_cpu) is not int or not 4 <= reserve_cpu < cpu
+        or isinstance(reserve_ram, bool) or not isinstance(reserve_ram, (int, float))
+        or not math.isfinite(reserve_ram) or not 8 <= reserve_ram < ram):
+    raise SystemExit('Production V6 requires consistent host CPU/RAM reserves')
 for name in ('dataset_path', 'protocol_path'):
     path = Path(values.get(name, ''))
     if not path.is_absolute() or not path.is_file():
@@ -171,7 +198,93 @@ for name in ('reference_campaign_dir', 'dataset_registry_path', 'official_snapsh
     if values.get(name):
         values[name] = Path(values[name])
 CampaignConfig(campaign_dir=campaign, **values).validate()
-print('V6 launcher preflight passed; no campaign execution performed')
+
+for name in ('dataset_registry_path', 'official_snapshot_path'):
+    path = values.get(name)
+    if path is None or not path.is_absolute() or not path.is_dir() or not path.resolve().is_relative_to(base):
+        raise SystemExit(f'Production V6 requires an own-root {name}')
+
+# Bypass the directory-creating constructor: verify is strictly read-only.
+registry = object.__new__(DatasetRegistry)
+registry.root = values['dataset_registry_path'].resolve()
+input_manifest = json.loads((values['dataset_path'].parent / 'manifest.json').read_text())
+candidate = registry.dataset_path(input_manifest.get('dataset_id'))
+candidate_manifest = json.loads((candidate / 'manifest.json').read_text())
+for name in candidate_manifest.get('files', {}):
+    if Path(name).name != name or not (candidate / name).resolve().is_relative_to(registry.root):
+        raise SystemExit('Dataset payload escapes its registry')
+manifest = registry.verify(input_manifest.get('dataset_id'))
+artifact = registry.dataset_path(manifest['dataset_id'])
+if not artifact.resolve().is_relative_to(registry.root):
+    raise SystemExit('Dataset artifact escapes its registry')
+for field in ('features_path', 'protocol_path'):
+    registered = Path(manifest[field])
+    if registered.resolve().parent != artifact.resolve():
+        raise SystemExit('Dataset payload path escapes its verified artifact')
+    digest = manifest['files'].get(registered.name)
+    configured = values['dataset_path' if field == 'features_path' else field]
+    if not digest or file_sha256(configured) != digest:
+        raise SystemExit('Configured dataset/protocol differs from verified payload')
+
+snapshot = values['official_snapshot_path'].resolve()
+source_manifest_path = snapshot / 'manifest.json'
+source = json.loads(source_manifest_path.read_text())
+raw = json.loads((artifact / 'raw_manifest.json').read_text())
+def fixture_marker(value):
+    if isinstance(value, dict):
+        return any((('fixture' in key.lower() or 'synthetic' in key.lower()) and bool(item))
+                   or fixture_marker(item) for key, item in value.items())
+    if isinstance(value, list):
+        return any(fixture_marker(item) for item in value)
+    return isinstance(value, str) and (value.lower() == 'fixture' or any(
+        word in value.lower() for word in ('synthetic', 'fixture-only', 'fixture_only', 'test evidence')))
+
+if (source.get('source_policy') != 'HKJC-only; raw replay; no third-party values'
+        or fixture_marker(source) or fixture_marker(raw)):
+    raise SystemExit('Production V6 rejects nonofficial or fixture provenance')
+identity = manifest['identity']
+upstream = Path(manifest['source_snapshot'])
+if not upstream.is_absolute() or not any(upstream.resolve().is_relative_to(root.resolve())
+        for root in (base, Path('/home/imaopt/acquisition'))):
+    raise SystemExit('Recorded snapshot provenance must belong to an own-user source root')
+# Frozen copies retain the original upstream path in the hash-bound metadata.
+raw_path = snapshot / 'raw_manifest.json'
+if not raw_path.is_file() and source.get('raw_manifest_path'):
+    raw_path = snapshot / Path(str(source['raw_manifest_path'])).name
+if not raw_path.is_file():
+    raw_path = source_manifest_path
+if not raw_path.resolve().is_relative_to(base) or file_sha256(raw_path) != identity['raw_manifest']:
+    raise SystemExit('Frozen raw corpus manifest identity mismatch')
+if (identity['source_manifest'] != file_sha256(source_manifest_path)
+        or file_sha256(artifact / 'source_manifest.json') != identity['source_manifest']
+        or file_sha256(artifact / 'raw_manifest.json') != identity['raw_manifest']):
+    raise SystemExit('Frozen official snapshot identity mismatch')
+for name in ('runners.parquet', 'events.jsonl'):
+    if not source['files'].get(name) or identity['source_files'].get(name) != source['files'].get(name):
+        raise SystemExit('Frozen official snapshot payload identity mismatch')
+for name, digest in source['files'].items():
+    path = snapshot / name
+    if Path(name).name != name or not path.resolve().is_relative_to(snapshot) or file_sha256(path) != digest:
+        raise SystemExit('Frozen official snapshot checksum mismatch')
+runners = pd.read_parquet(snapshot / 'runners.parquet')
+from scrapper.official_corpus import HORSE_ID, canonical_url
+if (runners.empty or len(runners) != source['rows'] or runners['race_id'].nunique() != source['races']
+        or not runners['source'].eq('official:hkjc-results').all()
+        or not runners['source_url'].map(lambda value: bool(canonical_url(value))).all()
+        or not runners['horse_id'].map(lambda value: bool(HORSE_ID.fullmatch(str(value)))).all()
+        or not runners['source_body_hash'].astype(str).str.fullmatch('[0-9a-f]{64}').all()
+        or runners.duplicated(['race_id', 'horse_id']).any()):
+    raise SystemExit('Frozen official runner provenance/inventory mismatch')
+frame = pd.read_parquet(values['dataset_path'])
+if (frame.empty or len(frame) != manifest['rows'] or frame['race_id'].nunique() != manifest['races']
+        or frame.duplicated(['race_id', 'horse_id']).any()
+        or not set(_keys(frame)).issubset(set(_keys(runners)))
+        or _digest(_keys(frame)) != manifest['ordered_row_keys_sha256']
+        or hashlib.sha256(pd.util.hash_pandas_object(frame, index=False).to_numpy().tobytes()).hexdigest()
+            != manifest['ordered_row_hashes_sha256']):
+    raise SystemExit('Verified dataset payload inventory mismatch')
+print('V6 launcher preflight passed; no campaign execution performed; '
+      '$5 is a previous-spend admission ceiling, NOT a guaranteed hard billing bound')
 PY
 
 if [[ ${1:-} == --check ]]; then
