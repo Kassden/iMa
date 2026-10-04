@@ -30,6 +30,7 @@ scope = (
     'docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md',
     'docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md',
     'docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md', 'docs/RESEARCH_NOMENCLATURE.md',
+    'docs/V4_V5_RESEARCH_HANDOFF_TO_V6.md',
 )
 required = {
     'ima/research_expansion.py', 'ima/research_telemetry.py', 'ima/pipeline_graph.py',
@@ -43,6 +44,7 @@ required = {
     'docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md',
     'docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md',
     'docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md', 'docs/RESEARCH_NOMENCLATURE.md',
+    'docs/V4_V5_RESEARCH_HANDOFF_TO_V6.md',
 }
 tree = subprocess.check_output(['git', 'ls-tree', '-rz', revision, '--', *scope])
 expected = {}
