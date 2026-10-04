@@ -1026,3 +1026,38 @@ Actual host/cgroup admission and progressive capacity still govern concurrency.
 No V5 stop, V6 launch, real betting, or other-user modification has occurred at
 this checkpoint. Remote Linux execution, actual official dataset readback,
 champion replay and paid planner/trainer/MLflow feedback remain rollout gates.
+
+### C1 Nonbilling Transport Boundary 2026-10-04
+
+Runtime remains `c1eb224fffd302e47f450b90c233b44a97c9193f`; later docs commits
+do not repin it. The second isolated paid proposal failed with ReadError before
+response headers. No raw provider response or generation ID exists. Normalized
+and native trace cost are null, not zero; both unknown-spend incidents remain
+frozen, with no paid retry or continuous launch.
+
+Completed unauthenticated diagnostics used only synthetic JSON at
+`https://openrouter.ai/api/v1/ima-nonexistent-transport-diagnostic`, never the
+model endpoint. Each request had an absolute 60-second bound. Models GET returned
+200 in 4.285s. The 256-byte POST returned 404 in 11.211s; body-send duration was
+0.0023s. A 250,000-byte POST body took 31.050s to send, then failed with ReadError
+before headers at 34.058s. A matched 202,674-byte synthetic body took 35.286s to
+send, then failed before headers at 37.289s.
+
+Offline reconstruction from frozen C1 evidence/code using installed HTTPX JSON
+serialization gives Content-Length 202,674 and body SHA256
+`44b777fef7a3aaca51511c852eb1726105fec33737538f90e89c27d2290f0e5a`.
+The evidence file is 207,352 bytes. This is a reconstructed HTTP body, not a
+packet capture or total TCP/TLS wire-byte count; the receipt's bare Request
+header-byte subtotal is not the actual client's complete headers.
+
+Both resolved IPv4 and IPv6 OpenRouter addresses route through tailscale0/table
+52. Interface MTU is 1280; all eight HTTPX proxy environment flags were false.
+All ten protected hashes remained unchanged. No routing, MTU, firewall, security,
+V5, or other service changes were performed. This reproduces a size-associated
+non-model upload failure; it does not prove an MTU fault, isolate the exit/edge,
+establish model-endpoint health, or reconcile unknown paid spend.
+
+Receipt: `/home/imaopt/research-v2/canaries/acceptance-runner-owned-c1eb224f/operator-evidence/noncharged-transport/terminal-receipt.json`
+SHA256: `2020a0295c5cf7f04f7d0f0a284f58c927714c57935563a201d2712f55ba1cda`.
+Diagnostic unit exited 0; all owned exec sessions completed. Live/paid gates
+remain blocked pending independent cost reconciliation and transport resolution.
