@@ -1,5 +1,7 @@
 import unittest
 import tempfile
+import shutil
+from types import SimpleNamespace
 
 from pathlib import Path
 from unittest import mock
@@ -10,6 +12,8 @@ from ima.mlflow_tracking import (
     _model_artifact_source,
     _cycle_result_summary,
     _trace_result_preview,
+    _research_model_linkage,
+    _writable_code_copy,
     flatten_numeric_metrics,
     log_optimizer_cycle_trace,
     log_optimizer_planner_trace,
@@ -32,6 +36,49 @@ class DummyProbabilityModel:
 
 
 class MLflowTrackingTests(unittest.TestCase):
+    def test_writable_code_copy_preserves_immutable_source_and_cleans_up(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "ima"
+            nested = source / "nested"
+            nested.mkdir(parents=True)
+            module = nested / "module.py"
+            module.write_text("VALUE = 42\n")
+            module.chmod(0o444)
+            nested.chmod(0o555)
+            source.chmod(0o555)
+            try:
+                with _writable_code_copy(source) as staged:
+                    self.assertEqual("ima", staged.name)
+                    self.assertEqual(module.read_bytes(), (staged / "nested/module.py").read_bytes())
+                    for path in (staged, staged / "nested", staged / "nested/module.py"):
+                        self.assertTrue(path.stat().st_mode & 0o200)
+                    # Model MLflow's copytree + rmtree cleanup, including mode copying.
+                    copied = Path(directory) / "mlflow-copy"
+                    shutil.copytree(staged, copied)
+                    shutil.rmtree(copied)
+                self.assertFalse(staged.exists())
+                self.assertEqual(0o555, source.stat().st_mode & 0o777)
+                self.assertEqual(0o555, nested.stat().st_mode & 0o777)
+                self.assertEqual(0o444, module.stat().st_mode & 0o777)
+            finally:
+                source.chmod(0o755)
+                nested.chmod(0o755)
+
+    def test_linkage_checks_backend_run_and_model_status(self):
+        client = mock.Mock()
+        client.get_run.return_value.info = SimpleNamespace(status="FAILED", experiment_id="1")
+        with self.assertRaisesRegex(RuntimeError, "FAILED, not FINISHED"):
+            _research_model_linkage(client, "candidates", "run")
+        client.search_model_versions.assert_not_called()
+        client.get_run.return_value.info.status = "FINISHED"
+        client.search_logged_models.return_value = [SimpleNamespace(status="FAILED")]
+        with self.assertRaisesRegex(RuntimeError, "no READY logged model"):
+            _research_model_linkage(client, "candidates", "run")
+        client.search_logged_models.return_value = [SimpleNamespace(status="READY")]
+        client.search_model_versions.return_value = [
+            SimpleNamespace(name="candidates", status="FAILED_REGISTRATION", version="1")]
+        self.assertNotIn("model_version", _research_model_linkage(client, "candidates", "run"))
+
     def test_large_v6_feature_recipe_is_hashed_in_params_not_truncated_silently(self):
         with tempfile.TemporaryDirectory() as directory:
             recipe = PipelineRecipe(schema_version=3,
@@ -247,6 +294,7 @@ class MLflowTrackingTests(unittest.TestCase):
             self.assertEqual(first, second)
             self.assertIn("model_version", first)
             run = mlflow.get_run(first["run_id"])
+            self.assertEqual("FINISHED", run.info.status)
             self.assertEqual("baseline-v1", run.data.params["recipe.feature_schema"])
             self.assertEqual("baseline-v1", run.data.params["feature_schema"])
             self.assertEqual("logit", run.data.params["model_kind"])
@@ -263,6 +311,63 @@ class MLflowTrackingTests(unittest.TestCase):
                 "field_size": [2, 2, 2, 2],
             })
             np.testing.assert_allclose(loaded.predict(frame), np.full(4, 0.5))
+
+    def test_failed_run_with_ready_version_retries_without_rewriting_failure(self):
+        import mlflow
+        import ima.mlflow_tracking as tracking
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = ResearchModelPackage(DummyProbabilityModel(), PipelineRecipe(),
+                                          protocol_id="protocol-1", code_revision="abc123")
+            package_dir = package.save(root / "package")
+            config = MLflowConfig(tracking_uri=f"sqlite:///{root / 'mlflow.db'}",
+                                  experiment_name="failed-retry", enabled=True,
+                                  registered_model_name="retry-candidates")
+            result = {"target_kind": "win_probability", "recipe_hash": package.recipe.recipe_hash()}
+            source = root / "release" / "ima"
+            shutil.copytree(Path(tracking.__file__).parent, source,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            directories = [source, *[p for p in source.rglob("*") if p.is_dir()]]
+            for path in directories:
+                path.chmod(0o555)
+            real_log_model = mlflow.pyfunc.log_model
+
+            def fail_after_registration(*args, **kwargs):
+                real_log_model(*args, **kwargs)
+                raise PermissionError("simulated cleanup failure after registration")
+
+            try:
+                with mock.patch.object(tracking, "_writable_code_copy",
+                                       side_effect=lambda _: _writable_code_copy(source)):
+                    with mock.patch.object(mlflow.pyfunc, "log_model", side_effect=fail_after_registration):
+                        with self.assertRaisesRegex(PermissionError, "cleanup failure"):
+                            log_research_package_version(package_dir, config,
+                                attempt_id="failed-attempt", result=result)
+                    client = mlflow.tracking.MlflowClient()
+                    experiment = client.get_experiment_by_name(config.experiment_name)
+                    failed = client.search_runs([experiment.experiment_id])[0]
+                    self.assertEqual("FAILED", failed.info.status)
+                    failed_versions = client.search_model_versions(f"run_id = '{failed.info.run_id}'")
+                    self.assertEqual("READY", failed_versions[0].status)
+                    retry = log_research_package_version(package_dir, config,
+                        attempt_id="failed-attempt", result=result)
+                    again = log_research_package_version(package_dir, config,
+                        attempt_id="failed-attempt", result=result)
+                self.assertEqual(retry, again)
+                self.assertNotEqual(failed.info.run_id, retry["run_id"])
+                self.assertNotEqual(str(failed_versions[0].version), retry["model_version"])
+                self.assertEqual("FAILED", client.get_run(failed.info.run_id).info.status)
+                successful = client.get_run(retry["run_id"])
+                self.assertEqual("FINISHED", successful.info.status)
+                self.assertEqual(failed.info.run_id, successful.data.tags["ima.retry_of_run_id"])
+                self.assertEqual(2, len(client.search_runs([experiment.experiment_id])))
+                self.assertTrue(all(p.stat().st_mode & 0o777 == 0o555 for p in directories))
+                loaded = mlflow.pyfunc.load_model(retry["registered_model_uri"])
+                np.testing.assert_allclose(loaded.predict(pd.DataFrame({"race_id": ["R", "R"]})), [0.5, 0.5])
+            finally:
+                for path in directories:
+                    path.chmod(0o755)
 
     def test_optimizer_cycle_trace_links_decision_results_usage_and_cost(self):
         import mlflow

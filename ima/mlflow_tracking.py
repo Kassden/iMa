@@ -9,6 +9,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -700,15 +703,20 @@ def log_research_package_version(
     existing = client.search_runs(
         [experiment.experiment_id],
         filter_string=f"tags.`ima.attempt_id` = '{attempt_id}'",
-        max_results=2,
+        max_results=100,
     )
-    if len(existing) > 1:
+    if len(existing) == 100:
+        raise RuntimeError(f"Too many MLflow retries for attempt {attempt_id}")
+    finished = [run for run in existing if run.info.status == "FINISHED"]
+    if len(finished) > 1:
         raise RuntimeError(f"Duplicate MLflow runs for attempt {attempt_id}")
-    resume_run_id = existing[0].info.run_id if existing else None
-    if existing:
-        linkage = _research_model_linkage(client, model_name, resume_run_id)
-        if not config.register_models or linkage.get("model_version"):
-            return linkage
+    if any(run.info.status not in {"FINISHED", "FAILED", "KILLED"} for run in existing):
+        raise RuntimeError(f"MLflow attempt {attempt_id} has an unfinished run")
+    if finished:
+        linkage = _research_model_linkage(client, model_name, finished[0].info.run_id)
+        if config.register_models and "model_version" not in linkage:
+            raise RuntimeError(f"MLflow did not register a model version for {attempt_id}")
+        return linkage
 
     class ResearchPyFuncModel(mlflow.pyfunc.PythonModel):
         def load_context(self, context) -> None:
@@ -732,7 +740,9 @@ def log_research_package_version(
         "ima.environment_hash": str(result.get("lineage", {}).get("environment_hash", "")),
         **research_identity_tags(params),
     }
-    with mlflow.start_run(run_id=resume_run_id,run_name=attempt_id, tags=tags) as active:
+    if existing:
+        tags["ima.retry_of_run_id"] = existing[0].info.run_id
+    with mlflow.start_run(run_name=attempt_id, tags=tags) as active:
         mlflow.log_params(params)
         if params.get("recipe.schema_version") == 3:
             for key in ("dataset_id", "evaluation_population_id", "availability_policy",
@@ -794,19 +804,33 @@ def log_research_package_version(
         weights_path = package_dir / "feature-weights.csv"
         if weights_path.is_file():
             mlflow.log_artifact(str(weights_path), artifact_path="analysis")
-        mlflow.pyfunc.log_model(
-            name="model",
-            python_model=ResearchPyFuncModel(),
-            artifacts={"package": str(package_dir)},
-            code_paths=[str(Path(__file__).resolve().parent)],
-            pip_requirements=_research_dependencies(bool(discovery_path)),
-            registered_model_name=model_name if config.register_models else None,
-        )
+        with _writable_code_copy(Path(__file__).resolve().parent) as code_path:
+            mlflow.pyfunc.log_model(
+                name="model",
+                python_model=ResearchPyFuncModel(),
+                artifacts={"package": str(package_dir)},
+                code_paths=[str(code_path)],
+                pip_requirements=_research_dependencies(bool(discovery_path)),
+                registered_model_name=model_name if config.register_models else None,
+            )
         run_id = active.info.run_id
     linkage = _research_model_linkage(client, model_name, run_id)
     if config.register_models and "model_version" not in linkage:
         raise RuntimeError(f"MLflow did not register a model version for {attempt_id}")
     return linkage
+
+
+@contextmanager
+def _writable_code_copy(source: Path):
+    # MLflow preserves directory modes when copying code, then removes its copy.
+    # Immutable releases must therefore never be passed directly as code_paths.
+    with tempfile.TemporaryDirectory(prefix="ima-mlflow-code-") as directory:
+        destination = Path(directory) / source.name
+        shutil.copytree(source, destination, copy_function=shutil.copyfile,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        for path in [destination, *destination.rglob("*")]:
+            path.chmod(path.stat().st_mode | (0o700 if path.is_dir() else 0o600))
+        yield destination
 
 
 def _research_dependencies(discovery=False):
@@ -818,8 +842,18 @@ def _research_dependencies(discovery=False):
 
 
 def _research_model_linkage(client, model_name: str, run_id: str) -> dict[str, str]:
+    run = client.get_run(run_id)
+    if run.info.status != "FINISHED":
+        raise RuntimeError(f"MLflow run {run_id} is {run.info.status}, not FINISHED")
+    models = client.search_logged_models(
+        experiment_ids=[run.info.experiment_id],
+        filter_string=f"source_run_id = '{run_id}' AND name = 'model'",
+    )
+    if not any(str(model.status) == "READY" for model in models):
+        raise RuntimeError(f"MLflow run {run_id} has no READY logged model")
     versions = list(client.search_model_versions(f"run_id = '{run_id}'"))
-    matching = [version for version in versions if version.name == model_name]
+    matching = [version for version in versions
+                if version.name == model_name and version.status == "READY"]
     linkage = {
         "run_id": run_id,
         "model_name": model_name,
