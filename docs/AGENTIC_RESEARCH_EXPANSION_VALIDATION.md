@@ -1171,3 +1171,11 @@ prior-spend admission threshold is not a guaranteed provider billing cap.
 Missing historical event availability, independent time-target identification,
 and absent actionable historical exotic quotes remain data limitations; this
 rollout is not proof that every research-plan acceptance item is complete.
+
+Follow-on check at 16:15:48 UTC found a replacement-readiness hold: twelve
+completed trials and one computing graph fit, but both preparation slots held
+heavy discovery. Ready Benter budgets were exhausted; inexpensive D000002
+programs retained nine Benter trials but had no preparation receipts because
+admission denied `max_preparations=2`. Startup lane readiness passed; sustained
+readiness did not. A pinned successor must reserve an inexpensive preparation
+slot rather than claim this checkpoint is complete autonomous-health proof.
