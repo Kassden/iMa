@@ -2,11 +2,133 @@
 
 Evidence date: 2026-10-04 UTC. Scope: CI/CD/OPS on
 `feat/agentic-research-expansion`; no staging, commits or branch changes. Remote
-dependency setup under `v6-dependencies` was subsequently authorized; no V5 or
-service mutations. Other agents own implementation/config and coordinate cutover. This report
+dependency setup, committed source transfer, Linux fixture canary and guarded
+official build were authorized and performed. Dedicated fixture/build transient
+units were started; no protected V5/service mutation. Other agents own
+implementation/config and coordinate cutover. This report
 does not certify the whole plan or V6 launch.
 
 ## Evidence Status
+
+### Authorized Committed Linux Checkpoint
+
+Parent authorized source/build/fixture execution for exact commit
+`5b63862360f5380b6f247bf1c4da0a0854528aa6`, reporting 629 full tests in
+121.491s and latest 39 executor/data tests passing. Those parent counts are
+supplied release-gate evidence; earlier in-progress test failures below remain
+historical, not a claim they still fail in this commit.
+
+Actual committed Git archive: 230 files, 2,365,440 bytes; PAX/Git tree/blob/mode
+and mandatory paths passed using the verifier FROM that commit. Archive SHA256
+`24148e22009c1ac43017aac0afed9be357647655c7c31d8f4b33367d8f24c5d9`;
+receipt SHA256 `da00069b96e6746e162415c20462481337ae9f7fbaaee9d5a2fc19239516f990`.
+Transferred over Tailscale and independently verified/extracted/read back to
+`/home/imaopt/research-v2/live-releases/ima-v6-5b63862360f5380b6f247bf1c4da0a0854528aa6`.
+Committed files/directories are read-only; exact `REVISION` and copied receipt
+are generated metadata. No dirty protected user files were archive inputs.
+Staging/receipts: `/home/imaopt/research-v2/v6-staging/5b63862360f5380b6f247bf1c4da0a0854528aa6`.
+Local command/log/artifact root:
+`/private/var/folders/wq/tn0d0r417cb3kghxltyqhjt80000gn/T/ima-v6-release-zba7k2qy`.
+
+Linux fixture unit `ima-v6-fixture-5b638623.service`, invocation
+`2a0e5c563e7a4dbbb4bd54b2ed652d6e`, exited 0 in 58.246s, CPU 91.589s.
+Actual limits read back: MemoryMax 8,000,000,000, MemoryHigh 6,000,000,000,
+swap 0, cpu.max `200000 100000` (two CPU quota). Observed peak 1,059,840,000
+bytes; memory high/max/OOM events 0. Root:
+`/home/imaopt/research-v2/canaries/agentic_v6_5b638623_fixture5`.
+`evidence/unit-readback.json` and `evidence/canary-validation.json` exist.
+Private SQLite only; production MLflow/paid planner not used. Ledger/status:
+complete, exactly five completed, zero failed, null result errors, zero pending
+tells/tracking; all five attempts have uploaded/told timestamps. Five READY
+model versions link to five physical runs; five traces are OK. Revision lineage
+matches the exact commit, environment hash
+`2827ddd042f17d0f82dfb5473fddd8fff1ebd512694e24110b2b1290d6f539c4`.
+
+**Tracking gate is NOT clean:** all five private MLflow runs are FAILED.
+CLI output records `NonRecordingSpan` missing `context` and five permission
+errors cleaning temporary `model/code/ima` directories. Read-only source directory
+modes copied into MLflow temporary code trees are the likely permission cause;
+registration succeeded before the exception, then idempotent retries reused
+registrations and drained the outbox without repairing failed run statuses.
+Do not conflate READY models/empty outbox/exit 0 with clean tracking. Exact
+errors remain in `linux-canary.log` locally; frozen release/dependencies and
+failed statuses were not changed to conceal this. Parent owns tracking/runtime
+fix and a new committed canary if needed. No production campaign launch.
+
+Authorized dataset request copied separately (not code archive) to
+`campaigns/agentic_v6_research/inputs/dataset-request-v2.json`; SHA256
+`1fc4d6e6090320927d94cd7366deb835d9e8d2c2a3b0cd8778a08953e6ab8f91`.
+Fixed snapshot manifest SHA256
+`fcbb6a3f9b83ae06add78dcb674649c8ebbb202e86c32157d4efed1616efaee7`
+matches the request; raw inventory 178,718 rows/14,488 races, parser v14.
+Separately authorized frozen snapshot relocation completed at 08:39:53 UTC:
+`campaigns/agentic_v6_research/inputs/official-snapshot`, 17 regular files,
+776,217,339 bytes, every source/copy SHA256 equal and directories/files read-only.
+Manifest bytes/hash remain identical. No symlinks, mutable alias, hardlinks,
+dataset rebuild or recorded original-source-path/identity rewrite. Disk available
+before copy was 749,632,700,416 bytes. Receipt beside the copy:
+`inputs/official-snapshot-copy-receipt.json`, SHA256
+`4dc59678a6375da3feda29d9bf44fbbb9504cc3d64f8d66d05a93ca7e90010cd`.
+The parent launcher must validate relocated manifest/file hashes against recorded
+original provenance; path relocation alone is not identity equivalence.
+Request is strict/full-history, latest three whole-meeting folds with 9000
+minimum train/500 calibration/500 score and 500 final-confirmation races.
+This deliberately differs from pinned V5; no original-contract replay claim.
+
+Dataset build `ima-v6-dataset-build-5b638623.service`, invocation
+`20a35342a6bb443bbc41dd3adef6ce9a`, began 08:23:18 UTC after a two-sample
+headroom pass. MemoryMax/CPU quota match the fixture; RuntimeMax readback 30min.
+Registry: `/home/imaopt/research-v2/campaigns/agentic_v6_research/datasets`.
+At approximately 08:36:39 UTC it was CPU-active at 13m20s elapsed, CPU 800.645s,
+current memory 1,295,482,880 and peak 1,660,284,928 bytes. Live RuntimeMax remains
+30min at that readback. Parent subsequently specified a 3600s hard limit;
+an attempted dedicated-unit `set-property --runtime RuntimeMaxSec=3600` was
+rejected. A runtime `systemctl edit` accepted the drop-in but live readback still
+reports 30min with no loaded DropInPaths (transient unit). Therefore 3600s is NOT
+proven effective. No stop/restart was used to change the running build. The 1800s
+acceptance budget is distinct from the desired hard timeout. Request history
+contains requested/building; source/confirmation setup and dataset staging exist.
+The process is CPU-active on one Python thread. No intermediate substage timing
+is emitted, so a precise active Python function is not proven by this readback.
+Final build was CANCELLED by explicit assignment at 08:41:16 UTC after parent
+confirmed P1 raw-manifest variable shadowing (`raw_manifest.json` would become
+the string `trainer_id`) and P2 event distance unit `1` instead of `m`. These are
+invalid-builder findings, not timeout/OOM findings. No dataset was published or
+accepted and target/source-accounting acceptance was not reached. No benchmark
+was run because no valid candidate exists. Unit checkpoint `build-unit-readback.json`;
+exact command/log files are `build-command.json`/`official-build.log` locally.
+Durable logs/commands were copied to staging through Tailscale. Cancellation
+receipt `build-cancellation-receipt.json`, SHA256
+`49f14b88b6224ec7c6663d0b537b5db45b37f2ff928b55ec9af86d4d795b54f3`;
+journal `build-cancelled-journal.log`, SHA256
+`dd1d712647912b7401b868f1b9351a6f92d93ffb198de6b9de41a317e1e0a183`.
+Journal final wall 1078.622s / CPU 1078.315s / peak 1,660,284,928 bytes. Stop and
+inactive/PID0 readbacks occurred within the same UTC second. Systemd's post-GC
+`Result=success` is not build acceptance. The SSH wait had disconnected with 255
+while the same process continued; final cancellation was a separate explicit stop.
+Original request remains `building`, byte-preserved SHA256
+`566f6f6b0bd04c0ccab42d2f6cf76f8cf988a3a71df4f0f59253208ddbd149d1`;
+its separate cancellation receipt is authoritative for operator disposition.
+Staging directory and request were neither deleted nor silently retried.
+All ten protection hashes match after cancellation; V5 active PID 792999 and
+invocation `0e74db4db0fa4f05bf8a308e200b022c` unchanged, STOP remains absent.
+Parent subsequently reported GitHub CI failure on this SHA: exactly two
+`tests/test_data.py` tests assumed gitignored
+`data/processed/historical/runners.csv.gz` exists in a clean checkout. Parent
+reported the portable-fixture fix committed as `9a15365`; this role has not
+modified those tests or certified that successor CI. New committed release
+and green CI are required before cutover. This cancelled attempt retains its
+original code/dependency/request identity. Builder defects now require a repaired
+committed release and fresh request v3; earlier unchanged-builder reuse reasoning
+is superseded. Never accept or reuse the invalid old staging candidate.
+Parent also confirmed initial paid-planner capabilities omit the raw-manifest
+identity needed for a DatasetRequest. Controller capability/regression fix is
+parent-owned and requires a new committed release; builder files are reportedly
+unchanged. Do not run paid/live planning on `5b638623...`. This assigned build
+uses the explicit hash-backed request and does not exercise that planner gap.
+Optional official preparation benchmark is authorized only after main-build
+readback, under a fresh 8 GB/two-CPU unit and fresh headroom. Parquet/CSV identities
+must be recorded separately and all candidate rows preserved.
 
 | Check | Actual result | Interpretation |
 |---|---|---|
@@ -38,12 +160,14 @@ does not certify the whole plan or V6 launch.
 
 ## CD Preparation Refresh
 
-Initial assignment was read-only remotely; source deployment and launch remain
-held until parent gates are green. Exact current test failures are below.
+Historical preparation evidence below predates the authorized committed Linux
+checkpoint above. The initial assignment was read-only remotely; later isolated
+setup/source upload/fixture/build assignments were executed. Paid launch and V5
+mutation remain held. The earlier in-progress test failures below are historical.
 Own-user venv/lock/extra inventory, actual OpenRouter Tailscale routes, frozen
 snapshot transfer sizes and the prepared V5 STOP procedure are in the runbook.
-No STOP, config, route or service action was performed. Later authorization
-allowed only private dependency setup; its separate receipt is recorded below.
+No protected STOP/config/route/service action was performed. Dedicated successor
+fixture/build transient units were subsequently started under explicit assignment.
 
 Local package verification exercised a scoped `git archive --format=tar` from
 committed SHA `6ef7481dc93f406e77174d510b36d99155ef38b4`, 1,515,520 bytes.
@@ -55,11 +179,13 @@ copied from dirty/untracked workspace files into the archive.
 
 Archive adversarial checks passed: unknown commit, non-full SHA, modified content,
 duplicate file, symlink, traversal path, omitted file and wrong PAX commit metadata
-were rejected. Full V6 required-path success remains pending a parent commit.
+were rejected. Full required-path success subsequently passed for the 230-file
+committed package in the checkpoint above.
 The verifier outputs package SHA256/size only after complete source/readiness
 checks; it does not certify model/data/recovery gates or extract/deploy anything.
-CI now runs that committed-SHA package check after the regression suite, without
-uploading/deploying a package. Hosted CI remains unrun.
+CI runs that committed-SHA package check after the regression suite, without
+uploading/deploying a package. Hosted CI subsequently ran and failed as recorded
+in the committed checkpoint; this is not a current unrun claim.
 
 Runbook schema example was accepted through the real `scripts.optimize.main`
 config loader/constructor with `run_campaign` mocked to validate only. No campaign
@@ -72,7 +198,8 @@ and canary. Their schema/help checks passed; approved model is
 an actual admission count. Loader normalizes the 260-trial decision alias.
 Parquet readers exist in profile and executor; actual preparation/training on
 the frozen Parquet input remains a separate gate. The package verifier now
-also requires the committed canary script. Committed readiness remains pending.
+also requires the committed canary script. Committed package readiness later
+passed; repaired production runtime/tracking acceptance remains pending.
 Launcher was corrected for the observed own-user Python executable symlink;
 existing V5/acquisition runtimes were not changed. Bash syntax, CI YAML guardrails
 and the canonical plan checker passed locally.
@@ -101,7 +228,7 @@ working-tree observation, not a verdict on the eventual implementation. Those
 files are outside this role's ownership; no edits were made to them. Resolve and
 rerun before launch; the earlier 334-test pass does not supersede these failures.
 
-## Parent Handoff: Exact Current Failures
+## Historical Parent Handoff: Exact Failures
 
 Latest focused rerun at `2026-10-04T06:48Z`, after concurrent implementation
 changes: `.venv/bin/python -m unittest tests.test_research_expansion
@@ -146,7 +273,9 @@ may move during simultaneous edits.
 | `tests.test_research_telemetry.ComparisonKeyTests.test_different_feature_datasets_can_compare_on_same_score_population` | Failure: comparison keys differ for `dataset-1` and `new-features-same-runners` on the same evaluation population | 93 |
 | `PackageIndexAlignmentTests.test_valid_race_probabilities_do_not_depend_on_dataframe_index` | Error: ValueError `Packaged probabilities must sum to one by race`, raised at `ima/research_model_package.py:148` for valid `[0.2, 0.8, 0.3, 0.7]` | 537 |
 
-Deployment remains held. This role has no callable parent-agent message channel;
+At this historical handoff deployment remained held; assigned source transfer and
+fixture/build operations later occurred. Paid production launch remains held.
+This role has no callable parent-agent message channel;
 this shared owned report is the concrete parent handoff. No implementation/test
 files were modified to resolve these failures.
 
@@ -233,10 +362,11 @@ for the parent's next before/after cutover readback.
 
 ## Dependencies And Deployment
 
-### Immutable Transfer Preparation And Tests
+### Historical Immutable Transfer Preparation And Tests
 
-Parent release SHA is not assigned/ready. No dirty source archive, source upload,
-remote extraction, V5 STOP or service mutation was performed. Supervisor success
+At this earlier mechanics-test stage the parent release SHA was not assigned.
+Source upload/read-only extraction subsequently completed as recorded above.
+No dirty source archive, V5 STOP or protected service mutation was performed. Supervisor success
 receipt now includes the exact `committed_tree` mode/blob map derived from
 `git ls-tree`. Runbook packaging uses the verifier FROM that committed SHA,
 not an uncommitted workspace launcher; SHA/receipt arguments are validated and
@@ -263,7 +393,8 @@ omitted file and duplicate file. Rejections occurred before destination creation
 `/private/var/folders/wq/tn0d0r417cb3kghxltyqhjt80000gn/T/ima-v6-transfer-test-bkjr36wu`.
 Initial harness argument-count/macOS `/var` symlink-path errors were corrected
 without weakening the receiver. Positive complete-V6 committed package and
-actual Tailscale upload/extraction remain pending the parent's SHA/assignment.
+actual Tailscale upload/extraction subsequently passed under the exact assignment
+recorded above; these baseline mechanics tests retain their original identities.
 
 ### Guarded Build: Read-Only Feasibility
 
@@ -415,7 +546,9 @@ Those strict-lock/acquisition commands have NOT run. Subsequent user assignment
 instead authorized a fresh private copy of the audited effective environment,
 preserving all 120 versions; prefix and metadata-origin checks passed. Its only
 permitted repairs are JupyterLab/Graphviz/Plotly closure, downloaded locally and
-transferred through Tailscale. No source release upload or service launch.
+transferred through Tailscale. At this historical inventory stage no source was
+uploaded; subsequent exact-source transfer and fixture/build units are recorded
+in the authorized checkpoint above, alongside the completed dependency receipt.
 Local repair candidates JupyterLab 4.6.2, Graphviz 0.21, Plotly 7.1.0 are observed
 local versions, not target compatibility receipts. Require a complete Linux
 wheel closure, own manifest/hash/import-origin readback and successful private
@@ -426,7 +559,8 @@ At `2026-10-04T06:26:26Z` own env/routing refresh still showed public models HTT
 source 100.95.24.121 uid 1001. Exact own env source is
 `/home/imaopt/.config/imaopt/openrouter.env`, mode 0600 uid 1001, key present
 without value/length output. No authenticated paid call was made. Parent gates
-and explicit setup assignment remain prerequisites; launch is explicitly held.
+were prerequisites at this historical readback. Setup/source/fixture/build were
+later assigned and performed; paid production launch remains explicitly held.
 
 V5 interpreter: `/home/imaopt/research-v2/releases/f54c604/.venv/bin/python`,
 Python 3.12.12. Overlay: `research-v2/v5-dependencies/site-packages`.

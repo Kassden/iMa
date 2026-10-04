@@ -1,11 +1,42 @@
 # Isolated V6 Research Runbook
 
-Launch is authorized by the user subject to the canonical plan's implementation
-gates. The parent owns config/controller and coordinates cutover. User subsequently
-authorized dependency setup only under `research-v2/v6-dependencies` before
-release gates, preserving actual effective V5 versions and repairing only its
-three missing private requirements. Source upload and launch remain held.
-No V5, acquisition or service start/stop/configuration mutation is authorized.
+The parent owns config/controller and coordinates cutover. The user authorized
+isolated dependency setup, exact committed source transfer/read-only extraction,
+Linux fixture canary and a guarded official dataset build. These operations
+have been performed; the first official build was explicitly cancelled after
+parent-confirmed builder defects. Only dedicated own-user
+fixture/build transient units were started. V5 STOP/configuration/unit mutation,
+acquisition mutation, paid planning and production V6 launch remain held pending
+the repaired release and acceptance gates. Existing effective V5 dependency
+versions were preserved; its three missing requirements were repaired privately.
+
+Subsequent assignment authorized exact committed source
+`5b63862360f5380b6f247bf1c4da0a0854528aa6`, separate bounded fixture and
+official dataset builder only. Transfer/read-only extraction completed; Linux
+fixture ledger has five completions and delivered tracking/model registrations,
+but MLflow runs are FAILED with temporary code-cleanup permission errors and a
+trace error. This is not a clean tracking gate. Dataset build ran under
+8,000,000,000 bytes/two CPU quota and was cancelled at 08:41:16 UTC; no candidate
+was published or accepted. The 1800s request budget and actual hard timeout were
+1800s; attempts to apply the subsequently specified 3600s timeout did not load.
+Future builds must read back the intended 3600s before starting. See validation for
+proof paths; V5 STOP, V5 unit/config change, paid planner and live V6 launch
+remain explicitly unauthorized. Earlier prepared-only sections are historical
+recipes, not statements that the assigned transfer/fixture never occurred.
+GitHub CI on that SHA is currently failed (parent identified two clean-checkout
+archive-fixture assumptions). Parent owns the corrected/new committed release.
+Do not cut over, reuse the cancelled staging data, or relabel its provenance.
+Parent identified raw-manifest variable shadowing and event distance unit metadata
+defects; await a repaired committed release and fresh request v3. Preserve old
+request/staging and cancellation evidence. The optional full-row preparation
+benchmark was NOT run: it requires a valid immutable candidate first.
+
+Authorized frozen source copy is now at
+`campaigns/agentic_v6_research/inputs/official-snapshot`: 17 regular files,
+776,217,339 bytes, all hashes verified and content read-only. Its manifest SHA256
+is unchanged; `inputs/official-snapshot-copy-receipt.json` records both paths and
+all file hashes. Preserve the dataset manifest's original acquisition source path;
+the parent launcher is adding hash-verified relocation support, not a path rewrite.
 
 ## Identity And Integration API
 
@@ -61,11 +92,12 @@ own user journal. HTTP timeout/retry are bounded as in V5.
 
 ## Preparation Gates
 
-Deployment is held until the parent records passing implementation, data,
-resource/recovery and committed-release gates. Routine choices need no additional
-approval. The only current remote mutation authorization is isolated dependency
-setup under `v6-dependencies`; STOP, reload, start and service/config changes are
-not authorized. The original strict-lock recipe below is a separate option:
+Paid production deployment is held until the parent records passing implementation,
+data, resource/recovery and repaired committed-release gates. Routine choices need
+no additional approval. Isolated dependency setup, assigned committed source
+transfer, and dedicated fixture/build transient units are authorized and have run;
+protected service STOP/reload/start/configuration changes are not authorized.
+The original strict-lock recipe below is a separate option:
 the current copy-mode assignment preserves effective Pydantic 2.13.5/core 2.46.5
 and must record this departure from the partial research lock explicitly.
 
@@ -74,8 +106,10 @@ and must record this departure from the partial research lock explicitly.
    headroom and the active cgroup's byte limits, current/peak/events/pressure.
 2. Pass the legacy plus successor suite and the deterministic expansion canary.
    Verify existing `run`, `status`, `stop` CLI help on the actual release. The
-   canary CLI is parent-owned; its help now passes locally. The prepared synthetic
-   command below has NOT been executed by this role. V5's canary is not V6 proof:
+   canary CLI is parent-owned; its help passes locally. This role executed the
+   five-trial Linux variant with private SQLite: ledger passed, MLflow runs failed
+   as documented in validation. The ten-trial example below is a recipe, not that
+   actual invocation. V5's canary is not V6 proof:
 
 ```bash
 "$IMA_V6_PYTHON" -m scripts.run_research_expansion_canary --output <fresh-isolated-canary-directory> --planner fixture --max-concurrent-trials 2 --max-trials 10
@@ -147,10 +181,11 @@ checksum/length before extraction; preserve package receipt and source tree hash
 Use a fresh successor directory, never unpack over V5. Refresh the protection
 baseline immediately before any later cutover.
 
-### Exact Transfer And Immutable Readback: Held
+### Exact Transfer And Immutable Readback
 
-These commands are prepared, NOT authorized for execution until the parent sends
-the full committed release SHA and assigns source upload/Linux fixture canary.
+This procedure was assigned and completed for exact SHA
+`5b63862360f5380b6f247bf1c4da0a0854528aa6`; validation records its receipts.
+A future repaired release requires its own exact SHA, gates and fresh receipts.
 Current dirty/untracked source is never an archive input. No V5 STOP, unit action,
 credential source or live planning appears in this sequence. Run local packaging
 with `set -euo pipefail`; a failed readiness check must stop before any SSH/scp.
@@ -495,7 +530,8 @@ Parent may now use the private interpreter and overlay env values from the
 integration API. Source must still come from a gated committed `git archive`;
 verify `ima`/`scripts` resolve to that release, not copied project metadata.
 No full official acquisition/browser extras or advanced-runtime proof is implied.
-Launch, V5 STOP and any unit installation remain held.
+Paid production launch, V5 STOP and production unit installation remain held;
+the separately authorized fixture/build transient units have run.
 
 Read-only receipt refresh after compaction confirmed the existing setup/pip-check
 hashes and a fresh private `pip check` exit 0; no new remote writes. Parent's
