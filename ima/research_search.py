@@ -317,6 +317,25 @@ class ProgramSearchController:
                 if line.strip():
                     row = json.loads(line)
                     self._open(row["program_id"], ResearchProposal.model_validate(row["proposal"]))
+        self.budget_path = self.search_dir / "budget-overrides.json"
+        if self.budget_path.exists():
+            for program_id, budget in json.loads(self.budget_path.read_text()).items():
+                if program_id not in self.programs:
+                    raise ValueError("Budget override references an unknown program")
+                self.programs[program_id] = self.programs[program_id].model_copy(update={"max_trials": budget})
+
+    def set_budget(self, program_id: str, budget: int) -> None:
+        """Idempotent absolute budgets; controller persists the allocation first."""
+        if program_id not in self.programs or not isinstance(budget, int) or budget < 1:
+            raise ValueError("Invalid program budget override")
+        if self.programs[program_id].fixed_parameters and budget != 1:
+            raise ValueError("Fixed controls cannot be extended")
+        old = json.loads(self.budget_path.read_text()) if self.budget_path.exists() else {}
+        old[program_id] = budget
+        temporary = self.budget_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(old, sort_keys=True))
+        os.replace(temporary, self.budget_path)
+        self.programs[program_id] = self.programs[program_id].model_copy(update={"max_trials": budget})
 
     def _open(self, program_id: str, proposal: ResearchProposal) -> None:
         self.programs[program_id] = proposal
@@ -505,6 +524,8 @@ class ProgramSearchController:
 
 
 def _default_space(model_kind: str) -> dict[str, SearchDimension]:
+    if model_kind == "gaussian_probit":
+        return {"l2": SearchDimension(kind="float", low=.001, high=1., log=True)}
     if model_kind == "benter_conditional_logit":
         return {"l2": SearchDimension(kind="float", low=0.001, high=5.0, log=True)}
     if model_kind == "lightgbm_lambdarank":

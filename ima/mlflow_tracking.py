@@ -138,7 +138,12 @@ def research_run_parameters(
             for child_key, child_value in value.items():
                 add(f"{prefix}.{child_key}", child_value)
         elif isinstance(value, list):
-            params[key] = json.dumps(value, sort_keys=True, separators=(",", ":"))
+            encoded = json.dumps(value, sort_keys=True, separators=(",", ":"))
+            if len(encoded) > 5000:
+                import hashlib
+                params[key] = f"sha256:{hashlib.sha256(encoded.encode()).hexdigest()}; {len(encoded)} chars; see recipe.json"
+            else:
+                params[key] = encoded
         elif value is None:
             params[key] = "null"
         elif isinstance(value, str | int | float | bool):
@@ -729,6 +734,13 @@ def log_research_package_version(
     }
     with mlflow.start_run(run_id=resume_run_id,run_name=attempt_id, tags=tags) as active:
         mlflow.log_params(params)
+        if params.get("recipe.schema_version") == 3:
+            for key in ("dataset_id", "evaluation_population_id", "availability_policy",
+                        "probability_basis", "target_unit", "predictor_catalog_id"):
+                value = result.get("lineage", {}).get(key)
+                if value is not None:
+                    mlflow.log_param(key, str(value))
+                    mlflow.set_tag(f"ima.{key}", str(value))
         for key in ("discovery_id", "matrix_id"):
             if result.get("lineage", {}).get(key):
                 mlflow.set_tag(f"ima.{key}", result["lineage"][key])
@@ -771,8 +783,14 @@ def log_research_package_version(
             mlflow.log_artifact(feature_program_path, artifact_path="analysis")
         if dataset_path is not None:
             manifest_path = dataset_path.with_suffix(".manifest.json")
+            if not manifest_path.is_file() and params.get("recipe.schema_version") == 3:
+                manifest_path = dataset_path.parent / "manifest.json"
             if manifest_path.is_file():
                 mlflow.log_artifact(str(manifest_path), artifact_path="dataset")
+        if params.get("recipe.schema_version") == 3:
+            for pattern in ("preparation-*.json", "formula-report.json", "graph-fit-report.json", "graph-fits.json"):
+                for report_path in package_dir.parent.glob(pattern):
+                    mlflow.log_artifact(str(report_path), artifact_path="analysis")
         weights_path = package_dir / "feature-weights.csv"
         if weights_path.is_file():
             mlflow.log_artifact(str(weights_path), artifact_path="analysis")
