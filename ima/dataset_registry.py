@@ -104,9 +104,11 @@ def audit_races(source):
         nonfinish = group.get("finishing_status", pd.Series("FINISHED", index=group.index)).isin({"PU", "UR", "FE", "DNF", "DISQ", "TNP"})
         if result.eq(1).sum() == 0:
             reasons.append("missing_winner")
+        if result.eq(1).sum() > 1:
+            reasons.append("unsupported_dead_heat_single_winner_target")
         if ((result.isna() & ~nonfinish) | (result.notna() & (result.lt(1) | result.gt(len(group)) | result.mod(1).ne(0)))).any():
             reasons.append("invalid_finish_order_or_nonfinisher")
-        # Dead heats remain legitimate; target_probability already normalizes winners.
+        # Raw ties remain preserved upstream; current conditional-logit fitting needs one winner.
         if "finish_time" in group:
             times = group["finish_time"].map(finish_seconds)
             measured = times.notna() & result.notna()
@@ -133,14 +135,16 @@ def _catalog(features, event_columns, speed_columns, *, target_only=()):
     columns = (base | set(event_columns) | set(speed_columns)) & set(features)
     current_dependencies = {
         "draw": {"draw", "draw_bias_starts", "draw_bias_win_rate", "draw_bias_top3_rate"},
-        "actual_weight": {"actual_weight", "carried_weight_rank", "carried_weight_change", "carried_weight_change_rank"},
+        "actual_weight": {"actual_weight", "carried_weight_rank", "carried_weight_change", "carried_weight_change_rank", "poly_weight_change_distance"},
         "declared_weight": {"declared_weight", "body_weight_rank", "body_weight_change", "body_weight_change_pct", "weight_change_per_day", "poly_weight_change_distance"},
-        "distance": {"distance", "distance_change", "distance_band_starts", "distance_band_win_rate", "distance_band_top3_rate"},
+        "distance": {"distance", "distance_change", "distance_band_starts", "distance_band_win_rate", "distance_band_top3_rate", "distance_experience_rank"},
     }
     tainted = set(target_only)
     for name in target_only:
         tainted.update(current_dependencies.get(name, ()))
         tainted.update(column for column in columns if column.startswith("poly_") and name in column)
+        if name == "distance":
+            tainted.update(column for column in columns if "same_distance" in column)
     columns -= tainted
     catalog = {}
     speed = speed_feature_catalog()
@@ -226,6 +230,10 @@ class DatasetRegistry:
             raise ValueError("Unverified dataset identity")
         if "dataset-" + _digest(manifest["identity"]) != dataset_id:
             raise ValueError("Dataset identity payload changed")
+        if manifest["identity"].get("predictor_catalog_sha256") != _digest(manifest["predictor_catalog"]):
+            raise ValueError("Dataset predictor catalog identity changed")
+        if manifest["identity"].get("eligible_categorical_predictors_sha256") != _digest(manifest.get("eligible_categorical_predictors")):
+            raise ValueError("Dataset categorical predictor identity changed")
         checksum = path / "manifest.sha256"
         if not checksum.is_file() or checksum.read_text().strip() != file_sha256(path / "manifest.json"):
             raise ValueError("Dataset manifest checksum mismatch")
@@ -346,7 +354,8 @@ class DatasetRegistry:
                 if set(_keys(clean)) != set(_keys(features)) or len(clean) != len(features):
                     raise ValueError("Feature builder changed clean population")
                 clean = clean.set_index(["race_id", "horse_id"]).loc[list(zip(features["race_id"], features["horse_id"]))].reset_index()
-                events = normalize_events(pd.read_json(snapshot / "events.jsonl", lines=True, convert_dates=False))
+                with (snapshot / "events.jsonl").open() as stream:
+                    events = normalize_events(json.loads(line) for line in stream if line.strip())
                 coverage = raw.get("event_coverage", []) if isinstance(raw, dict) else []
                 event_features = build_event_features(features, events, coverage, policy=request.event_policy_id, retrospective_lags=request.retrospective_lags)
                 speeds = build_speed_features(features, events, policy=request.event_policy_id, retrospective_lags=request.retrospective_lags)
@@ -355,8 +364,17 @@ class DatasetRegistry:
                 legacy += [c for c in ("trials_90d", "days_since_trial", "last_trial_placing", "last_trial_speed", "days_since_trackwork", "days_since_veterinary", "days_since_movement", "days_since_hk_arrival", "last_sectional_time", "last_sectional_position", "barrier_available") if c in features]
                 features = features.drop(columns=list(set(legacy)), errors="ignore")
                 features = pd.concat([features.drop(columns=event_features.columns, errors="ignore"), event_features, speeds], axis=1)
+                numeric = features.select_dtypes(include="number").columns
+                nonfinite = {name: int(np.isinf(features[name].to_numpy(float)).sum()) for name in numeric}
+                nonfinite = {name: count for name, count in nonfinite.items() if count}
+                features[numeric] = features[numeric].replace([np.inf, -np.inf], np.nan)
                 catalog = _catalog(features, event_features.columns, speeds.columns,
                                    target_only=source_manifest.get("target_only_columns", ()))
+                categorical = [name for name in ("venue", "course", "going", "jockey_key", "trainer_key")
+                    if name in features and name not in source_manifest.get("target_only_columns", ())]
+                for raw, derived in (("jockey_id", "jockey_key"), ("trainer_id", "trainer_key")):
+                    if raw in source_manifest.get("target_only_columns", ()) and derived in categorical:
+                        categorical.remove(derived)
                 formula_report = {"definitions": [], "definition_ids": []}
                 if request.feature_definition_ids:
                     from .feature_definitions import FeatureRegistry, evaluate_formulas
@@ -371,6 +389,14 @@ class DatasetRegistry:
                                 "definition_id": definition.content_id(), "input_refs": list(definition.input_refs),
                                 "nonmissing": int(features[name].notna().sum()), "missing": int(features[name].isna().sum()),
                                 "total": len(features), "distinct": int(features[name].nunique(dropna=True))}
+                identity["predictor_catalog_sha256"] = _digest(catalog)
+                identity["eligible_categorical_predictors_sha256"] = _digest(categorical)
+                dataset_id = "dataset-" + _digest(identity)
+                destination = self.dataset_path(dataset_id)
+                if destination.exists():
+                    manifest = self.verify(dataset_id)
+                    self._transition(state, "verified", dataset_id=dataset_id, artifact_path=str(destination))
+                    return manifest
                 excluded_keys = {tuple(key) for row in exclusions for key in row["runner_keys"]}
                 preserved = set(_keys(clean))
                 source_keys = set(_keys(source))
@@ -426,7 +452,8 @@ class DatasetRegistry:
                 report = {"valid": True, "source_rows": len(source), "source_races": int(source["race_id"].nunique()), "rows": len(clean), "races": int(clean["race_id"].nunique()),
                     "excluded_races": len(exclusions), "excluded_rows": sum(e["rows"] for e in exclusions), "unaccounted_source_keys": 0,
                     "distributions_before": _distribution(source), "distributions_after": _distribution(clean), "confirmation_rows_quarantined": len(confirmation_keys),
-                    "confirmation_labels_published": False, "fold_count": len(folds), "build_seconds": time.monotonic() - started}
+                    "confirmation_labels_published": False, "fold_count": len(folds), "build_seconds": time.monotonic() - started,
+                    "numeric_nonfinite_replacements": nonfinite}
                 _write_json(staging / "validation.json", report)
                 _write_json(staging / "temporal_audit.json", event_audit)
                 manifest = {"dataset_id": dataset_id, "status": "verified", "request_id": request_id, "identity": identity,
@@ -436,6 +463,7 @@ class DatasetRegistry:
                     "comparison_contract_id": "comparison-" + _digest(comparison), "comparison_contract": comparison,
                     "eligible_numeric_predictors": sorted(catalog), "eligible_predictors": sorted(catalog),
                     "feature_catalog": catalog, "predictor_catalog": catalog, "predictor_catalog_id": "catalog-" + _digest(catalog),
+                    "eligible_categorical_predictors": categorical,
                     "availability_policy": request.event_policy_id, "evaluation_population_id": request.evaluation_population_id,
                     "features_path": str(destination / "features.parquet"),
                     "protocol_path": str(destination / "protocol.json"), "target_only_columns": source_manifest.get("target_only_columns", []),
@@ -443,7 +471,7 @@ class DatasetRegistry:
                     "ordered_row_hashes_sha256": hashlib.sha256(pd.util.hash_pandas_object(features, index=False).to_numpy().tobytes()).hexdigest(),
                     "event_audit": event_audit, "validation": report, "promotion": "candidate_only; explicit operator policy required",
                     "target_eligibility": target_eligibility,
-                    "unsupported_requirements": ["raw blobs are not locally replayed by this registry", "source rating/profile publication is unverified; dependent predictors excluded", "condition residuals require parent train-only fitted transforms", "explicit delayed race-result publication excludes that race from development history; delayed-label asof rebuild not yet supported"],
+                    "unsupported_requirements": ["raw blobs are not locally replayed by this registry", "source rating/profile publication is unverified; dependent predictors excluded", "condition residuals require parent train-only fitted transforms", "explicit delayed race-result publication excludes that race from development history; delayed-label asof rebuild not yet supported", "dead-heat races excluded by the current single-winner training contract; original tied outcomes preserved upstream"],
                     "files": {path.name: file_sha256(path) for path in staging.iterdir() if path.is_file()}}
                 _write_json(staging / "manifest.json", manifest)
                 (staging / "manifest.sha256").write_text(file_sha256(staging / "manifest.json") + "\n")

@@ -7,12 +7,23 @@ import numpy as np
 import pandas as pd
 
 from ima.dataset_registry import DatasetRegistry
+from ima.dataset_registry import audit_races
 from ima.dataset_specs import DatasetProtocolSpec, DatasetRequest
 from ima.feature_definitions import FeatureRegistry
 from tests.test_dataset_registry_adversarial import source_rows, event, digest
 
 
 class DatasetRegistryTests(unittest.TestCase):
+    def test_dead_heat_is_quarantined_without_fabricating_a_winner(self):
+        source = source_rows()
+        source.loc[(source.race_id == "r1") & (source.horse_no == 2), ["result", "finish_time"]] = [1, "1:00.00"]
+        clean, exclusions = audit_races(source)
+        self.assertNotIn("r1", set(clean.race_id))
+        excluded = next(row for row in exclusions if row["race_id"] == "r1")
+        self.assertIn("unsupported_dead_heat_single_winner_target", excluded["reasons"])
+        self.assertEqual(3, excluded["rows"])
+        self.assertEqual(2, source.loc[source.race_id.eq("r1"), "result"].eq(1).sum())
+
     def test_default_protocol_preserves_history_and_selects_latest_folds(self):
         protocol = DatasetProtocolSpec()
         self.assertEqual("latest", protocol.fold_selection)
@@ -38,6 +49,8 @@ class DatasetRegistryTests(unittest.TestCase):
                                  "max_folds": 2, "final_confirmation_races": 2}}
             registry.submit(DatasetRequest.model_validate(spec))
             parent = registry.build("initial", source_snapshot=snapshot, raw_manifest=raw)
+            self.assertEqual({"venue", "course", "going", "jockey_key", "trainer_key"},
+                             set(parent["eligible_categorical_predictors"]))
             metadata_keys = {"unit", "dtype", "temporal_scope", "target_tainted", "available_at_column", "source_family"}
             metadata = {name: {key: value for key, value in row.items() if key in metadata_keys}
                         for name, row in parent["predictor_catalog"].items()}

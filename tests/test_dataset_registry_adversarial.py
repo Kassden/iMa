@@ -323,6 +323,75 @@ class DatasetRegistryAdversarialTests(unittest.TestCase):
         self.assertFalse(unsafe,
                          "Source-contract target-only classification must exclude direct and derived predictors")
 
+    def test_catalog_compound_units_match_materialized_formula_dimensions(self):
+        manifest, _ = self.build("compound-units")
+        expected = {"poly_distance_sq": "m^2", "poly_draw_distance": "m",
+                    "poly_weight_change_distance": "lb*m", "prize": "HKD"}
+        for name, unit in expected.items():
+            with self.subTest(name=name):
+                self.assertEqual(manifest["feature_catalog"][name]["unit"], unit)
+                self.assertEqual(manifest["predictor_catalog"][name]["unit"], unit)
+
+    def test_target_only_current_weight_and_distance_taint_all_actual_dependencies(self):
+        dependencies = {
+            "actual_weight": {"actual_weight", "carried_weight_rank", "carried_weight_change",
+                              "carried_weight_change_rank", "poly_weight_change_distance"},
+            "declared_weight": {"declared_weight", "body_weight_rank", "body_weight_change",
+                                "body_weight_change_pct", "weight_change_per_day"},
+            "distance": {"distance", "distance_change", "distance_band_starts", "distance_experience_rank",
+                         "avg_same_distance_finish_time_183d", "poly_distance_sq", "poly_draw_distance",
+                         "poly_weight_change_distance", "past_race_speed_same_distance_mean_mps",
+                         "workout_speed_same_distance_mean_mps", "trial_speed_same_distance_mean_mps"},
+        }
+        for source, derived in dependencies.items():
+            with self.subTest(source=source):
+                snapshot, raw = self.fixture(target_only=["result", "finish_time", source])
+                request = self.request(f"target-only-{source}", raw)
+                self.registry.submit(request)
+                manifest = self.registry.build(request.request_id, source_snapshot=snapshot, raw_manifest=raw)
+                leaked = derived & set(manifest["eligible_numeric_predictors"])
+                self.assertFalse(leaked, f"Current {source} is target-only but dependent predictors remain eligible")
+
+    def test_pre_normalized_events_cannot_bypass_strict_provenance_or_unknown_tier_checks(self):
+        from ima.historical_events import normalize_events
+
+        normalized = normalize_events([event("normalize-first")]).to_dict("records")[0]
+        variants = ({"source_url": "https://untrusted.invalid/event"},
+                    {"source_body_sha256": "not-a-body-hash"}, {"availability_tier": "unknown"})
+        for number, changes in enumerate(variants):
+            with self.subTest(changes=changes):
+                _, features = self.build(f"normalized-untrusted-{number}", events=[normalized | changes])
+                self.assertTrue(features.trackwork_usable_observations.eq(0).all())
+                self.assertTrue(features.workout_speed_support.eq(0).all())
+                self.assertTrue(features.workout_speed_last_mps.isna().all())
+
+    def test_normalized_nullable_event_json_roundtrip_accepts_valid_provenance(self):
+        from ima.historical_events import normalize_events
+
+        normalized = normalize_events([event("valid-normalized-nullable")]).to_dict("records")[0]
+        self.assertIsNone(normalized["valid_from"])
+        self.assertIsNone(normalized["correction_of"])
+        _, features = self.build("valid-normalized-roundtrip", events=[normalized])
+        self.assertTrue(features.loc[features.horse_id.eq(HORSES[0]), "trackwork_usable_observations"].eq(1).all())
+        self.assertTrue(features.loc[features.horse_id.ne(HORSES[0]), "trackwork_usable_observations"].eq(0).all())
+        self.assertTrue(features.loc[features.horse_id.eq(HORSES[0]), "workout_speed_last_mps"].eq(16).all())
+        self.assertTrue(features.loc[features.horse_id.ne(HORSES[0]), "workout_speed_last_mps"].isna().all())
+        self.assertTrue(features.loc[features.horse_id.ne(HORSES[0]), "workout_speed_support"].eq(0).all())
+
+    def test_pre_normalized_conflicting_observation_payloads_reject_registry_build(self):
+        from ima.historical_events import normalize_events
+
+        normalized = normalize_events([event("same-observation")]).to_dict("records")[0]
+        changed = normalized | {"typed_values": {"distance_metres": 1200, "workout_finish_seconds": 30}}
+        with self.assertRaisesRegex(ValueError, "Conflicting source observation"):
+            normalize_events([normalized, changed])
+        snapshot, raw = self.fixture(events=[normalized, changed])
+        request = self.request("conflicting-normalized-observation", raw)
+        self.registry.submit(request)
+        with self.assertRaisesRegex(ValueError, "Conflicting source observation"):
+            self.registry.build(request.request_id, source_snapshot=snapshot, raw_manifest=raw)
+        self.assertEqual(self.registry.get(request.request_id)["status"], "rejected")
+
     def test_mixed_date_only_and_timestamp_observations_keep_conservative_eligibility(self):
         manifest, features = self.build("date-only-json", events=[
             event("timestamp"),
