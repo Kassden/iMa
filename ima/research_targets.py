@@ -84,7 +84,14 @@ def apply_target_contract(frame: pd.DataFrame, contract: TargetContract) -> pd.D
         _require_columns(work, ("race_id", "result"))
         result = pd.to_numeric(work["result"], errors="coerce")
         if result.isna().any():
-            raise TargetContractError("ranking_strength requires numeric result values")
+            known_nonfinish = work.get("finishing_status", pd.Series("", index=work.index)).isin({"PU", "UR", "FE", "DNF", "DISQ", "TNP"})
+            if (result.isna() & ~known_nonfinish).any():
+                raise TargetContractError("ranking_strength requires numeric result values or known nonfinisher status")
+            excluded = set(work.loc[result.isna(), "race_id"])
+            work = work.loc[~work.race_id.isin(excluded)].copy()
+            if work.empty:
+                raise TargetContractError("No fully ranked race fields")
+            result = pd.to_numeric(work["result"], errors="coerce")
         field_size = work.groupby("race_id")["race_id"].transform("size").clip(lower=1)
         work["target_rank_score"] = 1.0 - (result - 1.0) / field_size
         return work
@@ -96,21 +103,35 @@ def apply_target_contract(frame: pd.DataFrame, contract: TargetContract) -> pd.D
             raise TargetContractError("placing_top_k cannot exceed field size")
         result = pd.to_numeric(work["result"], errors="coerce")
         if result.isna().any():
-            raise TargetContractError("placing_top_k requires numeric result values")
+            known_nonfinish = work.get("finishing_status", pd.Series("", index=work.index)).isin({"PU", "UR", "FE", "DNF", "DISQ", "TNP"})
+            if (result.isna() & ~known_nonfinish).any():
+                raise TargetContractError("placing_top_k requires numeric result values or known nonfinisher status")
         work[contract.label_column] = result.le(top_k).astype(int)
         return work
     if contract.kind == "adjusted_finish_time_or_speed":
-        _require_columns(work, ("race_id", "finish_time", "distance"))
-        finish = pd.to_numeric(work["finish_time"], errors="coerce")
+        _require_columns(work, ("race_id", "distance"))
+        from .data import _finish_time_seconds
+        if "finish_seconds" in work:
+            finish = pd.to_numeric(work["finish_seconds"], errors="coerce")
+        elif "finish_time" in work:
+            finish = _finish_time_seconds(work["finish_time"])
+        else:
+            raise TargetContractError("Speed target requires finish_seconds or finish_time")
         distance = pd.to_numeric(work["distance"], errors="coerce")
-        valid = finish.gt(0) & distance.gt(0)
+        valid = finish.gt(0) & distance.gt(0) & np.isfinite(finish) & np.isfinite(distance)
         coverage = float(valid.mean()) if len(valid) else 0.0
         min_coverage = float(contract.parameters.get("min_coverage", 0.8))
         if coverage < min_coverage:
             raise TargetContractError(
                 f"finish-time coverage {coverage:.3f} below required {min_coverage:.3f}"
             )
-        work["target_speed"] = distance / finish
+        work["target_speed"] = (distance / finish).where(valid)
+        if not valid.all():
+            # Secondary objectives may exclude entire races, never shrink win-scoring fields.
+            eligible = valid.groupby(work["race_id"]).all()
+            work = work[work["race_id"].isin(eligible.index[eligible])].copy()
+            if work.empty:
+                raise TargetContractError("No complete timed race fields for speed evaluation")
         return work
     if contract.kind == "market_odds_forecast":
         _require_columns(work, (
@@ -145,6 +166,10 @@ def validate_no_forbidden_label_features(
         "result",
         "won",
         "finish_time",
+        "finish_seconds",
+        "current_speed_mps",
+        "lengths_raw",
+        "finishing_status",
         contract.label_column,
         "win_odds",
         "market_probability",
