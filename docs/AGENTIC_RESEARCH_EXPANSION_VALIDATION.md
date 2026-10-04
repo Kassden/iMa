@@ -41,7 +41,19 @@ Logical fit budget remained 8 decimal GB. Physical cache allowance reached
 above required 22.53 GB including possible V5 growth and 2 GiB reserve. Same
 invocation, CPU allowance and estimates; no protected service mutation. First
 fit private peak was 4.14 GB versus estimate 5.65 GB. Continuous V6 and new paid
-planner qualification are still pending; no whole-plan acceptance is claimed.
+planner qualification are not accepted; no whole-plan acceptance is claimed.
+
+The newly authorized C1 private planner qualification failed at 12:08:37 UTC.
+Its exact runner passed seven offline tests (SHA256
+`d3ca6effc557ed66eb7369f13c5ad0f1561aa56bced7be195c6bc93b7d4afab0`).
+TCP/TLS succeeded; body transmission lasted approximately 87.32 seconds,
+followed by ReadError before headers at 91.300 seconds. No generation ID,
+response cost or physical completion receipt; native USD remains null/unknown.
+Unit exited 1, no retry, no fits, zero pending private traces and all ten
+protection hashes unchanged. V5 remains active. A private trace status OK
+only acknowledges snapshot delivery; planner_status is failed and acceptance
+is false. Paid admission is frozen; continuous V6 remains blocked.
+Receipt: `canaries/acceptance-runner-owned-c1eb224f/operator-evidence/paid-execution/terminal-receipt.json`.
 
 ### Current Accepted Data, Frozen Paid Work
 

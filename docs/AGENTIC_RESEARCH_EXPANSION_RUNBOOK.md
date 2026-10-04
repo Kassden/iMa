@@ -34,6 +34,18 @@ estimate, safety margin, V5 limit or unrelated service was changed. The fixture
 recorded backlog validation errors while training continued; these are not paid
 planner acceptance. Continuous OpenRouter V6 has not yet launched.
 
+The one authorized fresh C1 paid qualification subsequently FAILED at
+12:08:37 UTC with ReadError after 91.300 seconds. TCP/TLS connected; no HTTP
+headers or generation ID arrived. Cost is unknown, not zero, and paid calls are
+frozen again. Root:
+`canaries/acceptance-runner-owned-c1eb224f/official-v4-300-once`.
+Terminal receipt:
+`canaries/acceptance-runner-owned-c1eb224f/operator-evidence/paid-execution/terminal-receipt.json`.
+Exact runner SHA256 `d3ca6effc557ed66eb7369f13c5ad0f1561aa56bced7be195c6bc93b7d4afab0`
+passed seven offline tests before execution. All ten protected hashes stayed
+unchanged. Private trace delivery is not successful paid planning; no live V6
+campaign was started and V5 has not been stopped.
+
 V4 is complete and independently ACCEPTED by parent/Sagan:
 `dataset-19aaa959e948d6e145ce62c8160413087b46ba3c2578e0de15c452054d9a83db`.
 It used builder `6245f3ca5a3e37116a13cc7420839bb6dc05f55b`; observer reported
