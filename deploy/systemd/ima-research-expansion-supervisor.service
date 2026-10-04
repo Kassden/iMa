@@ -1,0 +1,26 @@
+[Unit]
+Description=iMa isolated V6 agentic research expansion
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+EnvironmentFile=/home/imaopt/.config/imaopt/research-expansion.env
+ExecStart=/bin/bash ${IMA_V6_RELEASE}/deploy/systemd/ima-research-expansion-supervisor
+Restart=on-failure
+RestartSec=60
+KillMode=control-group
+TimeoutStopSec=1800
+UMask=0077
+Nice=5
+MemoryAccounting=yes
+MemoryHigh=90000000000
+MemoryMax=100000000000
+TasksMax=512
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

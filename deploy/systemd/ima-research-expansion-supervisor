@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+if [[ ${1:-} == --verify-package ]]; then
+    if [[ $# -ne 3 ]]; then
+        printf 'Usage: bash ima-research-expansion-supervisor --verify-package ARCHIVE COMMITTED_SHA\n' >&2
+        exit 64
+    fi
+    "${IMA_V6_PYTHON:-python3}" - "$2" "$3" <<'PY_PACKAGE'
+import hashlib
+import json
+import re
+import subprocess
+import sys
+import tarfile
+from pathlib import Path, PurePosixPath
+
+archive, revision = Path(sys.argv[1]), sys.argv[2]
+if not re.fullmatch(r'[0-9a-f]{40}', revision):
+    raise SystemExit('Package verification requires a full lowercase committed SHA')
+resolved = subprocess.check_output(
+    ['git', 'rev-parse', '--verify', revision + '^{commit}'], text=True
+).strip()
+if resolved != revision:
+    raise SystemExit('Package revision is not the requested commit')
+scope = (
+    'ima', 'scrapper', 'scripts', 'config', 'tests', 'deploy/systemd',
+    'pyproject.toml', 'requirements-research.lock', 'requirements-v5-overlay.lock',
+    'docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md',
+    'docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md',
+    'docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md', 'docs/RESEARCH_NOMENCLATURE.md',
+)
+required = {
+    'ima/research_expansion.py', 'ima/research_telemetry.py', 'ima/pipeline_graph.py',
+    'ima/feature_expressions.py', 'ima/performance_probit.py', 'ima/betting_stakes.py',
+    'scripts/optimize.py', 'scripts/run_research_expansion_canary.py',
+    'config/agentic_research_expansion.json',
+    'tests/test_research_expansion.py', 'tests/test_research_telemetry.py',
+    'deploy/systemd/ima-research-expansion-supervisor',
+    'deploy/systemd/ima-research-expansion-supervisor.service',
+    'pyproject.toml', 'requirements-research.lock', 'requirements-v5-overlay.lock',
+    'docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md',
+    'docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md',
+    'docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md', 'docs/RESEARCH_NOMENCLATURE.md',
+}
+tree = subprocess.check_output(['git', 'ls-tree', '-rz', revision, '--', *scope])
+expected = {}
+for record in tree.split(b'\0'):
+    if not record:
+        continue
+    metadata, name = record.split(b'\t', 1)
+    mode, kind, oid = metadata.decode().split()
+    if kind != 'blob' or mode not in {'100644', '100755'}:
+        raise SystemExit('Package scope must contain regular committed files only')
+    expected[name.decode()] = (mode, oid)
+seen = set()
+with tarfile.open(archive, mode='r:') as package:
+    if package.pax_headers.get('comment') != revision:
+        raise SystemExit('Archive commit metadata mismatch; use git archive --format=tar')
+    for member in package:
+        path = PurePosixPath(member.name)
+        name = str(path)
+        if path.is_absolute() or '..' in path.parts:
+            raise SystemExit('Unsafe archive path')
+        if member.isdir():
+            if not any(name == p or name.startswith(p + '/') or p.startswith(name + '/')
+                       for p in scope):
+                raise SystemExit('Archive directory is outside deployment scope')
+            continue
+        if not member.isfile() or name not in expected or name in seen:
+            raise SystemExit('Archive contains unexpected, duplicate or linked files')
+        mode, oid = expected[name]
+        if bool(member.mode & 0o111) != (mode == '100755'):
+            raise SystemExit('Archive executable mode differs from committed tree')
+        stream = package.extractfile(member)
+        blob = subprocess.run(['git', 'hash-object', '--stdin'], input=stream.read(),
+                              check=True, capture_output=True).stdout.decode().strip()
+        if blob != oid:
+            raise SystemExit('Archive file content differs from committed tree: ' + name)
+        seen.add(name)
+if seen != set(expected):
+    raise SystemExit('Archive omits files from its committed deployment scope')
+missing = sorted(required - seen)
+if missing:
+    print(json.dumps({'commit': revision, 'source_integrity': 'passed',
+                      'deployment_ready': False, 'missing_required_paths': missing}, indent=2))
+    raise SystemExit(1)
+digest = hashlib.sha256()
+with archive.open('rb') as stream:
+    for block in iter(lambda: stream.read(1024 * 1024), b''):
+        digest.update(block)
+print(json.dumps({'commit': revision, 'archive_sha256': digest.hexdigest(),
+                  'archive_bytes': archive.stat().st_size, 'committed_files': len(seen),
+                  'committed_tree': expected,
+                  'source_integrity': 'passed', 'required_paths': 'passed',
+                  'scope': list(scope), 'execution_gates': 'not_checked'}, indent=2))
+PY_PACKAGE
+    exit 0
+fi
+
+if [[ $# -gt 1 || ( $# -eq 1 && $1 != --check ) ]]; then
+    printf 'Usage: bash ima-research-expansion-supervisor [--check] | --verify-package ARCHIVE COMMITTED_SHA\n' >&2
+    exit 64
+fi
+
+: "${IMA_V6_RELEASE:?Set immutable V6 release path}"
+: "${IMA_V6_REVISION:?Set expected immutable source revision}"
+: "${IMA_V6_PYTHON:?Set isolated V6 interpreter}"
+: "${IMA_V6_DEPENDENCIES:?Set isolated V6 site-packages}"
+: "${IMA_V6_CAMPAIGN:?Set isolated V6 campaign directory}"
+: "${IMA_V6_CONFIG:?Set campaign config path}"
+: "${IMA_V6_RESEARCH_POLICY:?Set implemented successor research policy}"
+
+export PYTHONPATH="$IMA_V6_DEPENDENCIES:$IMA_V6_RELEASE"
+export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
+export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+export IMA_CODE_REVISION="$IMA_V6_REVISION"
+export MLFLOW_HTTP_REQUEST_TIMEOUT=20 MLFLOW_HTTP_REQUEST_MAX_RETRIES=1
+unset HTTPS_PROXY HTTP_PROXY https_proxy http_proxy ALL_PROXY all_proxy
+
+cd "$IMA_V6_RELEASE"
+# Reject accidental predecessor reuse before loading credentials or creating state.
+"$IMA_V6_PYTHON" - <<'PY'
+import os
+from pathlib import Path
+from ima.optimizer import CampaignConfig
+from scripts.optimize import _load_config
+
+base = Path('/home/imaopt/research-v2')
+release = Path(os.environ['IMA_V6_RELEASE'])
+campaign = Path(os.environ['IMA_V6_CAMPAIGN'])
+dependencies = Path(os.environ['IMA_V6_DEPENDENCIES'])
+config_path = Path(os.environ['IMA_V6_CONFIG'])
+interpreter = Path(os.environ['IMA_V6_PYTHON'])
+for path in (release, campaign, dependencies, config_path):
+    if not path.is_absolute() or not path.resolve().is_relative_to(base):
+        raise SystemExit('V6 paths must resolve inside the imaopt research-v2 root')
+if not interpreter.is_absolute() or not interpreter.parent.resolve().is_relative_to(base):
+    raise SystemExit('V6 interpreter entry point must belong to research-v2')
+if not any(interpreter.resolve().is_relative_to(root)
+           for root in (base, Path('/home/imaopt/python'))):
+    raise SystemExit('V6 interpreter target must be an approved own-user Python runtime')
+if not release.is_dir() or release.is_symlink():
+    raise SystemExit('V6 release must be an immutable directory, not a release alias')
+if not dependencies.is_dir() or 'v5-dependencies' in dependencies.resolve().parts:
+    raise SystemExit('V6 requires a separate existing dependency directory')
+if campaign.parent != base / 'campaigns' or not campaign.name.startswith('agentic_v6_'):
+    raise SystemExit('V6 campaign must be a direct campaigns/agentic_v6_* child')
+if campaign.is_symlink() or not campaign.is_dir():
+    raise SystemExit('V6 campaign must be a separate existing directory')
+if not config_path.resolve().is_relative_to(campaign.resolve()):
+    raise SystemExit('V6 config must belong to the successor campaign')
+if (release / 'REVISION').read_text().strip() != os.environ['IMA_V6_REVISION']:
+    raise SystemExit('V6 release revision mismatch')
+values = _load_config(config_path)
+policy = os.environ['IMA_V6_RESEARCH_POLICY']
+if policy in {'legacy', 'benter_v3', 'feature_v4', 'discovery_v5'}:
+    raise SystemExit('V6 must use its implemented successor controller policy')
+if values.get('research_policy') != policy:
+    raise SystemExit('V6 config research_policy mismatch')
+for name in ('dataset_path', 'protocol_path'):
+    path = Path(values.get(name, ''))
+    if not path.is_absolute() or not path.is_file():
+        raise SystemExit('V6 requires existing absolute dataset and protocol paths')
+    if not path.resolve().is_relative_to(base):
+        raise SystemExit('V6 input paths must resolve inside research-v2')
+    values[name] = path
+for name in ('reference_campaign_dir', 'dataset_registry_path', 'official_snapshot_path'):
+    if values.get(name):
+        values[name] = Path(values[name])
+CampaignConfig(campaign_dir=campaign, **values).validate()
+print('V6 launcher preflight passed; no campaign execution performed')
+PY
+
+if [[ ${1:-} == --check ]]; then
+    exit 0
+fi
+if [[ -e "$IMA_V6_CAMPAIGN/STOP" ]]; then
+    printf 'V6 STOP exists; preserve evidence and review before resuming\n' >&2
+    exit 0
+fi
+set -a
+. /home/imaopt/.config/imaopt/openrouter.env
+set +a
+: "${OPENROUTER_API_KEY:?OpenRouter credential is missing}"
+exec "$IMA_V6_PYTHON" -W ignore -m scripts.optimize run \
+    --campaign "$IMA_V6_CAMPAIGN" --config "$IMA_V6_CONFIG"
