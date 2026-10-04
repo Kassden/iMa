@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,13 +15,10 @@ class ExternalPlannerTests(unittest.TestCase):
                                 policy='agentic', research_policy='expansion_v6',
                                 planner_mode='external', model='gpt-6-luna')
         config.validate()
-        config.model = 'openrouter/local-policy'
         with self.assertRaises(ValueError):
-            config.validate()
-        config.model = 'gpt-6-luna'
-        config.research_policy = 'legacy'
+            replace(config, model='openrouter/local-policy').validate()
         with self.assertRaises(ValueError):
-            config.validate()
+            replace(config, research_policy='legacy').validate()
 
     def test_identity_evidence_and_schema(self):
         with tempfile.TemporaryDirectory() as directory:
