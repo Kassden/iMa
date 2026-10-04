@@ -52,6 +52,10 @@ def _keys(frame):
     return [(str(r), str(h)) for r, h in zip(frame["race_id"], frame["horse_id"])]
 
 
+def _ordered_row_hashes_sha256(frame):
+    return hashlib.sha256(pd.util.hash_pandas_object(frame, index=False).to_numpy().tobytes()).hexdigest()
+
+
 def _distribution(frame):
     races = frame.drop_duplicates("race_id").copy()
     races["era"] = races["date"].astype(str).str[:4]
@@ -245,6 +249,11 @@ class DatasetRegistry:
                 raise ValueError(f"Dataset provenance manifest must be an object: {name}")
             if file_sha256(path / name) != manifest["identity"][identity_key]:
                 raise ValueError(f"Dataset provenance identity mismatch: {name}")
+        features = pd.read_parquet(path / "features.parquet")
+        if manifest.get("ordered_row_keys_sha256") != _digest(_keys(features)):
+            raise ValueError("Dataset ordered row key hash mismatch")
+        if manifest.get("ordered_row_hashes_sha256") != _ordered_row_hashes_sha256(features):
+            raise ValueError("Dataset ordered row hash mismatch")
         return manifest
 
     def _confirmation_races(self, source, request):
@@ -425,6 +434,11 @@ class DatasetRegistry:
                     raise ValueError("Dataset build exceeded explicit wall_seconds budget")
                 clean.to_parquet(staging / "runners.parquet", index=False)
                 features.to_parquet(staging / "features.parquet", index=False)
+                # Parquet can canonicalize NaN bit patterns without changing values.
+                persisted_features = pd.read_parquet(staging / "features.parquet")
+                ordered_row_keys_sha256 = _digest(_keys(persisted_features))
+                ordered_row_hashes_sha256 = _ordered_row_hashes_sha256(persisted_features)
+                del persisted_features
                 persisted_events = events.copy()
                 persisted_events["typed_values"] = persisted_events["typed_values"].map(lambda x: json.dumps(x, sort_keys=True, default=str))
                 persisted_events.to_parquet(staging / "events.parquet", index=False)
@@ -472,8 +486,8 @@ class DatasetRegistry:
                     "availability_policy": request.event_policy_id, "evaluation_population_id": request.evaluation_population_id,
                     "features_path": str(destination / "features.parquet"),
                     "protocol_path": str(destination / "protocol.json"), "target_only_columns": source_manifest.get("target_only_columns", []),
-                    "market_only_columns": source_manifest.get("market_only_columns", []), "ordered_row_keys_sha256": _digest(_keys(features)),
-                    "ordered_row_hashes_sha256": hashlib.sha256(pd.util.hash_pandas_object(features, index=False).to_numpy().tobytes()).hexdigest(),
+                    "market_only_columns": source_manifest.get("market_only_columns", []), "ordered_row_keys_sha256": ordered_row_keys_sha256,
+                    "ordered_row_hashes_sha256": ordered_row_hashes_sha256,
                     "event_audit": event_audit, "validation": report, "promotion": "candidate_only; explicit operator policy required",
                     "target_eligibility": target_eligibility,
                     "unsupported_requirements": ["raw blobs are not locally replayed by this registry", "source rating/profile publication is unverified; dependent predictors excluded", "condition residuals require parent train-only fitted transforms", "explicit delayed race-result publication excludes that race from development history; delayed-label asof rebuild not yet supported", "dead-heat races excluded by the current single-winner training contract; original tied outcomes preserved upstream"],

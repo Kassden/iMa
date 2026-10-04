@@ -1,19 +1,90 @@
+import hashlib
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
 from ima.dataset_registry import DatasetRegistry
 from ima.dataset_registry import audit_races
+from ima.rich_features import prepare_rich_runner_dataset
 from ima.dataset_specs import DatasetProtocolSpec, DatasetRequest
 from ima.feature_definitions import FeatureRegistry
 from tests.test_dataset_registry_adversarial import source_rows, event, digest
 
 
 class DatasetRegistryTests(unittest.TestCase):
+    def _build_row_hash_fixture(self, root):
+        snapshot = root / "snapshot"
+        snapshot.mkdir()
+        source = source_rows()
+        source.to_parquet(snapshot / "runners.parquet", index=False)
+        (snapshot / "events.jsonl").write_text(json.dumps(event("row-hash-workout")) + "\n")
+        raw = snapshot / "manifest.json"
+        raw.write_text(json.dumps({
+            "source_policy": "HKJC-only; synthetic row-hash fixture",
+            "rows": len(source), "races": int(source.race_id.nunique()),
+            "files": {name: digest(snapshot / name) for name in ("runners.parquet", "events.jsonl")},
+        }))
+        registry = DatasetRegistry(root / "registry")
+        registry.submit(DatasetRequest.model_validate({
+            "request_id": "row-hash-fixture", "raw_corpus_manifest_id": digest(raw),
+            "rationale": "Verify persisted row hashes", "evidence_watermark": "fixture",
+            "protocol": {"min_train_races": 2, "calibration_races": 1, "score_races": 1,
+                         "max_folds": 2, "final_confirmation_races": 2},
+        }))
+        manifest = registry.build("row-hash-fixture", source_snapshot=snapshot, raw_manifest=raw)
+        return registry, manifest
+
+    def test_signed_nan_build_hashes_actual_parquet_roundtrip(self):
+        in_memory = []
+
+        def signed_nan_history(*args, **kwargs):
+            frame = prepare_rich_runner_dataset(*args, **kwargs)
+            values = frame.last_result.to_numpy(copy=True)
+            values[np.isnan(values)] = -np.nan
+            frame["last_result"] = values
+            in_memory.append(frame.last_result.copy())
+            return frame
+
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("ima.dataset_registry.prepare_rich_runner_dataset", side_effect=signed_nan_history):
+                registry, manifest = self._build_row_hash_fixture(Path(directory))
+            persisted = pd.read_parquet(registry.dataset_path(manifest["dataset_id"]) / "features.parquet")
+            self.assertTrue(np.signbit(in_memory[-1].loc[in_memory[-1].isna()]).all())
+            pd.testing.assert_series_equal(in_memory[-1], persisted.last_result)
+            # Equal missing values can have different IEEE NaN payload/sign hashes.
+            self.assertFalse(np.array_equal(
+                pd.util.hash_pandas_object(in_memory[-1], index=False).to_numpy(),
+                pd.util.hash_pandas_object(persisted.last_result, index=False).to_numpy()))
+            expected = hashlib.sha256(pd.util.hash_pandas_object(
+                persisted, index=False).to_numpy().tobytes()).hexdigest()
+            self.assertEqual(expected, manifest["ordered_row_hashes_sha256"])
+            self.assertEqual("verified", registry.verify(manifest["dataset_id"])["status"])
+
+    def test_rewritten_declared_row_hash_cannot_bypass_verification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry, manifest = self._build_row_hash_fixture(Path(directory))
+            path = registry.dataset_path(manifest["dataset_id"])
+            manifest["ordered_row_hashes_sha256"] = "0" * 64
+            (path / "manifest.json").write_text(json.dumps(manifest))
+            (path / "manifest.sha256").write_text(digest(path / "manifest.json"))
+            with self.assertRaisesRegex(ValueError, "ordered row hash"):
+                registry.verify(manifest["dataset_id"])
+
+    def test_rewritten_declared_ordered_keys_cannot_bypass_verification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            registry, manifest = self._build_row_hash_fixture(Path(directory))
+            path = registry.dataset_path(manifest["dataset_id"])
+            manifest["ordered_row_keys_sha256"] = "0" * 64
+            (path / "manifest.json").write_text(json.dumps(manifest))
+            (path / "manifest.sha256").write_text(digest(path / "manifest.json"))
+            with self.assertRaisesRegex(ValueError, "ordered row key hash"):
+                registry.verify(manifest["dataset_id"])
+
     def test_dead_heat_is_quarantined_without_fabricating_a_winner(self):
         source = source_rows()
         source.loc[(source.race_id == "r1") & (source.horse_no == 2), ["result", "finish_time"]] = [1, "1:00.00"]
