@@ -394,7 +394,7 @@ does not extract the archive, import campaign code, read credentials or deploy.
 ```bash
 RESEARCH_RELEASE_SHA=<full-40-character-committed-SHA>
 RESEARCH_RELEASE_ARCHIVE=<local-artifact-directory>/ima-v6-$RESEARCH_RELEASE_SHA.tar
-git archive --format=tar --output "$RESEARCH_RELEASE_ARCHIVE" "$RESEARCH_RELEASE_SHA" -- ima scrapper scripts config tests deploy/systemd pyproject.toml requirements-research.lock requirements-v5-overlay.lock docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md docs/RESEARCH_NOMENCLATURE.md
+git archive --format=tar --output "$RESEARCH_RELEASE_ARCHIVE" "$RESEARCH_RELEASE_SHA" -- ima scrapper scripts config tests deploy/systemd pyproject.toml requirements-research.lock requirements-v5-overlay.lock docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md docs/RESEARCH_NOMENCLATURE.md docs/V4_V5_RESEARCH_HANDOFF_TO_V6.md
 bash deploy/systemd/ima-research-expansion-supervisor --verify-package "$RESEARCH_RELEASE_ARCHIVE" "$RESEARCH_RELEASE_SHA"
 ```
 
@@ -437,7 +437,7 @@ git rev-parse --verify "$RESEARCH_RELEASE_SHA^{commit}"
 mkdir -m 700 "$RESEARCH_ARTIFACT_DIR"
 git show "$RESEARCH_RELEASE_SHA:deploy/systemd/ima-research-expansion-supervisor" > "$RESEARCH_ARTIFACT_DIR/package-verifier"
 RESEARCH_RELEASE_ARCHIVE="$RESEARCH_ARTIFACT_DIR/ima-v6-$RESEARCH_RELEASE_SHA.tar"
-git archive --format=tar --output "$RESEARCH_RELEASE_ARCHIVE" "$RESEARCH_RELEASE_SHA" -- ima scrapper scripts config tests deploy/systemd pyproject.toml requirements-research.lock requirements-v5-overlay.lock docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md docs/RESEARCH_NOMENCLATURE.md
+git archive --format=tar --output "$RESEARCH_RELEASE_ARCHIVE" "$RESEARCH_RELEASE_SHA" -- ima scrapper scripts config tests deploy/systemd pyproject.toml requirements-research.lock requirements-v5-overlay.lock docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md docs/RESEARCH_NOMENCLATURE.md docs/V4_V5_RESEARCH_HANDOFF_TO_V6.md
 IMA_V6_PYTHON=python3 bash "$RESEARCH_ARTIFACT_DIR/package-verifier" --verify-package "$RESEARCH_RELEASE_ARCHIVE" "$RESEARCH_RELEASE_SHA" > "$RESEARCH_ARTIFACT_DIR/package-receipt.json"
 RESEARCH_RECEIPT_SHA=$(shasum -a 256 "$RESEARCH_ARTIFACT_DIR/package-receipt.json" | cut -d ' ' -f 1)
 ssh imaopt@100.95.24.121 "/home/imaopt/research-v2/v6-dependencies/venv/bin/python -I -B -c 'import re,sys; from pathlib import Path; s=sys.argv[1]; assert re.fullmatch(r\"[0-9a-f]{40}\",s); p=Path(\"/home/imaopt/research-v2/v6-staging\"); p.mkdir(mode=0o700,exist_ok=True); assert p.resolve()==p; (p/s).mkdir(mode=0o700)' '$RESEARCH_RELEASE_SHA'"
