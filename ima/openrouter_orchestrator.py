@@ -609,6 +609,8 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         "Full worker queues do not forbid proposing future programs or reviewing/retiring work. "
         "Pending backlog limits are distinct from workers. Do not request unavailable source data. "
         "Use actual registered predictor metadata and generated feature IDs, not guessed columns. "
+        "Registered columns outside the chosen baseline schema must be declared in "
+        "recipe.extra_numeric_features before transforms reference them. "
         "Feature definitions are typed numeric ASTs, never executable Python. All learned processing "
         "and stacking is chronological, training-only or forward OOF. Do not use current-race "
         "outcomes, final odds, market probabilities or targets as fundamental input features. "
@@ -635,6 +637,12 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         "confirmation races are inaccessible. A failed proposal is not a successful empty decision."
     )}, {"role": "user", "content": json.dumps(compact_planner_evidence({
         "task": "research_decision_v6", "limits": limits,
+        "required_identity": {"decision_id": evidence_bundle["decision_id"],
+                              "evidence_id": evidence_bundle["evidence_id"],
+                              "research_memo_sha256": memo["sha256"] if memo else None},
+        "output_budget": {"max_completion_tokens": config.max_output_tokens,
+                          "reasoning_shares_budget": True,
+                          "format": "Concise JSON; omit optional default/null fields; keep explanations short. Copy required_identity exactly."},
         "decision_schema": PlannerDecision.model_json_schema(),
         "feature_definition_schema": FeatureDefinition.model_json_schema(),
         "dataset_request_schema": DatasetRequest.model_json_schema(),
@@ -661,7 +669,7 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
                             "learned covariance", "arbitrary transform nodes"],
             "outer_model": "Must match primary_node_id estimator model_kind; tuning binds that node",
             "outer_adapters": "Set recipe.calibration.kind=none and recipe.blend.kind=none; compose these stages explicitly inside the graph",
-            "market_output": "Declare output.market=true; fundamental_node_id must have no market ancestor",
+            "market_output": "Output contracts belong to nodes[].output, never the graph root. Set nodes[].output.market=true only for actual market ancestry; fundamental_node_id must have no market ancestor",
         },
         "model_parameter_contracts": MODEL_PARAMETER_CONTRACTS,
         "evidence": evidence_bundle,
