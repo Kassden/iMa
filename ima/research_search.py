@@ -442,7 +442,7 @@ class ProgramSearchController:
                     if dimension.kind == "float":
                         value = trial.suggest_float(name, float(dimension.low), float(dimension.high), log=dimension.log)
                     elif dimension.kind == "int":
-                        value = trial.suggest_int(name, int(dimension.low), int(dimension.high))
+                        value = trial.suggest_int(name, int(dimension.low), int(dimension.high), log=dimension.log)
                     else:
                         value = trial.suggest_categorical(name, list(dimension.choices))
                     parameters[name] = value

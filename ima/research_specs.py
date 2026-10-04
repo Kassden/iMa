@@ -345,9 +345,9 @@ class SearchDimension(StrictModel):
         ):
             raise ValueError("numeric search requires ordered low/high bounds and no choices")
         elif self.kind == "int" and (
-            not isinstance(self.low, int) or not isinstance(self.high, int) or self.log
+            not isinstance(self.low, int) or not isinstance(self.high, int)
         ):
-            raise ValueError("integer search requires integer bounds without log scale")
+            raise ValueError("integer search requires integer bounds")
         elif self.log and self.low <= 0:
             raise ValueError("logarithmic search requires positive bounds")
         return self

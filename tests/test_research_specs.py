@@ -4,10 +4,24 @@ from pydantic import ValidationError
 
 from ima.experiments import recipe_experiment_spec
 from ima.feature_sets import BASELINE_SCHEMA, RICH_SCHEMA, drop_feature_families
-from ima.research_specs import PipelineRecipe, RecipeValidationError, ResearchProposal
+from ima.research_specs import PipelineRecipe, RecipeValidationError, ResearchProposal, SearchDimension
 
 
 class ResearchSpecTests(unittest.TestCase):
+    def test_integer_log_search_accepts_positive_integer_bounds(self):
+        dimension = SearchDimension(kind="int",low=100,high=5000,log=True)
+        self.assertTrue(dimension.log)
+        self.assertIs(type(dimension.low),int)
+        self.assertIs(type(dimension.high),int)
+        self.assertEqual((100,5000),(dimension.low,dimension.high))
+        self.assertEqual(-5,SearchDimension(kind="int",low=-5,high=10).low)
+
+    def test_integer_log_search_rejects_nonpositive_and_noninteger_bounds(self):
+        for low,high in ((0,10),(-1,10),(-10,-1),(1.5,10),(1,10.5),
+                         (1.0,10),(1,10.0),(True,10),(False,10),(1,True),(1,False)):
+            with self.subTest(low=low,high=high),self.assertRaises(ValidationError):
+                SearchDimension(kind="int",low=low,high=high,log=True)
+
     def test_feature_program_identity_tracks_features_not_model_parameters(self):
         first = PipelineRecipe(
             feature_schema="benter-rich-v1",
