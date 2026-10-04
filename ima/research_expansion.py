@@ -24,6 +24,7 @@ from .research_specs import PipelineRecipe, ResearchProposal, V6_PORTFOLIO_VERSI
 from .research_store import ResearchLedger, utc_now
 from .research_telemetry import evidence_snapshot, log_snapshot
 from .research_betting import PaperResearchRequest
+from .research_external_planner import read_external_decision as _external_decision
 
 
 class PlannerDecision(BaseModel):
@@ -150,6 +151,8 @@ def plan_decision(evidence: dict, config) -> dict:
     limits = {"trial_ceiling": config.proposal_batch_size,
               "max_new_programs": config.max_new_programs_per_decision,
               "max_pending_programs": config.max_pending_programs}
+    if config.planner_mode == "external":
+        return _external_decision(evidence, config)
     if config.planner_mode == "fixture":
         budget = min(config.proposal_batch_size, 5)
         recipes = core._v4_seed_proposals()[:min(2,budget,config.max_new_programs_per_decision)]
@@ -996,7 +999,7 @@ def run_expansion_campaign(config):
                 if planning and planning[0].done():
                     future,evidence = planning
                     payload = {"decision_id":evidence["decision_id"],"evidence_id":evidence["evidence_id"],
-                               "planner_model":config.model if config.planner_mode=="openrouter" else None}
+                               "planner_model":config.model if config.planner_mode in {"openrouter", "external"} else None}
                     response = None
                     try:
                         response = future.result()

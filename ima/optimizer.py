@@ -147,8 +147,10 @@ class CampaignConfig:
             raise ValueError("openrouter batch mode requires a remote OpenRouter policy")
         if self.spec_profile not in SPEC_PROFILES:
             raise ValueError(f"Unknown experiment spec profile: {self.spec_profile}")
-        if self.planner_mode not in {"local", "fixture", "openrouter"}:
-            raise ValueError("planner_mode must be local, fixture, or openrouter")
+        if self.planner_mode not in {"local", "fixture", "openrouter", "external"}:
+            raise ValueError("planner_mode must be local, fixture, openrouter, or external")
+        if self.planner_mode == "external" and (self.research_policy != "expansion_v6" or self.model == "openrouter/local-policy"):
+            raise ValueError("External planning requires V6 and an explicit orchestrator model")
         if self.max_total_cost_usd is not None and self.max_total_cost_usd <= 0:
             raise ValueError("max_total_cost_usd must be positive when configured")
         if self.max_output_tokens <= 0:
