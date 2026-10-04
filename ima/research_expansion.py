@@ -1049,7 +1049,7 @@ def run_expansion_campaign(config):
                         from .research_resources import JobWorkload
                         workload = JobWorkload(stage="feature_generation",family="official_dataset",rows=rows,generated_features=155,selected_features=155,implementation_revision=revision,dependency_versions={"environment":environment},search_settings={"request":state["request_fingerprint"]})
                         estimate = preparation_estimator.estimate(workload)
-                        if resources.admits(estimate):
+                        if _preparation_slot_available(config.max_active_preparations,search.programs,preparing.values(),len(building_datasets)) and resources.admits(estimate):
                             resources.reserve("dataset:"+request_id,estimate)
                             try:
                                 future = builders.submit(_build_dataset,str(registry.root),request_id,source,raw,str(registry.feature_registry))
@@ -1092,7 +1092,7 @@ def run_expansion_campaign(config):
                                 pass
                         workload = _workload(search.programs[pid].recipe,context["rows"],revision,environment,stage="preparation")
                         estimate = preparation_estimator.estimate(workload)
-                        if resources.admits(estimate):
+                        if _preparation_slot_available(config.max_active_preparations,search.programs,preparing.values(),len(building_datasets),search.programs[pid].recipe) and resources.admits(estimate):
                             resources.reserve(f"prepare:{pid}",estimate)
                             try:
                                 future = builders.submit(_prepare_program,context["dataset"],search.programs[pid].recipe,context["digest"],directory)
@@ -1270,6 +1270,15 @@ def run_expansion_campaign(config):
                     wait(inflight,timeout=1,return_when=FIRST_COMPLETED)
                 else:
                     time.sleep(1)
+
+
+def _preparation_slot_available(max_preparations, programs, preparing, dataset_build_count, recipe=None):
+    expensive = lambda value: bool(value.feature_discovery or value.feature_definitions)
+    if recipe is not None and not expensive(recipe):
+        return True
+    # Dataset builds and generated-feature recipes share the expensive-work cap.
+    active = dataset_build_count + sum(expensive(programs[pid].recipe) for pid in preparing)
+    return active < max(1,max_preparations-1)
 
 
 def _preparation_program_order(capacity, programs, ready, preparing, reservations):

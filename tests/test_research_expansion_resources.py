@@ -12,7 +12,7 @@ from ima.research_expansion import (
     DecisionStore, PlannerDecision, _prepare_program, _program_context, _build_dataset,
     _recover_orphan_asks, _native_threads, _workload, _planner_cost, _planner_spend, apply_decision,
     plan_decision, run_expansion_campaign, _capabilities, _validate_raw_manifest, _needs_lane_refill,
-    _preparation_program_order, _lane,
+    _preparation_program_order, _preparation_slot_available, _lane,
 )
 from ima.research_search import ProgramSearchController
 from ima.research_store import ResearchLedger
@@ -115,6 +115,66 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
         capacity["other-b"] = 0
         self.assertEqual(["heavy-b","small-e","heavy-e"],
             _preparation_program_order(capacity,programs,{},(),[]))
+
+    def test_expensive_preparation_cap_reserves_one_of_two_slots_for_quick_work(self):
+        programs = self.preparation_programs()
+        self.assertTrue(_preparation_slot_available(2,programs,(),0,programs["heavy-b"].recipe))
+        self.assertFalse(_preparation_slot_available(2,programs,("heavy-b",),0,programs["heavy-e"].recipe))
+        self.assertTrue(_preparation_slot_available(2,programs,("heavy-b",),0,programs["cheap-b"].recipe))
+        self.assertTrue(_preparation_slot_available(2,programs,("cheap-b",),0,programs["heavy-b"].recipe))
+
+    def test_dataset_builds_discovery_and_formulas_share_expensive_cap(self):
+        programs = self.preparation_programs()
+        formulas = programs["cheap-b"].recipe.model_copy(update={"feature_definitions":({"name":"fixture"},)})
+        programs["formulas"] = SimpleNamespace(recipe=formulas)
+        self.assertFalse(_preparation_slot_available(2,programs,(),1,programs["heavy-b"].recipe))
+        self.assertFalse(_preparation_slot_available(2,programs,(),1,formulas))
+        self.assertFalse(_preparation_slot_available(2,programs,("formulas",),0))
+        self.assertFalse(_preparation_slot_available(2,programs,("heavy-b",),0))
+        self.assertTrue(_preparation_slot_available(3,programs,("heavy-b",),0))
+        self.assertFalse(_preparation_slot_available(3,programs,("heavy-b",),1))
+        self.assertTrue(_preparation_slot_available(3,programs,("cheap-b",),1,formulas))
+
+    def test_single_preparation_slot_keeps_legacy_admission_bound(self):
+        from ima.research_resources import estimate_job
+        from ima.research_scheduler import ResourceAdmission
+        programs = self.preparation_programs()
+        resources = ResourceAdmission(2,2,100,max_preparations=1,max_fits=1)
+        heavy = estimate_job(_workload(programs["heavy-b"].recipe,171782,"r","e",stage="preparation"))
+        quick = estimate_job(_workload(programs["cheap-b"].recipe,171782,"r","e",stage="preparation"))
+        self.assertTrue(_preparation_slot_available(1,programs,(),0,programs["heavy-b"].recipe))
+        self.assertTrue(_preparation_slot_available(1,programs,(),0))
+        resources.reserve("heavy",heavy)
+        self.assertFalse(_preparation_slot_available(1,programs,("heavy-b",),0))
+        self.assertTrue(_preparation_slot_available(1,programs,("heavy-b",),0,programs["cheap-b"].recipe))
+        self.assertIn("max_preparations",resources.blockers(quick))
+
+    def test_followon_quick_program_prepares_with_heavy_active_and_lanes_covered(self):
+        from ima.research_resources import estimate_job
+        from ima.research_scheduler import ResourceAdmission
+        programs = self.preparation_programs()
+        programs = {"next-heavy":SimpleNamespace(recipe=programs["heavy-b"].recipe),**programs}
+        capacity = dict.fromkeys(programs,3)
+        resources = ResourceAdmission(4,4,100,max_preparations=2,max_fits=2)
+        resources.reserve("heavy-b",estimate_job(_workload(programs["heavy-b"].recipe,171782,"r","e",stage="preparation")))
+        preparing = ["heavy-b"]
+        ready = {"heavy-e":{}}
+        reservations = [{"payload":{"program_id":"cheap-b"}}]*13
+        original_capacity = dict(capacity)
+        self.assertEqual("benter",_lane(len(reservations)))
+        order = _preparation_program_order(capacity,programs,ready,preparing,reservations)
+        self.assertEqual("next-heavy",order[0])
+        for pid in order:
+            recipe = programs[pid].recipe
+            estimate = estimate_job(_workload(recipe,171782,"r","e",stage="preparation"))
+            if _preparation_slot_available(2,programs,preparing,0,recipe) and resources.admits(estimate):
+                resources.reserve(pid,estimate)
+                preparing.append(pid)
+        self.assertEqual(["heavy-b","other-b"],preparing)
+        self.assertEqual(2,resources.snapshot()["running_jobs"])
+        self.assertEqual(original_capacity,capacity)
+        self.assertEqual(13,len(reservations))
+        self.assertEqual("benter",_lane(len(reservations)))
 
     def test_base_preparation_and_feature_generation_have_distinct_estimates(self):
         from ima.feature_program import DiscoverySpec
