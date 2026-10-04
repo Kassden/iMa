@@ -81,6 +81,18 @@ class RichFeatureContractTests(unittest.TestCase):
         self.assertEqual([2.0, 2.0], frame[frame.race_id.eq("R2")]["jockey_starts"].tolist())
         self.assertEqual([0.5, 0.5], frame[frame.race_id.eq("R2")]["jockey_win_rate"].tolist())
 
+    def test_strict_meeting_history_does_not_use_earlier_same_day_results(self):
+        source = self.source()
+        source.loc[source.race_id.eq("R2"), "date"] = "2020-01-01"
+        source.loc[source.race_id.eq("R2"), "horse_id"] = ["C", "D"]
+        strict = prepare_rich_runner_dataset(source, strict_before_meeting=True)
+        later = strict.loc[strict.race_id.eq("R2")]
+        self.assertEqual([0., 0.], later.jockey_starts.tolist())
+        self.assertTrue(later.jockey_last_result.isna().all())
+        self.assertTrue(later.jockey_avg_result_90d.isna().all())
+        legacy = prepare_rich_runner_dataset(source)
+        self.assertEqual([2., 2.], legacy.loc[legacy.race_id.eq("R2"), "jockey_starts"].tolist())
+
     def test_auxiliary_events_are_strictly_before_race_date(self):
         trackwork = pd.DataFrame({
             "horse_id": ["A", "A"], "event_date": ["2020-01-09", "2020-01-10"],
