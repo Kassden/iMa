@@ -49,6 +49,11 @@ class DatasetRegistryTests(unittest.TestCase):
                                  "max_folds": 2, "final_confirmation_races": 2}}
             registry.submit(DatasetRequest.model_validate(spec))
             parent = registry.build("initial", source_snapshot=snapshot, raw_manifest=raw)
+            parent_path = registry.dataset_path(parent["dataset_id"])
+            self.assertEqual(raw.read_bytes(), (parent_path / "raw_manifest.json").read_bytes())
+            self.assertEqual(raw.read_bytes(), (parent_path / "source_manifest.json").read_bytes())
+            self.assertIsInstance(json.loads((parent_path / "raw_manifest.json").read_text()), dict)
+            self.assertEqual("m", parent["predictor_catalog"]["trackwork_last_distance_metres"]["unit"])
             self.assertEqual({"venue", "course", "going", "jockey_key", "trainer_key"},
                              set(parent["eligible_categorical_predictors"]))
             metadata_keys = {"unit", "dtype", "temporal_scope", "target_tainted", "available_at_column", "source_family"}
@@ -68,6 +73,13 @@ class DatasetRegistryTests(unittest.TestCase):
             self.assertEqual(identifier, successor["predictor_catalog"]["dfs_" + identifier]["definition_id"])
             self.assertEqual("verified", registry.verify(successor["dataset_id"])["status"])
             self.assertNotEqual(parent["dataset_id"], successor["dataset_id"])
+            saved = path / "raw_manifest.json"
+            saved.write_text(json.dumps("trainer_id"))
+            successor["files"]["raw_manifest.json"] = digest(saved)
+            (path / "manifest.json").write_text(json.dumps(successor))
+            (path / "manifest.sha256").write_text(digest(path / "manifest.json"))
+            with self.assertRaisesRegex(ValueError, "provenance manifest must be an object"):
+                registry.verify(successor["dataset_id"])
 
 
 if __name__ == "__main__":

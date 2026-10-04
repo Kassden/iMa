@@ -165,7 +165,7 @@ def _catalog(features, event_columns, speed_columns, *, target_only=()):
             unit = "days"
         elif "weight" in name and not any(term in name for term in ("pct", "rank")):
             unit = "lb/days" if name == "weight_change_per_day" else "lb"
-        elif name == "distance" or name == "last_distance" or name == "distance_change" or name.startswith("total_distance_"):
+        elif name == "distance" or name == "last_distance" or name == "distance_change" or name.startswith("total_distance_") or name.endswith("_distance_metres"):
             unit = "m"
         elif "finish_time" in name:
             unit = "s"
@@ -240,6 +240,11 @@ class DatasetRegistry:
         for name, digest in manifest["files"].items():
             if Path(name).name != name or file_sha256(path / name) != digest:
                 raise ValueError(f"Dataset checksum mismatch: {name}")
+        for name, identity_key in (("raw_manifest.json", "raw_manifest"), ("source_manifest.json", "source_manifest")):
+            if not isinstance(json.loads((path / name).read_text()), dict):
+                raise ValueError(f"Dataset provenance manifest must be an object: {name}")
+            if file_sha256(path / name) != manifest["identity"][identity_key]:
+                raise ValueError(f"Dataset provenance identity mismatch: {name}")
         return manifest
 
     def _confirmation_races(self, source, request):
@@ -372,8 +377,8 @@ class DatasetRegistry:
                                    target_only=source_manifest.get("target_only_columns", ()))
                 categorical = [name for name in ("venue", "course", "going", "jockey_key", "trainer_key")
                     if name in features and name not in source_manifest.get("target_only_columns", ())]
-                for raw, derived in (("jockey_id", "jockey_key"), ("trainer_id", "trainer_key")):
-                    if raw in source_manifest.get("target_only_columns", ()) and derived in categorical:
+                for source_column, derived in (("jockey_id", "jockey_key"), ("trainer_id", "trainer_key")):
+                    if source_column in source_manifest.get("target_only_columns", ()) and derived in categorical:
                         categorical.remove(derived)
                 formula_report = {"definitions": [], "definition_ids": []}
                 if request.feature_definition_ids:
@@ -425,8 +430,8 @@ class DatasetRegistry:
                 persisted_events.to_parquet(staging / "events.parquet", index=False)
                 pd.DataFrame(coverage).to_parquet(staging / "coverage.parquet", index=False)
                 _write_json(staging / "request.json", request.model_dump(mode="json"))
-                _write_json(staging / "raw_manifest.json", raw)
-                _write_json(staging / "source_manifest.json", source_manifest)
+                shutil.copyfile(raw_path, staging / "raw_manifest.json")
+                shutil.copyfile(snapshot / "manifest.json", staging / "source_manifest.json")
                 _write_json(staging / "exclusions.json", exclusions)
                 _write_json(staging / "confirmation_keys.json", confirmation_keys)
                 _write_json(staging / "formula-report.json", formula_report)
