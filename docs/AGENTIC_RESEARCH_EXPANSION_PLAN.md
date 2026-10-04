@@ -70,6 +70,17 @@ Not-done: simply raising one ceiling, blanket event-date assumptions called veri
 - New hypothesis, not established cause: request-upload/backpressure or the Tailscale exit/upstream path may be responsible. A successful small GET does not prove a full POST works. Only bounded noncharged synthetic-payload diagnostics, exact local wire-size reconstruction and read-only routing/MTU checks are allowed next; do not disclose research evidence to a public echo endpoint, mutate routing/security, or send another model request to diagnose transport.
 - Gate status: C1 full suite/CI, exact Linux fixture and five actual official-data controls with production MLflow readback passed. Paid planner acceptance and continuous V6 remain blocked; V5 stays active and unchanged.
 
+### Memo Delivery and Compact Request Qualification (2026-10-04)
+- Updated state: V5 was stopped under explicit user authorization; its interrupted ledger rows remain evidence, not completions. The bounded Luna session completed five fits. Neither proves an unattended OpenRouter campaign.
+- Root cause evidence: the earlier 202,674-byte synthetic POST failed before headers without billing. Small GET success did not qualify uploads. Fresh nonbilling probes at 64 KiB passed three times; this does not qualify a larger final request.
+- Planned Touch Files: `ima/research_memo.py`, `ima/research_planner_context.py`, `ima/openrouter_orchestrator.py`, `ima/research_expansion.py`, `tests/test_research_memo.py`, `tests/test_research_planner_context.py`, `tests/test_research_expansion_resources.py`.
+- Deliver the full committed `docs/V4_V5_RESEARCH_HANDOFF_TO_V6.md` in every V6 evidence snapshot. Hash its exact bytes into evidence identity; require OpenRouter decisions to acknowledge `research_memo_sha256`. Acknowledgment proves delivered version, not human-like comprehension; inspect hypothesis reasoning as well.
+- Use reversible columnar predictor metadata and deduplicate schemas only when their definitions are identical. Preserve all predictor eligibility, safety, units and missing-field semantics. Keep full original evidence on disk and in telemetry.
+- Tests: exact catalog/schema round trips; unchanged original bundle; full memo delivery; missing/mismatched memo acknowledgment rejection; existing planner, resource and controller regressions.
+- Paid gate: measure exact HTTPX body after final release/config/evidence pinning, then qualify that exact byte size with bounded nonbilling synthetic uploads. Do not send research content to diagnostic endpoints. Another pre-header failure freezes paid launch regardless of successful local tests.
+- Launch gate: one bounded paid qualification must yield actual response/cost, memo acknowledgment, nonempty executable programs and a durable validated queue. Verify actual training and MLflow readbacks before claiming continuous service; no idle empty-seed launch or paid retry after unknown cost.
+- Commit: `fix(planner): deliver pinned research memo with compact evidence`.
+
 ## Research
 - Built-in options inspected: official parser/snapshot builder, rich historical features, selection, pinned V5 controller, recipe contracts and MLflow tracking; findings are enumerated in the Root-Cause Baseline.
 - Off-the-shelf choices: Featuretools/feature-engine for discovery and screening, sklearn/Optuna for fitting/search, Joblib/NumPy for shared arrays, and MLflow/OpenTelemetry conventions for provenance and traces.
