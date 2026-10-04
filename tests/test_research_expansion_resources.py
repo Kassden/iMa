@@ -11,7 +11,7 @@ from ima.optimizer import CampaignConfig
 from ima.research_expansion import (
     DecisionStore, PlannerDecision, _prepare_program, _program_context, _build_dataset,
     _recover_orphan_asks, _native_threads, _workload, _planner_cost, _planner_spend, apply_decision,
-    plan_decision, run_expansion_campaign,
+    plan_decision, run_expansion_campaign, _capabilities, _validate_raw_manifest, _needs_lane_refill,
 )
 from ima.research_search import ProgramSearchController
 from ima.research_store import ResearchLedger
@@ -223,3 +223,174 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
             result = _build_dataset("registry","request","snapshot","raw",feature_registry="shared-definitions")
         constructor.assert_called_once_with("registry",feature_registry="shared-definitions")
         self.assertEqual("built",result["dataset_id"])
+
+    def test_initial_capabilities_advertise_exact_request_identity_and_safe_context(self):
+        from dataclasses import replace
+        from ima.dataset_specs import DatasetRequest
+        from ima.dataset_registry import DatasetRegistry
+        from ima.feature_definitions import FeatureDefinition,FeatureRegistry
+        snapshot = self.root/"snapshot"
+        snapshot.mkdir()
+        raw = snapshot/"raw_manifest.json"
+        core._write_json_atomic(snapshot/"manifest.json",{"raw_manifest_path":"raw_manifest.json"})
+        core._write_json_atomic(raw,{"manifest_id":"raw-known","snapshot_id":"snapshot-known","raw_corpus_manifest_id":"corpus-known","labels":["protected-label"]})
+        registry = DatasetRegistry(self.root/"registry",feature_registry=self.root/"shared-definitions")
+        definition = FeatureDefinition(name="constant_feature",expression_ast={"op":"constant","value":1},input_refs=())
+        identifier = FeatureRegistry(registry.feature_registry).register(definition,{})
+        parameters = core._protocol_parameters(self.config)
+        core._write_json_atomic(self.protocol,{"protocol_id":"protocol-known","spec":parameters | {"final_confirmation_races":20,"final_confirmation_race_ids":["protected-race"],"final_confirmation_start":"2099-01-01"},"folds":[{"score_race_ids":["protected-score"]}]})
+        catalog = {"horse_age":{"unit":"1","temporal_scope":"pre_race","eligible":True}}
+        core._write_json_atomic(self.dataset.parent/"manifest.json",{"dataset_id":"dataset-known","feature_catalog":catalog,"rows":100,"races":25,"date_min":"2000-01-01","date_max":"2020-01-01","availability_policy":"strict","target_eligibility":{"win":{"eligible_races":25,"eligible_rows":100,"contract":"win_probability","excluded_race_ids":["protected-excluded"],"labels":["protected-label"]}},"confirmation_keys":["protected-race"],"labels":["protected-label"]})
+        config = replace(self.config,official_snapshot_path=snapshot)
+        capabilities = _capabilities(config,self.dataset,registry=registry)
+        current = capabilities["current_dataset"]
+        inputs = capabilities["dataset_request_inputs"]
+        self.assertTrue(inputs["ready"])
+        self.assertEqual(core._hash_file(raw),inputs["raw_manifest_sha256"])
+        self.assertEqual(core._hash_file(raw),inputs["raw_corpus_manifest_id"])
+        self.assertEqual([identifier],inputs["known_feature_definition_ids"])
+        self.assertEqual(catalog,capabilities["eligible_predictors"])
+        self.assertEqual("dataset-known",current["dataset_id"])
+        self.assertEqual(core._hash_file(self.dataset),current["dataset_sha256"])
+        self.assertEqual(parameters,current["protocol_parameters"])
+        self.assertEqual("protocol-known",current["protocol_id"])
+        self.assertEqual("2000-01-01",current["date_min"])
+        self.assertEqual(25,current["target_eligibility"]["win"]["eligible_races"])
+        self.assertNotIn("protected-",json.dumps(capabilities))
+        for identity in inputs["accepted_raw_corpus_manifest_ids"]:
+            _validate_raw_manifest(DatasetRequest(request_id="request",raw_corpus_manifest_id=identity,rationale="test",evidence_watermark="evidence"),raw)
+        with self.assertRaisesRegex(ValueError,"identity mismatch"):
+            _validate_raw_manifest(DatasetRequest(request_id="request",raw_corpus_manifest_id="guessed",rationale="test",evidence_watermark="evidence"),raw)
+        self.assertFalse((config.campaign_dir/"decisions.sqlite").exists())
+
+    def test_capabilities_readiness_and_policy_are_not_inferred(self):
+        from dataclasses import replace
+        for config in (self.config,replace(self.config,official_snapshot_path=self.root/"absent")):
+            with self.subTest(snapshot=config.official_snapshot_path):
+                capabilities = _capabilities(config,self.dataset)
+                self.assertFalse(capabilities["dataset_request_inputs"]["ready"])
+                self.assertEqual([],capabilities["dataset_request_inputs"]["accepted_raw_corpus_manifest_ids"])
+                self.assertIsNone(capabilities["current_dataset"]["availability_policy"])
+                self.assertIsNone(capabilities["current_dataset"]["availability_tier"])
+                self.assertNotIn("default_event_policy",capabilities["dataset_request_inputs"])
+                self.assertIn("explicit",capabilities["dataset_request_inputs"]["event_policy_selection"])
+                self.assertTrue(capabilities["dataset_request_inputs"]["retrospective_lags_required"])
+
+    def test_final_completion_stop_waits_for_tracking_upload(self):
+        from dataclasses import replace
+        from ima.research_executor import RecipeExecutionResult
+        config = replace(self.config,max_trials=None,mlflow_tracking_uri="http://unused",timeout_minutes=1)
+        uploaded = []
+        def worker(request,*args):
+            core._write_json_atomic(config.campaign_dir/"STOP",{})
+            return RecipeExecutionResult(1,request.attempt_id,request.proposal_id,request.trial_number,request.recipe.recipe_hash(),"win_probability","completed","fundamental_log_loss",2.,{},{},{},0.)
+        def upload(config,dataset,row):
+            uploaded.append(row["attempt_id"])
+            return {"run_id":"verified-upload"}
+        def planned(evidence,config):
+            item = proposal().model_copy(update={"evidence_ids":(evidence["evidence_id"],)})
+            return {"decision":{"decision_id":evidence["decision_id"],"evidence_id":evidence["evidence_id"],"trial_budget":1,"programs":[item.model_dump(mode="json")]},"usage":{"cost_status":"fixture"}}
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors),patch("ima.research_expansion.plan_decision",side_effect=planned),patch("ima.research_expansion._worker",side_effect=worker),patch("ima.research_v5.upload_result",side_effect=upload),patch("ima.research_expansion.log_snapshot"):
+            result = run_expansion_campaign(config)
+        self.assertEqual("stopped",result["mode"],core._read_json(config.campaign_dir/"status.json"))
+        self.assertEqual(1,len(uploaded))
+        self.assertEqual(0,result["pending_tracking"])
+        self.assertEqual(0,result["pending_tells"])
+
+    def test_trace_outage_blocks_and_restart_drains_transient_error(self):
+        from dataclasses import replace
+        from ima.research_telemetry import _outbox
+        config = replace(self.config,mlflow_tracking_uri="http://unused",timeout_minutes=.2)
+        core._write_json_atomic(config.campaign_dir/"STOP",{})
+        conn = _outbox(config.campaign_dir)
+        conn.execute("INSERT INTO traces(role,number,payload,tracking_uri) VALUES(?,?,?,?)",("decision",1,"{}",config.mlflow_tracking_uri))
+        conn.commit()
+        conn.close()
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors),patch("ima.research_expansion.log_snapshot"),patch("ima.research_telemetry._deliver_trace",side_effect=RuntimeError("offline")) as delivery:
+            first = run_expansion_campaign(config)
+        self.assertEqual("blocked_tracking",first["mode"])
+        self.assertEqual(1,first["pending_trace_delivery"])
+        self.assertEqual(3,delivery.call_count)
+        calls = []
+        def recover(campaign,config,role,number):
+            calls.append(number)
+            if len(calls)==1:
+                raise RuntimeError("transient")
+            conn = _outbox(campaign)
+            conn.execute("UPDATE traces SET delivered=1 WHERE role=? AND number=?",(role,number))
+            conn.commit()
+            conn.close()
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors),patch("ima.research_expansion.log_snapshot"),patch("ima.research_telemetry._deliver_trace",side_effect=recover):
+            second = run_expansion_campaign(config)
+        self.assertEqual("stopped",second["mode"])
+        self.assertEqual(0,second["pending_trace_delivery"])
+        self.assertEqual(2,len(calls))
+
+    def test_required_lane_refill_is_independent_of_large_benter_budget(self):
+        benter = proposal().recipe
+        experiment = benter.model_copy(update={"model":benter.model.model_copy(update={"kind":"boosted","parameters":{"max_iter":8}})})
+        programs = {"B":SimpleNamespace(recipe=benter),"E":SimpleNamespace(recipe=experiment)}
+        self.assertFalse(_needs_lane_refill({"B":100},programs,0))
+        self.assertTrue(_needs_lane_refill({"B":100},programs,2))
+        self.assertFalse(_needs_lane_refill({"B":100,"E":1},programs,2))
+        self.assertTrue(_needs_lane_refill({"B":100,"E":0},programs,2))
+
+    def test_lane_starvation_refills_from_planner_and_preserves_four_to_one(self):
+        from dataclasses import replace
+        from ima.research_executor import RecipeExecutionResult
+        config = replace(self.config,max_trials=None,proposal_batch_size=100,timeout_minutes=1)
+        evidence_calls = []
+        completed = []
+        def planned(evidence,config):
+            evidence_calls.append(evidence)
+            item = proposal("benter",trials=100) if len(evidence_calls)==1 else proposal("experiment",trials=1)
+            if len(evidence_calls)>1:
+                recipe = item.recipe.model_copy(update={"model":item.recipe.model.model_copy(update={"kind":"boosted","parameters":{"max_iter":8}})})
+                item = item.model_copy(update={"recipe":recipe})
+            item = item.model_copy(update={"evidence_ids":(evidence["evidence_id"],)})
+            return {"decision":{"decision_id":evidence["decision_id"],"evidence_id":evidence["evidence_id"],"trial_budget":item.max_trials,"programs":[item.model_dump(mode="json")]},"usage":{"cost_status":"fixture"}}
+        def worker(request,*args):
+            completed.append(request.attempt_id)
+            if len(completed)==5:
+                core._write_json_atomic(config.campaign_dir/"STOP",{})
+            return RecipeExecutionResult(1,request.attempt_id,request.proposal_id,request.trial_number,request.recipe.recipe_hash(),"win_probability","completed","fundamental_log_loss",2.,{},{},{},0.)
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors),patch("ima.research_expansion.plan_decision",side_effect=planned),patch("ima.research_expansion._worker",side_effect=worker),patch("ima.research_expansion.log_snapshot"):
+            result = run_expansion_campaign(config)
+        self.assertEqual("stopped",result["mode"])
+        self.assertEqual("experimental",evidence_calls[1]["next_required_lane"])
+        self.assertGreater(sum(evidence_calls[1]["remaining_program_capacity"].values()),config.queue_low_watermark)
+        terminal = ResearchLedger(config.campaign_dir/"ledger.sqlite").terminal_results()
+        self.assertEqual(4,sum(row["result"]["lane"]=="benter" for row in terminal))
+        self.assertEqual(1,sum(row["result"]["lane"]=="experimental" for row in terminal))
+
+    def test_pending_tells_block_finish_and_recover_on_restart(self):
+        search = ProgramSearchController(self.config.campaign_dir)
+        pid = search.register(proposal())
+        suggestion = search.ask(1,allowed_program_ids=[pid])[0]
+        ledger = ResearchLedger(self.config.campaign_dir/"ledger.sqlite")
+        record = ledger.reserve_attempt("tell-retry",suggestion.serializable())
+        ledger.complete_attempt(record.attempt_id,{"status":"completed","objective_name":"fundamental_log_loss","objective_value":2.,"metrics":{}},status="completed")
+        core._write_json_atomic(self.config.campaign_dir/"STOP",{})
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors),patch("ima.research_expansion.log_snapshot"),patch("ima.research_expansion.core._reconcile_tells",side_effect=RuntimeError("tell unavailable")):
+            first = run_expansion_campaign(self.config)
+        self.assertEqual("blocked_tracking",first["mode"])
+        self.assertEqual(1,first["pending_tells"])
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors),patch("ima.research_expansion.log_snapshot"):
+            second = run_expansion_campaign(self.config)
+        self.assertEqual("complete",second["mode"])
+        self.assertEqual(0,second["pending_tells"])
+
+    def test_trace_timeout_preserves_undelivered_evidence(self):
+        from dataclasses import replace
+        from ima.research_telemetry import _outbox
+        config = replace(self.config,mlflow_tracking_uri="http://unused",timeout_minutes=.03)
+        core._write_json_atomic(config.campaign_dir/"STOP",{})
+        conn = _outbox(config.campaign_dir)
+        conn.execute("INSERT INTO traces(role,number,payload,tracking_uri) VALUES(?,?,?,?)",("decision",1,"{}",config.mlflow_tracking_uri))
+        conn.commit()
+        conn.close()
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors),patch("ima.research_expansion.log_snapshot"),patch("ima.research_telemetry._deliver_trace",side_effect=RuntimeError("offline")) as delivery:
+            result = run_expansion_campaign(config)
+        self.assertEqual("blocked_tracking",result["mode"])
+        self.assertEqual(1,result["pending_trace_delivery"])
+        self.assertLessEqual(delivery.call_count,3)

@@ -371,12 +371,19 @@ def _dataset_build_inputs(config):
     return snapshot,raw_path
 
 
-def _validate_raw_manifest(request,path):
+def _raw_manifest_identity(path):
     manifest = json.loads(Path(path).read_text())
-    identities = {core._hash_file(path)}
+    digest = core._hash_file(path)
+    identities = {digest}
     if isinstance(manifest,dict):
-        identities.update(manifest.get(key) for key in ("manifest_id","raw_corpus_manifest_id","snapshot_id"))
-    if request.raw_corpus_manifest_id not in identities:
+        identities.update(value for key in ("manifest_id","raw_corpus_manifest_id","snapshot_id")
+                          if isinstance(value := manifest.get(key),str) and value)
+    return {"raw_manifest_sha256":digest,"raw_corpus_manifest_id":digest,
+            "accepted_raw_corpus_manifest_ids":sorted(identities)}
+
+
+def _validate_raw_manifest(request,path):
+    if request.raw_corpus_manifest_id not in _raw_manifest_identity(path)["accepted_raw_corpus_manifest_ids"]:
         raise ValueError("Dataset request raw manifest identity mismatch")
 
 
@@ -502,13 +509,22 @@ def run_expansion_campaign(config):
             old_evidence = core._read_json(evidence_path)
             apply_decision(decision, decisions, search, retired, config, old_evidence, profile)
         ledger.recover_running()
-        core._reconcile_tells(ledger, search)
+        startup_tell_error = None
+        try:
+            core._reconcile_tells(ledger,search)
+        except Exception as exc:
+            startup_tell_error = str(exc)
         pending = list(ledger.pending_attempts())
         inflight, preparing, ready, exhausted = {}, {}, {}, set()
         building_datasets = {}
         dataset_errors = {}
         planning = uploading = None
-        tracking_errors = []
+        tracing = None
+        upload_failures = {}
+        trace_failures = 0
+        tell_failures = 0
+        next_upload_retry = next_trace_retry = 0.
+        tracking_errors = [startup_tell_error] if startup_tell_error else []
         stop_mode = None
         last_error = None
         last_plan = last_snapshot = 0.
@@ -532,6 +548,7 @@ def run_expansion_campaign(config):
              ThreadPoolExecutor(max_workers=1) as uploader:
             while True:
                 now = time.monotonic()
+                drain_expired = bool(config.timeout_minutes and now-campaign_started>=config.timeout_minutes*60)
                 if (directory/"STOP").exists():
                     stop_mode = "stopped"
                 if config.timeout_minutes and now-campaign_started >= config.timeout_minutes*60:
@@ -562,11 +579,27 @@ def run_expansion_campaign(config):
                         ledger.mark_uploaded(attempt, json.dumps(link,sort_keys=True))
                     except Exception as exc:
                         tracking_errors.append(str(exc))
+                        upload_failures[attempt] = upload_failures.get(attempt,0)+1
+                        next_upload_retry = now+(1 if stop_mode else 30)
                     uploading = None
-                if config.mlflow_tracking_uri and uploading is None:
+                if tracing and tracing.done():
+                    try:
+                        report = tracing.result()
+                        tracking_errors.extend(str(error) for error in report.get("errors",[]))
+                        trace_failures = trace_failures+1 if report.get("errors") else 0
+                    except Exception as exc:
+                        tracking_errors.append(str(exc))
+                        trace_failures += 1
+                    tracing = None
+                    next_trace_retry = now+(1 if stop_mode else 30)
+                if config.mlflow_tracking_uri and uploading is None and tracing is None and now>=next_upload_retry and not drain_expired:
                     outbox = ledger.pending_outbox()
-                    if outbox:
-                        uploading = (uploader.submit(upload_result,config,dataset,outbox[0]),outbox[0]["attempt_id"])
+                    feasible_outbox = [row for row in outbox if upload_failures.get(row["attempt_id"],0)<3]
+                    if feasible_outbox:
+                        uploading = (uploader.submit(upload_result,config,dataset,feasible_outbox[0]),feasible_outbox[0]["attempt_id"])
+                if config.mlflow_tracking_uri and uploading is None and tracing is None and now>=next_trace_retry and trace_failures<3 and not drain_expired and _pending_trace_count(directory):
+                    from .research_telemetry import drain_trace_outbox
+                    tracing = uploader.submit(drain_trace_outbox,directory,config,limit=20)
 
                 for future in list(building_datasets):
                     if not future.done():
@@ -624,7 +657,10 @@ def run_expansion_campaign(config):
                     core._append_jsonl(directory/"trials.jsonl", result)
                     hypotheses.record(f"outcome:{attempt}",payload["program_id"],"evaluated",
                         {"attempt_id":attempt,"objective_value":result["objective_value"],"status":result["status"],"error":result.get("error")})
-                    core._reconcile_tells(ledger,search)
+                    try:
+                        core._reconcile_tells(ledger,search)
+                    except Exception as exc:
+                        tracking_errors.append(str(exc))
                     terminal_since_plan += 1
 
                 budgets = decisions.authorized_budgets()
@@ -641,6 +677,7 @@ def run_expansion_campaign(config):
                 programs_waiting = len({pid for pid,remaining in capacity.items() if remaining>0} | resumed_ids | orphan_ids)
                 needs_plan = (terminal_since_plan >= config.replan_every_terminal_trials or
                     sum(capacity.values()) <= config.queue_low_watermark or
+                    _needs_lane_refill(capacity,search.programs,len(ledger.reserved_attempts())) or
                     now-last_plan >= config.planning_checkpoint_seconds)
                 if not stop_mode and planning is None and needs_plan and now-last_plan >= (60 if last_error else 5):
                     spend = _planner_spend(directory)
@@ -648,7 +685,7 @@ def run_expansion_campaign(config):
                         last_error = "Planner call cost is unknown; further paid calls are frozen"
                         last_plan = now
                     elif config.max_total_cost_usd is not None and spend["known_spend_usd"] >= config.max_total_cost_usd:
-                        last_error = "Planner cost ceiling reached; existing approved work continues"
+                        last_error = "Planner prior-spend admission threshold reached; not a provider-enforced billing cap"
                         last_plan = now
                     else:
                         terminal = ledger.terminal_results()
@@ -661,7 +698,7 @@ def run_expansion_campaign(config):
                             available_new_program_slots=max(0,config.max_pending_programs-programs_waiting),
                             next_required_lane=_lane(len(ledger.reserved_attempts())),
                             dataset_registry={"states":[registry.get(value["request_id"]) for value in decisions.dataset_actions()],"building":list(item[0] for item in building_datasets.values()),"errors":dict(dataset_errors)},
-                            capabilities=_capabilities(config, dataset))
+                            capabilities=_capabilities(config,dataset,dataset_digest=digest,registry=registry))
                         core._write_json_atomic(directory/"evidence"/f"{evidence['decision_id']}.json",evidence)
                         planning = (planner.submit(plan_decision,evidence,config),evidence)
                         decision_number += 1
@@ -877,6 +914,8 @@ def run_expansion_campaign(config):
                     "ready_programs":list(ready),"pending_programs":programs_waiting,
                     "planner_inflight":planning is not None,"last_planner_error":last_error,
                     "planner_spend_usd":_planner_cost(directory),"planner_spend_unknown":_planner_spend(directory)["spend_unknown"],"tracking_errors":tracking_errors[-10:],
+                    "planner_spend_limit_scope":"Prior reported spend admission threshold; not a provider-enforced billing cap",
+                    "pending_trace_delivery":_pending_trace_count(directory),
                     "host_resources":{"cpu_busy_percent":psutil.cpu_percent(),
                         "load_one_minute_percent":100*psutil.getloadavg()[0]/(psutil.cpu_count() or 1),
                         "available_ram_gib":host.available/1024**3,"cgroup":cgroup}}
@@ -892,11 +931,33 @@ def run_expansion_campaign(config):
                         tracking_errors.append(str(exc))
                     snapshot_number += 1
                     last_snapshot = now
-                if stop_mode and not inflight and not preparing and not building_datasets and planning is None and uploading is None:
-                    finished = core._finish_payload(directory,ledger,search,decision_number-1,[],stop_mode,tracking_errors)
+                if stop_mode and not inflight and not preparing and not building_datasets and planning is None and uploading is None and tracing is None:
+                    pending_tracking = len(ledger.pending_outbox())
+                    pending_tells = len(ledger.pending_tells())
+                    if pending_tells and tell_failures<3 and not drain_expired:
+                        try:
+                            core._reconcile_tells(ledger,search)
+                        except Exception as exc:
+                            tracking_errors.append(str(exc))
+                        pending_tells = len(ledger.pending_tells())
+                        tell_failures = tell_failures+1 if pending_tells else 0
+                    pending_traces = _pending_trace_count(directory)
+                    tracking_blocked = (drain_expired or tell_failures>=3 or
+                        (config.mlflow_tracking_uri and pending_tracking and all(upload_failures.get(row["attempt_id"],0)>=3 for row in ledger.pending_outbox())) or
+                        (pending_traces and (trace_failures>=3 or not config.mlflow_tracking_uri)))
+                    if (config.mlflow_tracking_uri and pending_tracking) or pending_tells or pending_traces:
+                        if not tracking_blocked:
+                            time.sleep(1)
+                            continue
+                        finish_mode = "blocked_tracking"
+                    else:
+                        finish_mode = stop_mode
+                    finished = core._finish_payload(directory,ledger,search,decision_number-1,[],finish_mode,tracking_errors)
                     spend = _planner_spend(directory)
-                    finished.update(planner_spend_usd=spend["total_cost_usd"],planner_spend_unknown=spend["spend_unknown"])
-                    core._write_json_atomic(directory/"status.json",status | finished | {"status":stop_mode})
+                    finished.update(planner_spend_usd=spend["total_cost_usd"],planner_spend_unknown=spend["spend_unknown"],
+                        pending_tracking=pending_tracking,pending_tells=pending_tells,pending_trace_delivery=pending_traces,
+                        tracking_enabled=bool(config.mlflow_tracking_uri),requested_stop_mode=stop_mode)
+                    core._write_json_atomic(directory/"status.json",status | finished | {"status":finish_mode})
                     return finished
                 if inflight:
                     wait(inflight,timeout=1,return_when=FIRST_COMPLETED)
@@ -906,6 +967,20 @@ def run_expansion_campaign(config):
 
 def _lane(index):
     return "benter" if round(4*(index+1)/5)>round(4*index/5) else "experimental"
+
+
+def _needs_lane_refill(capacity,programs,attempt_count):
+    required = _lane(attempt_count)
+    return not any(remaining>0 and core._portfolio_identity(programs[pid].recipe,"expansion_v6")["lane"]==required
+                   for pid,remaining in capacity.items())
+
+
+def _pending_trace_count(directory):
+    path = Path(directory)/"trace-outbox.sqlite"
+    if not path.is_file():
+        return 0
+    with sqlite3.connect(f"file:{path}?mode=ro",uri=True) as conn:
+        return conn.execute("SELECT COUNT(*) FROM traces WHERE delivered=0").fetchone()[0]
 
 
 def _planner_cost(directory):
@@ -941,10 +1016,44 @@ def _planner_spend(directory):
     return {"total_cost_usd":None if unknown else known,"known_spend_usd":known,"spend_unknown":unknown}
 
 
-def _capabilities(config, dataset):
-    manifest = core._read_json(Path(dataset).parent/"manifest.json") or {}
+def _capabilities(config,dataset,*,dataset_digest=None,registry=None):
+    manifest_path = Path(dataset).parent/"manifest.json"
+    manifest = core._read_json(manifest_path) if manifest_path.is_file() else {}
+    protocol_path = getattr(config,"protocol_path",None)
+    stored_protocol = core._read_json(Path(protocol_path)) if protocol_path and Path(protocol_path).is_file() else {}
+    protocol = core.protocol_spec_parameters(stored_protocol) if stored_protocol else None
+    eligibility = {name:{key:row[key] for key in ("eligible_races","eligible_rows","contract","finish_time_basis") if key in row}
+                   for name,row in manifest.get("target_eligibility",{}).items() if isinstance(row,dict)}
+    current = {key:manifest.get(key) for key in ("dataset_id","raw_corpus_manifest_id","rows","races","date_min","date_max",
+        "evaluation_population_id","comparison_contract_id","availability_policy","availability_tier","unsupported_requirements")}
+    current.update(dataset_sha256=dataset_digest or core._hash_file(dataset),
+        protocol_id=stored_protocol.get("protocol_id"),protocol_parameters=protocol,target_eligibility=eligibility,
+        population_scope="published development only; confirmation identities and labels excluded")
+    inputs = {"ready":False,"raw_manifest_sha256":None,"raw_corpus_manifest_id":None,"accepted_raw_corpus_manifest_ids":[],
+        "supported_event_policy_ids":["strict","assumed_retrospective"],
+        "event_policy_selection":"explicit; no availability policy is inferred from missing metadata",
+        "retrospective_lags_required":True,"known_feature_definition_ids":[],
+        "scope":"Identity inputs only; registry still validates source files, population and target eligibility"}
+    try:
+        _,raw = _dataset_build_inputs(config)
+        inputs.update(_raw_manifest_identity(raw),ready=True,unavailable_reason=None)
+    except (OSError,ValueError) as exc:
+        inputs["unavailable_reason"] = str(exc)
+    if registry is not None:
+        feature_root = Path(registry.feature_registry)
+    else:
+        feature_root = Path(getattr(config,"dataset_registry_path",None) or Path(config.campaign_dir)/"dataset-registry")/"feature-definitions"
+    if feature_root.is_dir():
+        from .feature_definitions import FeatureRegistry
+        features = FeatureRegistry(feature_root)
+        for path in sorted(feature_root.glob("*.json")):
+            try:
+                inputs["known_feature_definition_ids"].append(features.get(path.stem).content_id())
+            except (OSError,ValueError):
+                continue
     return {"recipe_schema":PipelineRecipe.model_json_schema(),
-            "eligible_predictors":manifest.get("predictor_catalog",manifest.get("eligible_predictors",[])),
+            "eligible_predictors":manifest.get("predictor_catalog",manifest.get("feature_catalog",manifest.get("eligible_predictors",[]))),
+            "current_dataset":current,"dataset_request_inputs":inputs,
             "numeric_columns_by_schema":{k:list(v.numeric) for k,v in core.FEATURE_SCHEMAS.items()},
             "dataset_requests":"Immutable verified datasets only; publication tiers remain separate",
             "portfolio":"80% classical Benter; 20% planner-selected experimental ancestry",
