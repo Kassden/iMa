@@ -70,5 +70,5 @@ jobs:
           RESEARCH_RELEASE_SHA: ${{ github.sha }}
         run: |
           release_archive="$RUNNER_TEMP/ima-v6-$RESEARCH_RELEASE_SHA.tar"
-          git archive --format=tar --output "$release_archive" "$RESEARCH_RELEASE_SHA" -- ima scrapper scripts config tests deploy/systemd pyproject.toml requirements-research.lock requirements-v5-overlay.lock docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md docs/RESEARCH_NOMENCLATURE.md
+          git archive --format=tar --output "$release_archive" "$RESEARCH_RELEASE_SHA" -- ima scrapper scripts config tests deploy/systemd pyproject.toml requirements-research.lock requirements-v5-overlay.lock docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md docs/RESEARCH_NOMENCLATURE.md docs/V4_V5_RESEARCH_HANDOFF_TO_V6.md
           IMA_V6_PYTHON=python bash deploy/systemd/ima-research-expansion-supervisor --verify-package "$release_archive" "$RESEARCH_RELEASE_SHA"
