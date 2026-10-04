@@ -595,8 +595,12 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
     from .dataset_specs import DatasetRequest
     from .feature_definitions import FeatureDefinition
     from .research_specs import PerformanceDistributionSpec
+    from .research_planner_context import compact_planner_evidence
+    memo = evidence_bundle.get("capabilities", {}).get("research_memo")
     messages = [{"role": "system", "content": (
         "You direct horse-racing ML research. Return one strict JSON decision matching the schema. "
+        "Read the entire capabilities.research_memo when supplied; acknowledge its SHA256 in "
+        "research_memo_sha256 and use its relevant findings in hypotheses or review_reason. "
         "Select hypotheses, feature formulas, dataset requests, transforms, primary models, typed "
         "pipeline graphs, calibration and trial allocations. Optuna only tunes your frozen model "
         "search spaces. Choose a budget from 0 through trial_ceiling, not necessarily the ceiling "
@@ -629,7 +633,7 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         "choose fewer when useful. Do not fabricate market quotes, realized profits or independent validation. "
         "No live code mutation, money wagering, credentials or arbitrary sources. Future data or "
         "confirmation races are inaccessible. A failed proposal is not a successful empty decision."
-    )}, {"role": "user", "content": json.dumps({
+    )}, {"role": "user", "content": json.dumps(compact_planner_evidence({
         "task": "research_decision_v6", "limits": limits,
         "decision_schema": PlannerDecision.model_json_schema(),
         "feature_definition_schema": FeatureDefinition.model_json_schema(),
@@ -661,7 +665,7 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         },
         "model_parameter_contracts": MODEL_PARAMETER_CONTRACTS,
         "evidence": evidence_bundle,
-    }, default=str)}]
+    }), default=str, separators=(",", ":"))}]
     payload = {"model": config.model, "messages": messages, "temperature": .2,
                "max_tokens": config.max_output_tokens, "response_format": {"type": "json_object"}}
     payload |= _service_tier_option(config) | _provider_route(config) | _reasoning_options(config)
@@ -673,6 +677,8 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         try:
             raw = _json_message_from_response(response)
             decision = PlannerDecision.model_validate(raw)
+            if memo and decision.research_memo_sha256 != memo["sha256"]:
+                raise ValueError("Research memo checksum acknowledgement missing or mismatched")
             if decision.decision_id != evidence_bundle["decision_id"] or decision.evidence_id != evidence_bundle["evidence_id"]:
                 raise ValueError("Decision identity or evidence watermark mismatch")
             if decision.trial_budget > limits["trial_ceiling"] or len(decision.programs) > limits["max_new_programs"]:

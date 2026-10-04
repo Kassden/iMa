@@ -47,7 +47,8 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
                     "completed_trial_index":[], "references":[{"attempt_id":"v5-historical"}],
                     "capabilities":capabilities}
         decision = PlannerDecision(decision_id="D000001", evidence_id="evidence-1",
-                                   trial_budget=1, programs=(proposal(),))
+                                   trial_budget=1, programs=(proposal(),),
+                                   research_memo_sha256=capabilities["research_memo"]["sha256"])
         response = {"choices":[{"message":{"content":decision.model_dump_json()}}]}
         with patch("ima.openrouter_orchestrator._post_json", return_value=response) as post:
             choose_research_decision(evidence, {"trial_ceiling":5,"max_new_programs":2},
