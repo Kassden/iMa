@@ -23,6 +23,10 @@ class ResearchMemoTests(unittest.TestCase):
                 {"trial_ceiling": 260, "max_new_programs": 12}, OpenRouterConfig("test", "test/model"))
         submitted = json.loads(post.call_args.args[1]["messages"][1]["content"])
         self.assertEqual(memo, submitted["evidence"]["capabilities"]["research_memo"])
+        self.assertEqual(memo["sha256"], submitted["required_identity"]["research_memo_sha256"])
+        self.assertEqual("D1", submitted["required_identity"]["decision_id"])
+        self.assertTrue(submitted["output_budget"]["reasoning_shares_budget"])
+        self.assertIn("nodes[].output", submitted["graph_contract"]["market_output"])
         self.assertEqual(memo["sha256"], result["decision"]["research_memo_sha256"])
 
     def test_missing_memo_acknowledgement_is_not_accepted(self):
