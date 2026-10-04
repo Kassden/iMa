@@ -12,6 +12,7 @@ from ima.research_expansion import (
     DecisionStore, PlannerDecision, _prepare_program, _program_context, _build_dataset,
     _recover_orphan_asks, _native_threads, _workload, _planner_cost, _planner_spend, apply_decision,
     plan_decision, run_expansion_campaign, _capabilities, _validate_raw_manifest, _needs_lane_refill,
+    _preparation_program_order, _lane,
 )
 from ima.research_search import ProgramSearchController
 from ima.research_store import ResearchLedger
@@ -24,6 +25,97 @@ def executors(**kwargs):
 
 
 class ExpansionResourceIntegrationTests(unittest.TestCase):
+    def preparation_programs(self):
+        from ima.feature_program import DiscoverySpec
+        base = proposal().recipe
+        return {
+            "heavy-b":SimpleNamespace(recipe=base.model_copy(update={"feature_discovery":DiscoverySpec()})),
+            "cheap-b":SimpleNamespace(recipe=base),
+            "other-b":SimpleNamespace(recipe=base),
+            "heavy-e":SimpleNamespace(recipe=base.model_copy(update={
+                "model":base.model.model_copy(update={"kind":"boosted"}),
+                "feature_discovery":DiscoverySpec()})),
+        }
+
+    def test_preparation_initial_slots_cover_cheap_benter_and_experimental(self):
+        programs = self.preparation_programs()
+        capacity = dict.fromkeys(programs,20)
+        self.assertEqual(["cheap-b","heavy-e"],
+            _preparation_program_order(capacity,programs,{},(),[])[:2])
+        self.assertEqual(dict.fromkeys(programs,20),capacity)
+
+    def test_preparation_restart_prioritizes_required_uncovered_experimental(self):
+        programs = self.preparation_programs()
+        reservations = [{"payload":{"program_id":"cheap-b"}}]*2
+        self.assertEqual("experimental",_lane(len(reservations)))
+        order = _preparation_program_order(dict.fromkeys(programs,20),programs,
+                                          {"cheap-b":{}},("heavy-b",),reservations)
+        self.assertEqual(["heavy-e","other-b"],order)
+
+    def test_preparation_both_lanes_covered_preserves_equal_cost_fairness(self):
+        programs = self.preparation_programs()
+        reservations = [{"payload":{"program_id":"cheap-b"}}]
+        self.assertEqual(["other-b","cheap-b"],_preparation_program_order(
+            dict.fromkeys(programs,20),programs,{"heavy-e":{}},("heavy-b",),reservations))
+
+    def test_preparation_priority_respects_resource_slots_and_restart_coverage(self):
+        from ima.research_resources import estimate_job
+        from ima.research_scheduler import ResourceAdmission
+        programs = self.preparation_programs()
+        capacity = dict.fromkeys(programs,20)
+        resources = ResourceAdmission(4,4,100,max_preparations=2,max_fits=2)
+        preparing = []
+        for pid in _preparation_program_order(capacity,programs,{},(),[]):
+            estimate = estimate_job(_workload(programs[pid].recipe,171782,"r","e",stage="preparation"))
+            if resources.admits(estimate):
+                resources.reserve("prepare:"+pid,estimate)
+                preparing.append(pid)
+        self.assertEqual(["cheap-b","heavy-e"],preparing)
+        self.assertEqual(2,resources.snapshot()["running_jobs"])
+        self.assertEqual(["heavy-b","other-b"],_preparation_program_order(
+            capacity,programs,{},preparing,[]))
+        for pid in _preparation_program_order(capacity,programs,{},preparing,[]):
+            estimate = estimate_job(_workload(programs[pid].recipe,171782,"r","e",stage="preparation"))
+            self.assertIn("max_preparations",resources.blockers(estimate))
+
+    def test_preparation_exhausted_or_retired_coverage_does_not_hide_missing_lane(self):
+        programs = self.preparation_programs()
+        programs["new-e"] = SimpleNamespace(recipe=programs["heavy-e"].recipe)
+        reservations = [{"payload":{"program_id":"cheap-b"}}]*2
+        for retired in (False,True):
+            for prepared in (False,True):
+                with self.subTest(retired=retired,prepared=prepared):
+                    capacity = dict.fromkeys(programs,20)
+                    if retired:
+                        del capacity["heavy-e"]
+                    else:
+                        capacity["heavy-e"] = 0
+                    ready = {"cheap-b":{},"heavy-e":{}} if prepared else {"cheap-b":{}}
+                    preparing = () if prepared else ("heavy-e",)
+                    self.assertEqual("new-e",_preparation_program_order(
+                        capacity,programs,ready,preparing,reservations)[0])
+
+    def test_preparation_covered_lanes_do_not_starve_heavier_fair_candidate(self):
+        programs = self.preparation_programs()
+        capacity = dict.fromkeys(programs,20)
+        ready = {"cheap-b":{},"heavy-e":{}}
+        self.assertEqual(["heavy-b","other-b"],_preparation_program_order(
+            capacity,programs,ready,(),[]))
+        reservations = [{"payload":{"program_id":"heavy-b"}}]
+        self.assertEqual(["other-b","heavy-b"],_preparation_program_order(
+            capacity,programs,ready,(),reservations))
+
+    def test_preparation_excludes_unauthorized_capacity_and_prefers_smaller_specs(self):
+        from ima.feature_program import DiscoverySpec
+        programs = self.preparation_programs()
+        programs["small-e"] = SimpleNamespace(recipe=programs["heavy-e"].recipe.model_copy(
+            update={"feature_discovery":DiscoverySpec(max_definitions=32,max_depth=1)}))
+        capacity = dict.fromkeys(programs,20)
+        capacity["cheap-b"] = 0
+        capacity["other-b"] = 0
+        self.assertEqual(["heavy-b","small-e","heavy-e"],
+            _preparation_program_order(capacity,programs,{},(),[]))
+
     def test_base_preparation_and_feature_generation_have_distinct_estimates(self):
         from ima.feature_program import DiscoverySpec
         from ima.research_resources import estimate_job

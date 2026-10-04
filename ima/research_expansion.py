@@ -1057,7 +1057,7 @@ def run_expansion_campaign(config):
                                 resources.release("dataset:"+request_id)
                                 raise
                             building_datasets[future] = (request_id,workload)
-                    for pid in fair_program_order(list(preparation_capacity),ledger.reserved_attempts()):
+                    for pid in _preparation_program_order(preparation_capacity,search.programs,ready,preparing.values(),ledger.reserved_attempts()):
                         if pid in ready or pid in preparing.values() or not preparation_capacity[pid]:
                             continue
                         if pid not in contexts:
@@ -1270,6 +1270,38 @@ def run_expansion_campaign(config):
                     wait(inflight,timeout=1,return_when=FIRST_COMPLETED)
                 else:
                     time.sleep(1)
+
+
+def _preparation_program_order(capacity, programs, ready, preparing, reservations):
+    from .research_scheduler import fair_program_order
+
+    covered_ids = set(ready) | set(preparing)
+    lane = lambda pid: core._portfolio_identity(programs[pid].recipe,"expansion_v6")["lane"]
+    covered = {lane(pid) for pid in covered_ids if capacity.get(pid,0)>0}
+    required = _lane(len(reservations))
+    eligible = [pid for pid,remaining in capacity.items() if remaining>0 and pid not in covered_ids]
+    fair = fair_program_order(eligible,reservations)
+    ranks = {pid:index for index,pid in enumerate(fair)}
+
+    def priority(pid):
+        uncovered = lane(pid) not in covered
+        if not uncovered:
+            return (True,False,False,0,ranks[pid])
+        recipe = programs[pid].recipe
+        spec = recipe.feature_discovery
+        definitions = len(recipe.feature_definitions or ())
+        complexity = definitions + (spec.max_definitions * spec.max_depth if spec else 0)
+        return (not uncovered, uncovered and lane(pid)!=required,
+                bool(spec or definitions), complexity, ranks[pid])
+
+    ordered = []
+    # Prospective coverage keeps the next slot from choosing the same cold lane.
+    while eligible:
+        pid = min(eligible,key=priority)
+        ordered.append(pid)
+        covered.add(lane(pid))
+        eligible.remove(pid)
+    return ordered
 
 
 def _lane(index):
