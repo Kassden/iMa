@@ -41,6 +41,7 @@ class OpenRouterConfig:
     reasoning_effort: str | None = None
     absolute_deadline_seconds: int | None = None
     response_observer: Callable[[dict[str, Any]], None] | None = None
+    transport_observer: Callable[[dict[str, Any]], None] | None = None
 
     @classmethod
     def from_env(
@@ -101,19 +102,10 @@ def _reasoning_options(config: OpenRouterConfig) -> dict[str, Any]:
 
 def _post_json(url: str, payload: dict[str, Any], config: OpenRouterConfig) -> dict[str, Any]:
     if config.absolute_deadline_seconds:
-        import asyncio
         import httpx
-        async def send():
-            async with asyncio.timeout(config.absolute_deadline_seconds):
-                async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
-                    response = await client.post(url,json=payload,headers={"Authorization":f"Bearer {config.api_key}","Content-Type":"application/json"})
-                    response.raise_for_status()
-                    result=response.json()
-                    if config.response_observer:
-                        config.response_observer(result)
-                    return result
+        from .openrouter_transport import post_json_bounded
         try:
-            return asyncio.run(send())
+            return post_json_bounded(url,payload,config)
         except (TimeoutError,httpx.HTTPError,ValueError) as exc:
             raise OpenRouterError(f"OpenRouter bounded request failed: {type(exc).__name__}: {exc}") from exc
     request = urllib.request.Request(
@@ -628,6 +620,13 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         "parents unless their IDs also appear in that completed_trial_index. If the index is "
         "empty, every proposal must use empty parent_trial_ids. Examine latest compatible champions and "
         "negative outcomes. Prior dataset scores are historical context, not comparable champions. "
+        "You may select betting_requests independently of trial_budget, including a zero-trial paper-only "
+        "decision. Use only paper_research.eligible_attempts from current completed win-probability trials "
+        "with identical comparison populations; references are never paper inputs. Paper actions may mix "
+        "normalized win probabilities and research Plackett-Luce exotic fair prices or explicitly hypothetical "
+        "scenario payouts/Kelly sizing. They do not submit wagers, read arbitrary paths, or make extra paid "
+        "planner calls. Choose up to four actions per decision, within eight pending and one active action; "
+        "choose fewer when useful. Do not fabricate market quotes, realized profits or independent validation. "
         "No live code mutation, money wagering, credentials or arbitrary sources. Future data or "
         "confirmation races are inaccessible. A failed proposal is not a successful empty decision."
     )}, {"role": "user", "content": json.dumps({

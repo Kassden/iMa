@@ -231,6 +231,54 @@ class SnapshotCostTests(unittest.TestCase):
             call.args[0] == "mlflow.llm.cost" for call in self.span.set_attribute.call_args_list
         ))
 
+    def test_betting_trace_is_chain_without_recharging_planner_tokens_or_cost(self):
+        link = log_snapshot(self.campaign,self.payload(),self.config,role="betting",number=1)
+        self.assertEqual("CHAIN",self.mlflow.start_span.call_args.kwargs["span_type"])
+        self.assertIsNone(link["total_cost_usd"])
+        self.assertFalse(any(call.args[0] in {"mlflow.llm.cost","mlflow.chat.tokenUsage"}
+                             for call in self.span.set_attribute.call_args_list))
+
+    def paper_payload(self):
+        import hashlib
+        action = "a"*24
+        report = {"request_id":"paper-study-1","evidence_id":"evidence-1","paper_only":True,
+                  "executable_evidence":False,"coverage":{"evaluated_races":2,"requested_races":2,"available_races":20},
+                  "model_ids":[{"attempt_id":"current-1"}],"probability_basis":"fundamental",
+                  "request":{"quote_mode":"fair_price"}}
+        path = self.campaign.resolve()/"paper-actions"/(action+".json")
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"action_id":action,"report":report}))
+        return {"action_id":action,"request_id":"paper-study-1","evidence_id":"evidence-1",
+                "completion":{"status":"completed","report_path":str(path),
+                              "report_sha256":hashlib.sha256(path.read_bytes()).hexdigest()}}
+
+    def test_paper_preview_uses_receipted_report_not_trial_champions(self):
+        payload = self.paper_payload() | {"planner_usage":{"total_cost_usd":9,"total_tokens":999}}
+        log_snapshot(self.campaign,payload,self.config,role="betting",number=1)
+        preview = self.mlflow.update_current_trace.call_args.kwargs["response_preview"]
+        for text in ("paper-study-1","status=completed","races=2/2 requested","available=20",
+                     "models=1","basis=fundamental","quote_mode=fair_price","paper only"):
+            self.assertIn(text,preview)
+        for text in ("counts unavailable","no comparable","Planner $","best="):
+            self.assertNotIn(text,preview)
+        self.assertFalse(any(call.args[0] in {"mlflow.llm.cost","mlflow.chat.tokenUsage"}
+                             for call in self.span.set_attribute.call_args_list))
+
+    def test_failed_paper_preview_does_not_fabricate_coverage(self):
+        payload = {"request_id":"unsupported-paper","completion":{"status":"failed","error":"No compatible races"}}
+        log_snapshot(self.campaign,payload,self.config,role="betting",number=1)
+        preview = self.mlflow.update_current_trace.call_args.kwargs["response_preview"]
+        self.assertIn("unsupported-paper; status=failed; No compatible races",preview)
+        self.assertNotIn("races=0",preview)
+        self.assertNotIn("no comparable",preview)
+
+    def test_paper_preview_rejects_tampered_report_before_remote_span(self):
+        payload = self.paper_payload()
+        Path(payload["completion"]["report_path"]).write_text("{}")
+        with self.assertRaisesRegex(ValueError,"hash mismatch"):
+            log_snapshot(self.campaign,payload,self.config,role="betting",number=1)
+        self.mlflow.start_span.assert_not_called()
+
     def test_unreported_paid_cost_stays_unknown(self):
         link = log_snapshot(self.campaign, self.payload(None), self.config, role="decision", number=1)
         self.assertIsNone(link["total_cost_usd"])

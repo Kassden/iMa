@@ -178,7 +178,7 @@ def log_snapshot(campaign: Path, payload: dict, config, *, role: str, number: in
     """Durably enqueue before logging; failed attempts remain available to drain."""
     if not config.mlflow_tracking_uri:
         return None
-    if role not in {"decision", "execution", "dataset"} or number < 0:
+    if role not in {"decision", "execution", "dataset", "betting"} or number < 0:
         raise ValueError("Invalid trace role or sequence number")
     campaign = Path(campaign)
     payload = _trace_payload(campaign, payload, role, planner_evidence, output_snapshot)
@@ -282,7 +282,7 @@ def drain_trace_outbox(campaign: Path, config, *, limit: int = 20) -> dict:
 
 def next_trace_number(campaign: Path, role: str) -> int:
     """Single-controller sequence includes undelivered entries, not just published links."""
-    if role not in {"decision", "execution", "dataset"}:
+    if role not in {"decision", "execution", "dataset", "betting"}:
         raise ValueError("Invalid trace role")
     campaign = Path(campaign)
     numbers = [int(path.stem.rsplit("-", 1)[1]) for path in (campaign / "traces").glob(f"{role}-*.json")]
@@ -356,6 +356,35 @@ def _serialize_trace(span, experiment_id, tags, name, preview, campaign, usage):
     return Trace(info, TraceData(spans=[Span.from_dict(serialized)])).to_dict()
 
 
+def _paper_preview(campaign: Path, payload: dict) -> str:
+    completion = payload.get("completion") or {}
+    preview = f"request {payload.get('request_id', 'unknown')}; status={completion.get('status', 'unknown')}"
+    if completion.get("status") != "completed":
+        return preview + f"; {completion.get('error') or 'report unavailable'}"
+    action = payload.get("action_id", "")
+    if len(action) != 24 or any(character not in "0123456789abcdef" for character in action):
+        raise ValueError("Invalid paper trace action identity")
+    path = campaign.resolve()/"paper-actions"/(action+".json")
+    if (path.is_symlink() or path.resolve().parent != campaign.resolve()/"paper-actions"
+            or Path(completion["report_path"]).resolve() != path):
+        raise ValueError("Paper trace report must belong to the current campaign action")
+    content = path.read_bytes()
+    if hashlib.sha256(content).hexdigest() != completion["report_sha256"]:
+        raise ValueError("Paper trace report hash mismatch")
+    body = json.loads(content)
+    report = body["report"]
+    if (body["action_id"] != action or report["request_id"] != payload.get("request_id")
+            or report["evidence_id"] != payload.get("evidence_id")
+            or report.get("paper_only") is not True or report.get("executable_evidence") is not False):
+        raise ValueError("Paper trace report identity or offline-only contract mismatch")
+    coverage = report.get("coverage", {})
+    return (f"{preview}; races={coverage.get('evaluated_races', 'unknown')}/"
+            f"{coverage.get('requested_races', 'unknown')} requested, "
+            f"available={coverage.get('available_races', 'unknown')}; "
+            f"models={len(report['model_ids'])}; basis={report['probability_basis']}; "
+            f"quote_mode={report['request']['quote_mode']}; paper only")
+
+
 def _emit_trace(campaign: Path, payload: dict, config, *, role: str, number: int, persist) -> tuple[dict, dict]:
     with tracking_operation():
         return _emit_trace_locked(campaign,payload,config,role=role,number=number,persist=persist)
@@ -368,7 +397,7 @@ def _emit_trace_locked(campaign: Path, payload: dict, config, *, role: str, numb
     mlflow.set_tracking_uri(config.mlflow_tracking_uri)
     experiment = mlflow.set_experiment(_tracking_names(config.research_policy)[0])
     short = campaign.name
-    label = "plan D" if role == "decision" else "execution S" if role == "execution" else "dataset B"
+    label = {"decision":"plan D","execution":"execution S","dataset":"dataset B","betting":"paper P"}[role]
     name = f"{short} | {label}{number:06d}"
     usage = payload.get("planner_usage", {}) if role == "decision" else {}
     fixture = usage.get("cost_status") == "fixture"
@@ -379,6 +408,8 @@ def _emit_trace_locked(campaign: Path, payload: dict, config, *, role: str, numb
     counts = payload.get("counts", {})
     counts_text = ", ".join(f"{key}={value}" for key, value in sorted(counts.items())) or "counts unavailable"
     preview = f"{counts_text}; {best_text or 'no comparable completed result yet'}"
+    if role == "betting":
+        preview = _paper_preview(campaign,payload)
     if role == "decision":
         preview = (f"budget {payload.get('trial_budget', 0)}, allocated {payload.get('allocated_trials', 0)}, "
                    f"unallocated {payload.get('unallocated_trials', 0)}; {preview}")

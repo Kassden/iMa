@@ -74,9 +74,10 @@ class ResourceAdmission:
         if self.disk_headroom_bytes is not None and isinstance(request,JobEstimate) and request.disk_bytes > self.disk_headroom_bytes:
             reasons.append("disk")
         preparation = lambda r:isinstance(r,JobEstimate) and r.stage in {"preparation","feature_generation","selection"}
+        fit = lambda r:not preparation(r) and not (isinstance(r,JobEstimate) and r.stage == "simulation")
         if self.max_preparations is not None and preparation(request) and sum(preparation(r) for r in self.active.values()) >= self.max_preparations:
             reasons.append("max_preparations")
-        if self.max_fits is not None and not preparation(request) and sum(not preparation(r) for r in self.active.values()) >= self.max_fits:
+        if self.max_fits is not None and fit(request) and sum(fit(r) for r in self.active.values()) >= self.max_fits:
             reasons.append("max_fits")
         return reasons
 
