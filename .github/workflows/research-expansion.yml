@@ -11,6 +11,7 @@ on:
       - 'deploy/systemd/**'
       - 'docs/AGENTIC_RESEARCH_EXPANSION*'
       - 'docs/RESEARCH_NOMENCLATURE.md'
+      - 'docs/V4_V5_RESEARCH_HANDOFF_TO_V6.md'
       - 'pyproject.toml'
       - 'requirements-*.lock'
       - '.github/workflows/research-expansion.yml'
