@@ -1100,3 +1100,74 @@ Receipt: `/home/imaopt/research-v2/canaries/acceptance-runner-owned-c1eb224f/ope
 SHA256: `2020a0295c5cf7f04f7d0f0a284f58c927714c57935563a201d2712f55ba1cda`.
 Diagnostic unit exited 0; all owned exec sessions completed. Live/paid gates
 remain blocked pending independent cost reconciliation and transport resolution.
+
+### OpenRouter Lane-Ready Successor 2026-10-05
+
+This checkpoint supersedes the transport/startup blocker above for a new
+campaign; it does not reconcile or overwrite the older unknown-charge calls.
+The scientific release is pinned to
+`8d6110204591fee492388b84252a2877b3df967e`. The campaign is
+`/home/imaopt/research-v2/campaigns/agentic_v6_openrouter_ready_8d61102`, owned by
+`imaopt`, under `ima-v6-openrouter-ready-8d61102.service`. The preceding
+`ima-v6-openrouter-7da5b0d.service` is stopped, with its two completed models,
+paid receipts and explicit operator-recovery history preserved. No scientific
+release was hotpatched, and V5 remains stopped.
+
+Root cause: after two Benter completions, the 80/20 dispatcher required an
+experimental trial, but both preparation slots held expensive Benter programs.
+The immutable successor prioritizes uncovered lanes and inexpensive references
+before costly discovery. Existing lane dispatch, budgets and resource admission
+are unchanged. Regressions cover startup, restart, exhausted readiness and fair
+ordering after lane coverage. Local full suite: 763 passed. Remote Linux focused
+suite: 43 passed, one optional skip. Both GitHub CI runs succeeded. The deployed
+archive verified all 245 committed files; protected hashes and scientific
+dependency versions were unchanged.
+
+The exact first request body was 90,621 bytes, SHA256
+`44a3f992627cd5a2a4a301a8fe09634c3676dc8102c76fbc36fc76bce07e5bb7`.
+Three bounded unauthenticated synthetic uploads of that size succeeded before
+one paid qualification. No research contents or credentials were sent to the
+diagnostic endpoint. Transport receipt SHA256:
+`ad12a420e99d1e69553ee5b59b165713dffab0b742ef5508faeaaaaf37cd3d0b`.
+
+The full 26,931-byte handoff memo is included in planner evidence, not merely a
+path or summary. Its SHA256 is
+`bcdd074861678857760fac3056bef6c65f1f888d1600c6cc6dfc72bdb1fd8b5e`.
+Both accepted decisions acknowledged this exact version and used its prior
+research in their hypotheses. Acknowledgment verifies delivery/version, not
+human-like comprehension. Previous V6 results are also read-only references.
+
+- D000001: one physical call, six accepted programs, 24 chosen/allocated trials,
+  reported USD 0.0182244, backend trace
+  `tr-7b2013003f01d70294a69ba21d4cba2c`.
+- D000002: automatic controller decision, six accepted programs, 15
+  chosen/allocated trials, reported USD 0.02557164, backend trace
+  `tr-57e5c0861076a8a8d17c14e09a46b93e`.
+- Both backend traces are OK with native USD matching durable API receipts;
+  cumulative known spend at this checkpoint is USD 0.04379604.
+- The service has completed trials in both lanes. Benter run
+  `d647149b31c140f498c67417ff4f57e0` has fundamental log loss
+  2.174423729207687, registered version 16. Boosted experimental run
+  `e3d5b94e8fa44b789cbeb3ca7a01a263` is registered version 17.
+
+The Benter score is below the matched strict control 2.176278241358009; this is
+a development-score improvement, not statistical significance or market alpha.
+Do not compare it directly with legacy V4/V5 scores from different populations.
+The accepted dataset remains `dataset-19aaa959...a83db` with the frozen strict
+protocol and protected confirmation population.
+
+The actual kernel envelope is 24 CPU threads, 90/100 decimal GB high/max and
+zero campaign swap, with no tighter ancestor cap. Fit capacity progressed
+2 -> 4 -> 8 after measured folds/headroom; 26 is a ceiling, not an actual
+concurrency claim. No OOM events or tracking errors were observed. Model uploads
+are asynchronous: transient pending uploads are not failed training, and each
+registered model requires independent backend readback. The owned service is
+enabled for its user's boot target, without modifying other users or services.
+
+Planner model is `deepseek/deepseek-v4.1-flash`, medium reasoning, 32,768 output
+tokens, 300-second deadline, no provider pin or OpenAI flex setting. The agent
+chooses budgets up to 260; the campaign has no total trial/time limit. The USD 5
+prior-spend admission threshold is not a guaranteed provider billing cap.
+Missing historical event availability, independent time-target identification,
+and absent actionable historical exotic quotes remain data limitations; this
+rollout is not proof that every research-plan acceptance item is complete.
