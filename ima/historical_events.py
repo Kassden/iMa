@@ -259,6 +259,18 @@ def build_event_features(runners, events, coverage=(), *, policy="strict", retro
     output = np.full((len(runners), len(names)), np.nan)
     positions = {name: i for i, name in enumerate(names)}
     cutoffs = runner_cutoffs(runners)
+    if any(pd.isna(cutoff) for cutoff in cutoffs):
+        raise ValueError("Unknown race cutoff")
+    # Prospective captures cannot contribute to earlier historical rows.
+    # Coverage-backed counts remain missing; only availability/observed support is zero.
+    latest_cutoff = max(cutoffs) if cutoffs else None
+    if not coverage_by_horse and (latest_cutoff is None or not any(
+        rows and rows[0]["_eligible"] < latest_cutoff for rows in views.values()
+    )):
+        zero_columns = [positions[name] for name in names if name.endswith(
+            ("_available", "_usable_observations", "_coverage", "_observed_count"))]
+        output[:, zero_columns] = 0.
+        return pd.DataFrame(output, index=runners.index, columns=names)
     for index, (horse, cutoff) in enumerate(zip(runners["horse_id"], cutoffs)):
         if pd.isna(cutoff):
             raise ValueError("Unknown race cutoff")

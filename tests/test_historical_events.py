@@ -52,6 +52,23 @@ def coverage(**changes):
 
 
 class HistoricalEventTests(unittest.TestCase):
+    def test_future_only_fast_path_matches_unrelated_past_event_control(self):
+        frame = runners("2026-09-03", "2026-09-10")
+        future = event(first_seen_at="2026-10-02")
+        fast = build_event_features(frame, [future])
+        unrelated = event(horse_id=OTHER_HORSE, published_at="2026-09-02",
+                          publication_verified=True, source_body_hash="b" * 64)
+        control = build_event_features(frame, [future, unrelated])
+        pd.testing.assert_frame_equal(fast, control)
+        self.assertTrue(fast.trackwork_available.eq(0).all())
+        self.assertTrue(fast.trackwork_7d_observed_count.eq(0).all())
+        self.assertTrue(fast.trackwork_7d.isna().all())
+        self.assertTrue(fast.days_since_trackwork.isna().all())
+
+    def test_empty_coverage_fast_path_still_rejects_unknown_cutoffs(self):
+        with self.assertRaisesRegex(ValueError, "Unknown race cutoff"):
+            build_event_features(runners(None), [])
+
     def test_occurrence_does_not_fabricate_publication_or_capture(self):
         normalized = normalize_events([event()])
         row = normalized.iloc[0]
