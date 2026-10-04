@@ -1,0 +1,707 @@
+WHAT ARE MY ODDS?
+William Benter - Conference Talk
+Structured, Lightly Edited Transcript
+
+SOURCE AND EDITORIAL STATUS
+===========================
+Source: the conference transcript supplied by the repository owner in the
+conversation on 2026-10-04.
+Audio/video URL, conference date, venue and slide deck: not supplied.
+The speaker is identified as William Benter by the supplied attribution and
+the content of the talk; this file is not an independently authenticated
+transcription from audio.
+
+Editing policy:
+- Correct obvious automatic-transcription errors, spelling and punctuation.
+- Remove repeated filler words, false starts and stutters without removing
+  the substantive argument, examples, personal account or audience questions.
+- Organize the talk into numbered sections and preserve the order of ideas.
+- Normalize mathematical notation where its meaning is explicit in the text.
+- Do not invent inaudible names, omitted slide equations or bibliographic data.
+- Put editorial observations in square brackets. They are not speaker quotes.
+- Distinguish a transcription correction from a mathematical qualification.
+  Neither this talk nor its profit claims establish performance of this repo.
+
+RELATED REPOSITORY RESEARCH
+===========================
+1994-benter.pdf
+KellyCriterion2007.pdf
+Chance constrained optimization for parimutuel horse race betting.pdf
+
+This conference talk describes a performance-distribution/probit approach.
+Do not automatically equate that approach with the multinomial-logit model
+described in Benter's 1994 paper or with the repo's current implementation.
+
+
+TRANSCRIPT
+==========
+
+01. OPENING AND THE PURPOSE OF THE TALK
+-------------------------------------
+[Music]
+
+Professor Yao, thank you very much for inviting me here today.
+
+The title of my talk is "What Are My Odds?" I think that is appropriate.
+My luck is actually running rather badly today because I have been chosen
+to follow such an erudite and entertaining lecture by the previous speaker.
+Hopefully, I will be able to impart a little interesting information.
+
+The subject is historical and modern efforts to win at games of chance.
+The things I will discuss are:
+
+1. How gambling, and a desire to win at gambling, inspired the scientific
+   study of probability.
+2. Three key mathematical concepts that emerged during that early study
+   and describe the majority of gambling phenomena.
+3. Some modern contributions of mathematicians to solving present-day
+   gambling problems.
+
+
+02. THE CHEVALIER DE MERE'S DICE PROBLEM
+-------------------------------------
+Everything begins with gambling, or at least the important modern history
+begins in 1654.
+
+There was a well-known gambler in Paris named the Chevalier de Mere. He
+was perplexed by a seemingly inconsistent result in some popular games
+of chance played at the time.
+
+The illustration on the left is not really the Chevalier. It is a person
+in the costume of the time, so that may be what he looked like.
+
+His particular question concerned betting on rolls of dice:
+
+"If it is profitable to wager that a six will appear within four rolls of
+one die, why is it not profitable to wager that double sixes will appear
+within 24 rolls of two dice?"
+
+Four rolls represent two-thirds of the six possible outcomes of one die.
+Twenty-four rolls also represent two-thirds of the 36 possible combinations
+of two dice. He thought those situations should be the same.
+
+[Editorial clarification: the ratios 4/6 and 24/36 explain de Mere's
+intuition, not the correct probability calculation. Assuming fair,
+independent rolls:
+
+  P(at least one six in four rolls) = 1 - (5/6)^4
+                                   = approximately 0.51775.
+
+  P(at least one double six in 24 rolls) = 1 - (35/36)^24
+                                        = approximately 0.49140.
+
+Their expectations differ for an even-money wager. These numerical
+calculations are editorial additions, not equations transcribed from a
+supplied slide.]
+
+De Mere took his question to his friend Blaise Pascal. As we all know,
+Pascal was one of the greats of mathematics, so de Mere was very lucky
+to have him as a friend.
+
+Stimulated by the question, Pascal began a now-famous correspondence with
+another mathematician of the time, Pierre de Fermat, known for Fermat's
+Last Theorem. They were friends.
+
+Historians of mathematics have examined these letters for many years.
+It was evident to the two men that no existing theory adequately described
+a solution to de Mere's problem.
+
+What resulted was a chain of correspondence extending for some years.
+Important ideas forming a foundation for probability theory resulted
+from it.
+
+
+03. THE FIRST CONCEPT: PROBABILITY
+--------------------------------
+The three key concepts relevant to practical gambling problems are:
+
+1. Probability.
+2. Mathematical expectation.
+3. The law of large numbers.
+
+Early work on probability dealt with games such as dice rolling and coin
+tossing, where the game could be broken down into equally likely outcomes.
+
+A die has six sides. If you roll one die, there are six possible outcomes.
+Any one of the six numbers can come up. The probability of a particular
+side is the number of outcomes that make the event true divided by the
+number of equally likely possible outcomes.
+
+For example, the chance of rolling a five is one out of six. There are
+six possible outcomes and one corresponds to success, so the probability
+is 1/6.
+
+A further extension is to express probability as the limit of the number
+of successes divided by the number of trials. Looking at the equation,
+its form is similar: the limit of an observed frequency can also be
+thought of as the probability.
+
+[Editorial qualification: convergence of observed frequencies requires
+appropriate assumptions about the repeated trials. This is a frequency
+interpretation, not an unconditional guarantee for arbitrary data.]
+
+
+04. THE SECOND CONCEPT: MATHEMATICAL EXPECTATION
+----------------------------------------------
+The second big idea relevant to gambling is mathematical expectation.
+This idea was attributed to the Dutch mathematician Christiaan Huygens,
+pictured on the right.
+
+Mathematical expectation is a weighted average of a random variable.
+The equation at the bottom expresses the expectation of X as the sum of
+its possible values, each multiplied by its probability:
+
+  E[X] = p_1*x_1 + p_2*x_2 + ...
+
+This is a weighted average outcome.
+
+It is important for gambling because the result of a gamble is a random
+variable that can assume different values, usually winning or losing.
+
+For the return on a particular bet, there is a probability p of a profit
+and a complementary probability 1-p of a loss:
+
+  Expected net return = p*(net profit if successful)
+                     + (1-p)*(net loss if unsuccessful).
+
+To make that clear, I have worked it out for a bet on roulette.
+There are 38 possible numbers on the wheel. If you win, you receive a net
+profit of 35 units. If you lose, you lose the one unit you bet.
+
+You have a 1/38 chance of winning a profit of 35 and a 37/38 chance of
+losing your dollar:
+
+  E[X] = (1/38)*35 + (37/38)*(-1)
+       = -2/38
+       = approximately -0.0526.
+
+Your expectation is to lose about 0.0526 of the amount staked. It is a
+negative-expectation bet.
+
+[Editorial clarification: this example refers to a 38-pocket roulette
+wheel. It is not a description of every roulette variant.]
+
+Another important property is that expectation is additive. When you
+make a series of bets, each has an expectation. The overall mean result
+is the sum of the individual expectations:
+
+  E[X_1 + X_2 + ... + X_n] = E[X_1] + E[X_2] + ... + E[X_n].
+
+This leads to rule number one:
+
+"The only way to achieve a long-term expected profit in gambling is to
+make a series of bets that have a net positive expectation."
+
+[Editorial clarification: linearity of expectation does not require
+independence. Dependence still matters greatly for variance, drawdowns
+and simultaneous portfolio sizing.]
+
+
+05. THE THIRD CONCEPT: THE LAW OF LARGE NUMBERS
+---------------------------------------------
+Gambling typically involves repeated trials: bets at the races, hands
+at the blackjack table, or plays at roulette.
+
+Independent repeated trials were studied carefully by Jacob Bernoulli,
+one of the Bernoulli family. Such trials are often called Bernoulli
+trials in his honor.
+
+The formula below is the binomial distribution. It gives the probability
+of a particular number of successes in a given series of trials.
+
+[Editorial mathematical notation for the distribution referred to:
+
+  P(K=k) = C(n,k)*p^k*(1-p)^(n-k),
+
+for n independent Bernoulli trials with a common success probability p.
+The slide itself was not supplied.]
+
+As the number of trials increases, the ratio of successes to trials
+converges stochastically to the expected result. In the graph, the
+proportion of successes clusters around 0.5.
+
+Putting the three concepts together:
+
+- Expressing the chance of an event as a probability allows the
+  mathematical analysis of a wager.
+- The additive property of expectation enables calculation of the
+  overall expected result of a series of wagers.
+- The law of large numbers explains convergence of average observed
+  results toward their expectation.
+
+
+06. SHORT-RUN RESULTS: 100 TRIALS
+-------------------------------
+Here is a chart showing how one might fare at a game of chance.
+The solid dark line just above the x-axis is the expected result.
+
+Imagine a slightly biased coin. Instead of a 50/50 split, suppose it
+comes up heads 51% of the time and tails 49% of the time. You win one
+dollar on heads and lose one dollar on tails.
+
+The number of trials runs along the x-axis and your result is on the
+y-axis. The expected mean result creeps upward. After 100 trials,
+you would expect to be a couple of units ahead.
+
+More important is the spread of possible outcomes. The blue lines show
+one standard deviation and the outer pink dotted lines show two
+standard deviations.
+
+The chart describes what can happen over 100 trials of a nearly even
+coin-flipping game with a narrow player advantage. Your mean result is
+slightly positive, but your actual result can readily be 10 or 20 units
+above or below it.
+
+This is what people typically face. In a casino, the expectation is
+usually slightly negative instead. You could still walk in and play
+for an hour or 100 trials, then leave winning a lot or losing a lot.
+That is part of what people go to a casino for.
+
+
+07. MEDIUM- AND LONG-RUN RESULTS
+-------------------------------
+Now consider the medium run: the same game over 10,000 trials.
+The expectation is much larger, and the standard-deviation bands have
+shifted relative to the x-axis. The chart shows an expected positive
+return of about 100 units.
+
+Most of the probable return is above the x-axis. You would need to be
+roughly a standard deviation below expectation to lose overall.
+Approximately five-sixths of the time you would be ahead in the
+illustrated situation.
+
+Going to an even longer run, perhaps 100,000 plays, the expected result
+in the chart is about 1,000 units ahead. Even the lower two-standard-
+deviation line is above zero.
+
+This illustrates the law of large numbers applied to gambling: as play
+continues, the percentage result approaches the expected result.
+
+I originally prepared these charts for a talk about a winning gambling
+system. For a typical casino gambler, the charts would be reversed.
+
+After an hour you could be winning or losing, with a slightly negative
+expected result. After 100 hours, perhaps 10,000 blackjack hands in
+Macau, you would be much more likely to be behind, though you might
+still be ahead. Over 100,000 trials, perhaps 1,000 hours in a year for
+a heavy gambler, the probability of being ahead would be very small.
+
+That is a warning about playing negative-expectation games.
+
+[Editorial corrections and qualifications:
+1. The supplied transcript switches between a 51% success example and
+   chart expectations of +100 at 10,000 trials and +1,000 at 100,000.
+   With unit wins/losses and p=0.51, expected profit is 0.02 per trial:
+   +200 and +2,000 respectively. The quoted chart values instead match
+   p=0.505. Without the slides/audio, the mismatch cannot be resolved.
+2. The transcript uses words such as "guaranteed" and "definitely" for
+   eventual profit. A two-standard-deviation band does not guarantee
+   profit, and positive expectation does not eliminate finite-horizon
+   loss or bankroll exhaustion. Applicability of convergence depends
+   on the trial process and assumptions.
+3. The probability of eventual or finite-horizon success must not be
+   transferred directly from this coin illustration to a changing,
+   correlated horse-racing market.]
+
+
+08. MODERN CONTRIBUTIONS TO GAMBLING PROBLEMS
+-------------------------------------------
+After those theoretical preliminaries, let us consider modern
+contributions of mathematicians to previously unsolved gambling problems.
+
+Many basic problems were solved in the 17th century. Beginning with
+Pascal and Fermat in 1654, important ideas and mathematical machinery
+developed within the following decades.
+
+There have nevertheless been occasional new theoretical developments,
+including some in the last 50 years. Increasingly, computer-based
+techniques have also been used by gamblers and researchers to find
+winning systems for games once thought immune to such efforts.
+
+
+09. THE KELLY CRITERION: HOW MUCH CAPITAL TO RISK
+----------------------------------------------
+The first example is an analytical result by J. L. Kelly.
+He was a researcher at Bell Laboratories in the 1950s, working on
+information transmission. He realized that a finding could be applied
+to gambling.
+
+The practical question was:
+
+"What fraction of his capital should a gambler risk on each play?"
+
+A gambler generally has finite capital. Expectation and the law of
+large numbers do not, by themselves, specify how much to risk.
+Kelly's result addresses that question and is widely used by
+professional gamblers.
+
+The Kelly criterion defines an exponential rate of capital growth.
+Its derivation is beyond the scope of this lecture, but it gives
+simple results in some cases.
+
+Consider an even-money coin game with probability p of winning.
+You win a dollar on heads and lose a dollar on tails. If p=0.51,
+the optimal fraction under the stated Kelly model is:
+
+  f = 2*p - 1
+    = 0.02.
+
+With $1,000 of capital, that would mean $20 on the first play.
+As capital grows or shrinks, recalculate the stake to remain 2% of
+the current bankroll.
+
+[Editorial arithmetic correction: the supplied transcript first says
+$1,000, then says "$10,000" while retaining a $20 stake. Two percent
+of $1,000 is $20; two percent of $10,000 is $200. The internally
+consistent $1,000 example is used above. This is a substantive
+numerical correction, not merely a spelling change.]
+
+[Editorial scope: the formula above is for a single even-money bet
+under the stated assumptions. It is not the general simultaneous-
+ticket, uncertain-payout, pari-mutuel Kelly solution.]
+
+
+10. BLACKJACK AND THE USE OF COMPUTERS
+------------------------------------
+The second example is a practical rather than theoretical advance:
+blackjack.
+
+I assume most of you know the game. A player receives two cards;
+the dealer has a visible card and a hidden card. The object is to
+get as close as possible to a total of 21 without exceeding it.
+It involves both skill and chance because the player chooses
+whether to take additional cards.
+
+It had been popular in casinos since the late 1800s, but had resisted
+solution. The rules were well defined, yet dealing from a deck
+created a large number of discrete card-order dependencies.
+Writing out and testing all the possibilities by hand would require
+millions of combinations.
+
+When digital computers became available for pursuits such as card
+games in the early 1960s, Edward Thorp decided to use a computer to
+determine an optimal strategy. He worked in conjunction with people
+at IBM, and in 1962 published "Beat the Dealer."
+
+That book was a watershed for professional gambling and mathematical
+interest in gambling. It showed that a mathematical strategy could
+produce a positive expected return in a popular casino game.
+
+That is how I got into the game. I read the book, quit what I was doing
+- attending university - moved to Las Vegas, and became a professional
+gambler. It worked and generated a lot of interest.
+
+The important technique was using technology to enumerate possibilities.
+The computer assisted an arduous calculation rather than providing
+a completely new mathematical theory.
+
+Computers are now so fast that many blackjack questions are answered
+with simulators instead of detailed enumeration. Encode the rules,
+run millions or billions of hands, and tabulate the results to
+estimate the house/player advantage or compare strategies.
+It is a brute-force calculation method.
+
+[Editorial qualification: this is the speaker's historical account,
+not a claim that every present-day blackjack game offers a player
+advantage, or that simulation proves every property without statistical
+error and correct rule/model assumptions.]
+
+
+11. HORSE RACING: MODELLING REAL-WORLD PERFORMANCE
+------------------------------------------------
+The last example is nearest and dearest to my heart: horse racing.
+
+I would say this form of gambling has inspired especially serious and
+sophisticated applications of mathematical techniques. There is a
+great deal of money in racing worldwide, particularly in Hong Kong,
+so it attracts people trying to win.
+
+The challenge is to estimate each horse's probability of winning.
+
+Unlike dice or cards, racing is not just an idealized set of rules.
+A six-sided die with equal probabilities can be defined analytically.
+Horse racing involves real, individual horses and real-world phenomena.
+It is a departure from pure mathematics.
+
+To win at racing, we need a model to estimate those probabilities.
+
+
+12. DESIRED CHARACTERISTICS OF A RACING MODEL
+-------------------------------------------
+A useful model should:
+
+1. Combine heterogeneous variables into an overall predictor of
+   horse performance.
+2. Produce each horse's win probability as its output.
+3. Produce probabilities summing to one within each race.
+4. Have parameters that can practically be estimated from real data.
+
+The sum-to-one condition is a common-sense constraint: in the ordinary
+race illustration, there is one winning horse.
+
+[Editorial scope: actual dead heats need a separately defined outcome
+and settlement convention. They do not disappear merely because a
+model normalizes probabilities.]
+
+
+13. EXPECTED PERFORMANCE AS A WEIGHTED SUM OF FEATURES
+----------------------------------------------------
+We could view a horse's expected performance as the result of several
+factors related to its past performances and today's race conditions.
+
+One example specification could include:
+
+- Average finishing position in past races.
+- Days since the last race.
+- Weight carried.
+- The jockey's win percentage.
+- Other characteristics of the horse or the race.
+
+Each variable is multiplied by a coefficient. There could be perhaps
+a hundred such characteristics.
+
+The general form is:
+
+  V_i = sum_k theta_k*x_ik,
+
+where V_i represents the expected performance of horse i, x_ik the
+predictor variables, and theta_k the model coefficients.
+
+[Editorial notation: the subscripts are normalized here for readability.
+The original slide was not supplied.]
+
+
+14. ACTUAL PERFORMANCE: EXPECTATION PLUS RANDOM ERROR
+----------------------------------------------------
+A horse's actual performance in a particular race is not deterministic.
+Random events occur, and there may be unknown variables that affect it.
+
+We can write actual performance as the deterministic component V plus
+a random error epsilon:
+
+  Actual performance_i = V_i + epsilon_i.
+
+This is common in statistical modelling.
+
+If we assume epsilon is normally distributed, we obtain a normal
+performance distribution around a mean.
+
+The graph illustrates expected running time. We might think a horse
+will run a race in just under 90 seconds, but its actual time will
+vary around that because of unknown factors we cannot predict.
+
+
+15. AN ENTIRE RACE: OVERLAPPING DISTRIBUTIONS
+-------------------------------------------
+Now consider an entire race, perhaps ten horses, or eight in the
+particular illustration.
+
+The graph shows overlapping normal distributions of possible running
+times. I have intentionally made their widths different.
+
+Some horses are more consistent and have a narrower distribution.
+Other horses are less certain in their performance and have a wider
+standard deviation.
+
+This set of overlapping predicted running times is the problem we
+really have in horse racing.
+
+It leads to what is called a probit model of horse racing. A horse's
+chance of winning is the probability that its performance is the
+leftmost - the shortest running time - among all those distributions.
+The equation at the bottom expresses that probability, but it is
+rather complicated.
+
+[Editorial terminology: different error variances are described as
+heteroscedasticity. That is different from merely giving each horse
+a different expected performance.
+
+The supplied transcript does not specify the exact variance model,
+cross-horse covariance, identification constraints or numerical method.
+Those details cannot be reconstructed as claims about Benter's actual
+implementation from this passage alone. Likewise, the running-time
+illustration does not prove that recorded finish time was the exact
+training target of his deployed system.]
+
+
+16. ESTIMATING PARAMETERS THROUGH RACE WINNER LIKELIHOOD
+------------------------------------------------------
+Given that model, we can construct a likelihood for past races.
+
+For a series of, say, 10,000 races, the likelihood of the observed
+winners is the product of the probabilities assigned to the horses
+that actually won:
+
+  L(theta) = product_r P_theta(winner_r | field_r).
+
+This produces a difficult estimation problem, requiring a complex
+iterative method.
+
+A professor at the Chinese University of Hong Kong has pioneered one
+way of solving it. We have personally used his methodology to solve
+this problem in practice.
+
+[Name unresolved: the supplied transcript renders the professor's name
+as "guming GAA." A reliable spelling was not supplied. Do not cite a
+specific researcher or method on that spelling alone.]
+
+I showed this to give a flavor of the work being done.
+
+[Editorial connection to this repo: minimizing race winner log loss is
+equivalent to maximizing the associated winner likelihood, subject to
+any regularization and aggregation conventions. It is the training/
+evaluation criterion, not a prediction target called "log loss."
+This paragraph is an explanatory addition, not a speaker quotation.]
+
+
+17. REPORTED BETTING RESULTS
+---------------------------
+I included this graph because I am proud of it.
+
+It is the record of betting using the horse-racing system described,
+or a methodology very similar to it: approximately 6,000 consecutive
+races, covering about 11 years of Hong Kong racing.
+
+The graph shows accumulated net profit. Its y-axis is logarithmic
+because the actual profit curve was steep enough that a logarithmic
+scale was needed to fit it on the page.
+
+[Editorial evidence status: these are the speaker's reported results.
+The graph, underlying transactions, capital history and audit details
+were not provided. They are not independently verified here and do
+not establish expected returns for our models or present-day racing.]
+
+
+18. CONCLUSION: GAMBLING AND MATHEMATICS
+--------------------------------------
+A writer of one of the best books on mathematics and gambling concluded
+that gamblers can rightfully claim to be the godfathers of probability
+theory: their questions provoked the interaction between gambling and
+mathematics that stimulated the study of probability.
+
+I think that is true, particularly for the early history in the 1600s
+and 1700s.
+
+Today, gamblers are more often beneficiaries than the main inspiration
+for mathematical innovation. Other needs drive mathematics, but keen
+gamblers apply its techniques back to gambling, sometimes profitably.
+
+There are a few references. Thank you.
+
+[Applause]
+
+[Editorial note: the quotation is paraphrased from the supplied transcript;
+the author, exact wording and reference slide were not supplied.]
+
+
+19. QUESTIONS AND ANSWERS
+------------------------
+
+19.1. APPLICATION TO THE STOCK MARKET
+
+Moderator: We will entertain one or two questions.
+
+Audience: Can these strategies be applied to the stock market?
+
+Benter: Yes. Horse racing is probably one of the closest analogies.
+One way of profiting in markets is to predict how a company's shares
+or a currency will fare. This often involves modelling the underlying
+real-world instrument from past data, much as we model a racehorse's
+performance.
+
+Racing is particularly amenable to statistical modelling because the
+same sort of event occurs thousands of times. Financial markets often
+contain more unique situations.
+
+[Editorial scope: this is a comparison made in the talk, not a claim
+that horse-racing outcomes or market conditions are perfectly stationary.]
+
+19.2. DO BOOKMAKERS USE THE SAME MODELS?
+
+Audience: Are bookmakers using the same sort of models to set the odds?
+
+Benter: Generally, bookmakers act as intermediaries and respond to
+how people are betting. They set odds to retain an edge and limit risk;
+they act somewhat like toll collectors.
+
+Hong Kong is different: there are not individual bookmakers operating
+at the track in the sense described. Betting is organized through a
+pari-mutuel system, with a fixed percentage withdrawn from the pools.
+
+In that arrangement, it is the gamblers using these models, rather
+than the racetrack setting a fixed price from such a model.
+
+[Editorial scope: this summarizes the speaker's answer. It is not an
+independently verified description of all modern bookmakers, their
+modelling practices, regulation or every source of operator risk.]
+
+19.3. CHANGING ODDS, EXPECTATION AND WHEN TO BET
+
+Audience: Hong Kong racing odds can change shortly before the race.
+After calculating a horse's probability, how do you calculate expected
+value when the odds change? What is the optimal time to bet?
+
+Benter: That is a good and astute question.
+
+Once you know the probability of a horse winning, you also need to
+know what the payoff will be. The probability of winning multiplied
+by the amount won, plus the probability of losing multiplied by the
+amount lost, gives the expectation.
+
+If the payoff is unknown or changes at the last minute, it creates
+uncertainty. A bet that appeared to have a positive expectation can
+become negative if the odds drop.
+
+The idea is to place the bet as late as possible so that your estimate
+of the final payoff odds is as accurate as possible.
+
+People generally build in a cushion for the possibility that odds
+will fall late, particularly on horses likely to win. It is a problem
+you have to deal with, and it does reduce profits.
+
+Moderator: Are there any more questions? Thank you very much.
+
+[Editorial scope: the talk's "last minute" suggestion is not a
+guarantee of final odds or a live operational instruction. A system
+still needs verified quote timestamps, submission/cutoff rules,
+latency handling and uncertainty about the final dividend.]
+
+
+CORRECTION AND UNCERTAINTY REGISTER
+===================================
+
+Clear transcription corrections applied:
+- "wind probability" / "wind percentage" -> "win probability" /
+  "win percentage" when referring to winning a race.
+- "aerody" -> "erudite."
+- "chaler de," "deay," "deare," "demas" -> "Chevalier de Mere" /
+  "de Mere" in the historical dice discussion.
+- "blae Pascal" -> "Blaise Pascal."
+- "Pierre def fermat" -> "Pierre de Fermat."
+- "Christian hens" -> "Christiaan Huygens."
+- "beri" -> "Bernoulli" in the context of Jacob Bernoulli, repeated
+  Bernoulli trials and the binomial distribution.
+- "JL Kelly" -> "J. L. Kelly."
+- "maau" -> "Macau."
+- "Bookies" -> "bookmakers" where expanded for clarity.
+- "paramutual" -> "pari-mutuel."
+- "elapse time" -> "elapsed time" / "running time."
+- "discreet" -> "discrete" for the card-order combinations.
+- "a hundred characteristics," coefficient notation and mathematical
+  descriptions formatted for readability, without inventing slide data.
+
+Substantive clarifications, kept visible rather than silently altered:
+- The Kelly example's inconsistent $1,000/$10,000 bankroll figures.
+- The 51% coin example versus the chart's stated long-run expectations.
+- Finite-horizon profit is not guaranteed by a two-standard-deviation
+  band or by an appeal to the law of large numbers.
+- Expectation is additive without independence; portfolio risk is not.
+- The roulette example uses 38 pockets.
+- The single even-money Kelly formula is not a general exotic portfolio
+  sizing formula.
+- Different distribution widths indicate heteroscedasticity, but the
+  exact covariance/variance estimator is not specified in this transcript.
+- Exact slide equations, conference metadata, quotation author and the
+  Chinese University professor's name remain unverified.
+
+END OF TRANSCRIPT
