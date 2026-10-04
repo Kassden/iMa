@@ -10,6 +10,39 @@ does not certify the whole plan or V6 launch.
 
 ## Evidence Status
 
+### C1 Integration And Official Controls
+
+Exact runtime: `c1eb224fffd302e47f450b90c233b44a97c9193f`. Full suite:
+750 passed, 226 subtests, 185.62 seconds. CI runs 37199169308 and 37199172431
+both passed. Immutable release package archive SHA256:
+`27c3df14053da07568e70f1000ed439a00b71d894f231d3804f9a2ad09d47fc7`.
+
+Exact Linux private fixture receipt at
+`v6-cd-owned/c1eb224fffd302e47f450b90c233b44a97c9193f/fixture-terminal-receipt.json`
+shows ten completed physical FINISHED runs, ten linked READY versions, twenty
+OK traces, zero pending tells/models and successful paper-study feedback.
+All protected hashes stayed unchanged. Paid calls zero; production backend not
+used. This fixture does not certify official or paid planning.
+
+Parent-owned official controls at
+`campaigns/agentic_v6_official_controls_c1_parent` finished 11:59:17 UTC:
+status complete, five completed fits, zero pending tells/models/traces and no
+tracking errors, own unit exit 0. Accepted dataset V4 and production MLflow
+experiment 7 were used. Nonpaid fixture planning is not autonomous OpenRouter
+planning. Independent terminal readback confirmed all five FINISHED runs and
+matching READY versions 1-5, 65 backend traces OK and zero pending deliveries.
+Receipt `.tmp/v6-data-owned/c1-official-controls-terminal-receipt.json` SHA256:
+`6cad316df4fbf6e53513728adad2844cab1c3c4329806091b5ef7d425440aea7`.
+Actual scored population checked for all five fits: 18,075 runners and
+1,502 races, identical protocol/population hashes. No OOM events.
+
+Logical fit budget remained 8 decimal GB. Physical cache allowance reached
+10 decimal GB after fresh reservation-aware admission; available 28.85 GB was
+above required 22.53 GB including possible V5 growth and 2 GiB reserve. Same
+invocation, CPU allowance and estimates; no protected service mutation. First
+fit private peak was 4.14 GB versus estimate 5.65 GB. Continuous V6 and new paid
+planner qualification are still pending; no whole-plan acceptance is claimed.
+
 ### Current Accepted Data, Frozen Paid Work
 
 Parent/Sagan independently PASSED fresh V4

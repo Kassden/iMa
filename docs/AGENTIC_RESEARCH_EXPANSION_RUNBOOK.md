@@ -7,11 +7,32 @@ have been performed; the first official build was explicitly cancelled after
 parent-confirmed builder defects. Only dedicated own-user
 fixture/build transient units were started initially; a later explicitly assigned
 isolated paid proposal canary also ran and failed. V5 STOP/configuration mutation,
-acquisition mutation, further paid calls, training and production V6 launch remain
-held. Existing effective V5 dependency
+acquisition mutation and production V6 launch remain held. Five isolated
+official-data controls subsequently completed; controlled planner requalification
+is authorized under the canonical plan, not an automatic retry of the frozen
+failed invocation. Existing effective V5 dependency
 versions were preserved; its three missing requirements were repaired privately.
 
 ## Current Disposition
+
+Runtime is pinned to `c1eb224fffd302e47f450b90c233b44a97c9193f`.
+Its full suite passed 750 tests and 226 subtests; both GitHub CI checks passed.
+The exact Linux private fixture passed ten fits, ten linked READY model versions,
+twenty OK traces and actual paper-study feedback. Receipt:
+`v6-cd-owned/c1eb224fffd302e47f450b90c233b44a97c9193f/fixture-terminal-receipt.json`.
+This is synthetic/private evidence, not official-data or paid acceptance.
+
+Official controls in `campaigns/agentic_v6_official_controls_c1_parent` finished
+at 11:59:17 UTC with five completed attempts, zero pending tells/model uploads/
+trace delivery, no tracking errors and unit exit 0. They used accepted V4 data
+and production MLflow experiment 7, but the planner was a nonpaid fixture.
+The bounded unit's logical job budget stayed 8 decimal GB; separately gated
+physical cache allowances increased its cap from 8 to 9 to 10 decimal GB.
+`second-cache-allowance-receipt.json` records fresh available 28.85 GB against
+required 22.53 GB, including possible V5 growth and a 2 GiB reserve. No job
+estimate, safety margin, V5 limit or unrelated service was changed. The fixture
+recorded backlog validation errors while training continued; these are not paid
+planner acceptance. Continuous OpenRouter V6 has not yet launched.
 
 V4 is complete and independently ACCEPTED by parent/Sagan:
 `dataset-19aaa959e948d6e145ce62c8160413087b46ba3c2578e0de15c452054d9a83db`.
@@ -24,10 +45,14 @@ Accepted V4 manifest SHA256:
 
 The isolated 52a paid transport/proposal canary FAILED at the 120s planner
 deadline: no completion/generation ID, no physical completion receipt and
-UNKNOWN COST, not zero. Further paid work is frozen. One delivered private
+UNKNOWN COST, not zero. That invocation remains frozen. One delivered private
 SQLite trace is OK, zero pending/errors, but native USD is absent. This is not
 paid-planner acceptance, actual training or production-backend acceptance.
 No fits, dataset build, production MLflow write or V5 STOP occurred in that call.
+The plan permits one fresh audited C1 requalification with a 300-second absolute
+deadline and early generation-ID transport receipts. It preserves the old
+unknown-cost incident and freezes again on unknown new spend. Its preparation
+is not evidence of successful paid planning.
 
 Parent reports transport/header helper
 `7876d830bd762a8e5beba3b7b20e0848f7889567` committed/pushed with tests and CI
