@@ -68,7 +68,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--openrouter-batch", action="store_true", default=None)
     run.add_argument("--model", help="Remote planner model, e.g. openai/gpt-5.6-luna")
     run.add_argument("--spec-profile", choices=("default", "long", "adaptive"))
-    run.add_argument("--planner-mode", choices=("local", "fixture", "openrouter"))
+    run.add_argument("--planner-mode", choices=("local", "fixture", "openrouter", "external"))
     run.add_argument("--max-total-cost-usd", type=float)
     run.add_argument("--max-output-tokens", type=int)
     run.add_argument("--planner-timeout-seconds", type=int)
