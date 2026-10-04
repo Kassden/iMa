@@ -522,6 +522,8 @@ def _workload(recipe, rows, revision, environment, *, stage="fit", shared=None,n
     from .research_resources import JobWorkload
     schema = core.FEATURE_SCHEMAS[recipe.feature_schema]
     spec = recipe.feature_discovery
+    if stage == "preparation" and (spec or recipe.feature_definitions):
+        stage = "feature_generation"
     selected = (getattr(spec, "max_selected", 16) or getattr(spec, "max_definitions", 500)) if spec else 0
     return JobWorkload(stage=stage, family=recipe.model.kind if not recipe.pipeline_graph else "graph:"+recipe.model.kind,
         rows=rows, generated_features=spec.max_definitions if spec else 0,
@@ -1084,7 +1086,7 @@ def run_expansion_campaign(config):
                             except (OSError, ValueError, TypeError):
                                 # A durable allocation survives eviction of its preparation artifact.
                                 pass
-                        workload = _workload(search.programs[pid].recipe,context["rows"],revision,environment,stage="feature_generation")
+                        workload = _workload(search.programs[pid].recipe,context["rows"],revision,environment,stage="preparation")
                         estimate = preparation_estimator.estimate(workload)
                         if resources.admits(estimate):
                             resources.reserve(f"prepare:{pid}",estimate)

@@ -24,6 +24,22 @@ def executors(**kwargs):
 
 
 class ExpansionResourceIntegrationTests(unittest.TestCase):
+    def test_base_preparation_and_feature_generation_have_distinct_estimates(self):
+        from ima.feature_program import DiscoverySpec
+        from ima.research_resources import estimate_job
+        from ima.research_scheduler import ResourceAdmission
+        recipe = core._v4_seed_proposals()[0].recipe
+        base = _workload(recipe,171782,"revision","environment",stage="preparation")
+        self.assertEqual("preparation",base.stage)
+        discovery = recipe.model_copy(update={"feature_discovery":DiscoverySpec()})
+        generated = _workload(discovery,171782,"revision","environment",stage="preparation")
+        self.assertEqual("feature_generation",generated.stage)
+        formulas = recipe.model_copy(update={"feature_definitions":({"name":"fixture"},)})
+        self.assertEqual("feature_generation",_workload(formulas,171782,"revision","environment",stage="preparation").stage)
+        admission = ResourceAdmission(2,2,8000000000/1024**3,resident_gib=1.52,emergency_gib=.5)
+        self.assertTrue(admission.admits(estimate_job(base)))
+        self.assertIn("configured_memory",admission.blockers(estimate_job(generated)))
+
     def test_planner_prompt_distinguishes_reference_context_from_valid_parents(self):
         from ima.openrouter_orchestrator import OpenRouterConfig, choose_research_decision
         capabilities = _capabilities(self.config, self.dataset)
