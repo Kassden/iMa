@@ -57,6 +57,16 @@ Mutation boundary: plan artifacts only now; future baseline probes read-only; fu
 Remediation mapping: Phase 2 -> F3/F10/H1; Phase 3 -> F4; Phase 4 -> F1/F2; Phase 5 -> F6/F8/F9/H4; Phase 6 -> F5/F7/H2/H3; Phase 7 -> joint-outcome/quote gaps; Phase 8 -> verification. Sandbox/retention/recovery work is risk reduction, not proof of the original cause.
 Not-done: simply raising one ceiling, blanket event-date assumptions called verified, naming-only trace fixes, absent replay or local tests called live deployment.
 
+### Execution Incident: OpenRouter Delivery Receipts (2026-10-04)
+- Observed: the isolated 52a actual-data planner call hit its 120-second deadline without a completion, generation ID or cost receipt. Its cost is unknown, not zero; that invocation remains frozen and cannot restart.
+- Proven: subsequent noncharged models GETs succeed on default, IPv4 and IPv6 transports through the verified Tailscale route; the approved model exists. A failed POST had no phase telemetry, so connection/TLS versus generation waiting cannot be determined retrospectively. Concurrent V5 usage and absence of a pre-call credit baseline prevent exact attribution from account totals.
+- Remediation: use the existing HTTPX bounded transport in streaming-body mode to persist safe phase events and `X-Generation-Id` response headers before buffering the full JSON body. Do not introduce provider pins, host routing changes, guessed costs or automatic paid retries.
+- Primary references: [OpenRouter streaming/header contract](https://github.com/OpenRouterTeam/docs/blob/main/api_reference/streaming.mdx) and [generation usage lookup](https://openrouter.ai/docs/api/api-reference/generations/get-generation). The lookup requires a known generation ID; it cannot invent the identifier lost by the previous call.
+- Planned Touch Files: `ima/openrouter_transport.py` (new), `ima/openrouter_orchestrator.py`, `ima/research_expansion.py`, `tests/test_openrouter_transport.py` (new), `tests/test_research_expansion_resources.py`.
+- Tests: actual localhost HTTP headers followed by delayed-body timeout, successful JSON and cost callback, HTTP failure, scalar JSON rejection, durable receipt integration, and the complete regression suite. No paid calls are required for these tests.
+- Commit: `fix(planner): retain early transport and generation receipts`.
+- Remaining evidence: reconcile the original provider charge via its generation ID or actual billing record; a fresh successful planner/training gate is still required for live rollout.
+
 ## Research
 - Built-in options inspected: official parser/snapshot builder, rich historical features, selection, pinned V5 controller, recipe contracts and MLflow tracking; findings are enumerated in the Root-Cause Baseline.
 - Off-the-shelf choices: Featuretools/feature-engine for discovery and screening, sklearn/Optuna for fitting/search, Joblib/NumPy for shared arrays, and MLflow/OpenTelemetry conventions for provenance and traces.
