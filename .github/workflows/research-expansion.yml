@@ -1,0 +1,74 @@
+name: Research expansion
+
+on:
+  pull_request:
+    paths:
+      - 'ima/**'
+      - 'scrapper/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'config/**'
+      - 'deploy/systemd/**'
+      - 'docs/AGENTIC_RESEARCH_EXPANSION*'
+      - 'docs/RESEARCH_NOMENCLATURE.md'
+      - 'pyproject.toml'
+      - 'requirements-*.lock'
+      - '.github/workflows/research-expansion.yml'
+  push:
+    branches: [main, feat/agentic-research-expansion]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-expansion-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+      PYTHONNOUSERSITE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements-research.lock
+            requirements-v5-overlay.lock
+      - name: Install existing research and feature locks
+        run: >-
+          python -m pip install -e '.[research,features,acquisition,dev]'
+          -r requirements-research.lock -r requirements-v5-overlay.lock
+      - name: Verify dependency compatibility
+        run: python -m pip check
+      - name: Record resolved versions
+        run: python -m pip freeze
+      - name: Check supervisor syntax and unit
+        run: |
+          bash -n deploy/systemd/ima-research-expansion-supervisor
+          systemd-analyze verify --man=no deploy/systemd/ima-research-expansion-supervisor.service
+      - name: Verify existing optimizer CLI
+        run: python -m scripts.optimize run --help
+      - name: Verify successor canary CLI
+        run: python -m scripts.run_research_expansion_canary --help
+      - name: Run legacy and successor regression suite
+        run: python -m unittest discover -s tests
+      - name: Verify committed deployment package
+        env:
+          RESEARCH_RELEASE_SHA: ${{ github.sha }}
+        run: |
+          release_archive="$RUNNER_TEMP/ima-v6-$RESEARCH_RELEASE_SHA.tar"
+          git archive --format=tar --output "$release_archive" "$RESEARCH_RELEASE_SHA" -- ima scrapper scripts config tests deploy/systemd pyproject.toml requirements-research.lock requirements-v5-overlay.lock docs/AGENTIC_RESEARCH_EXPANSION_PLAN.md docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md docs/RESEARCH_NOMENCLATURE.md
+          IMA_V6_PYTHON=python bash deploy/systemd/ima-research-expansion-supervisor --verify-package "$release_archive" "$RESEARCH_RELEASE_SHA"
