@@ -303,6 +303,7 @@ def _v6_result_lineage(request, frame, result, dataset_hash):
                                 else json.dumps(frame.attrs["availability_policy"], sort_keys=True, separators=(",", ":"))),
         "evaluation_population_id": population_id, "evaluation_population_hash": population_hash,
         "protocol_hash": _hash_file(Path(result.artifacts["protocol"])),
+        "prediction_sha256": _hash_file(Path(result.artifacts["predictions"])),
         "target_unit": unit, "probability_basis": basis,
     }
     declared_population = manifest.get("evaluation_population_id", comparison.get("evaluation_population_id"))

@@ -160,8 +160,12 @@ def _load_paper_inputs(request: PaperResearchRequest | dict, *, campaign_dir: Pa
         if path.stat().st_size > 128 * 1024**2:
             raise ValueError("Scored prediction artifact exceeds 128MiB read budget")
         prediction_bytes = path.read_bytes()
-        frame = pd.read_csv(io.BytesIO(prediction_bytes), dtype={"fold_id": str, "race_id": str, "horse_no": str})
+        prediction_hash = hashlib.sha256(prediction_bytes).hexdigest()
+        if prediction_hash != lineage.get("prediction_sha256"):
+            raise ValueError("Frozen prediction artifact hash missing or mismatched")
         required = {*key_columns, "target_win", column}
+        frame = pd.read_csv(io.BytesIO(prediction_bytes), usecols=lambda name: name in required,
+                            dtype={"fold_id": str, "race_id": str, "horse_no": str})
         if not required.issubset(frame) or frame.empty or frame[list(required)].isna().any().any():
             raise ValueError("Missing scored runner keys, outcomes or probabilities")
         if frame.duplicated(["fold_id", "race_id", "horse_no"]).any():
@@ -183,7 +187,7 @@ def _load_paper_inputs(request: PaperResearchRequest | dict, *, campaign_dir: Pa
             raise ValueError("Stored development outcomes require one winner per race")
         frames.append(frame)
         provenance.append({"attempt_id": attempt, "recipe_hash": result.get("recipe_hash"),
-                           "prediction_sha256": hashlib.sha256(prediction_bytes).hexdigest(),
+                           "prediction_sha256": prediction_hash,
                            "code_revision": lineage.get("code_revision"),
                            "environment_hash": lineage.get("environment_hash")})
     mixed = frames[0].copy()
@@ -191,23 +195,29 @@ def _load_paper_inputs(request: PaperResearchRequest | dict, *, campaign_dir: Pa
                                      for weight, frame in zip(request.model_weights, frames))
     races = list(mixed.groupby(["fold_id", "race_id"], sort=True))
     races.sort(key=lambda item: (str(item[1].date.min()), item[0]))
-    return request, races, identities[0], provenance, len(mixed)
+    input_memory_bytes = sum(int(frame.memory_usage(deep=True).sum()) for frame in frames)
+    input_memory_bytes += int(mixed.memory_usage(deep=True).sum())
+    input_memory_bytes += sum(int(frame.memory_usage(deep=True).sum()) for _, frame in races)
+    return request, races, identities[0], provenance, len(mixed), input_memory_bytes
 
 
 def validate_paper_research(request: PaperResearchRequest | dict, *, campaign_dir: Path,
                             terminal_results: Sequence[dict[str, Any]]) -> dict:
     """Validate frozen development inputs without running outcome simulations."""
-    request, races, comparison, provenance, rows = _load_paper_inputs(
+    request, races, comparison, provenance, rows, input_memory_bytes = _load_paper_inputs(
         request, campaign_dir=campaign_dir, terminal_results=terminal_results)
     return {"comparison": comparison, "evaluation_key": _digest(comparison),
             "model_ids": provenance, "rows": rows, "available_races": len(races),
-            "requested_races": min(len(races), request.max_races)}
+            "requested_races": min(len(races), request.max_races),
+            "input_memory_bytes": input_memory_bytes,
+            "cold_private_memory_bytes": 512 * 1024**2 + 2 * input_memory_bytes
+                + request.simulations * 32 * 64}
 
 
 def evaluate_paper_research(request: PaperResearchRequest | dict, *, campaign_dir: Path,
                             terminal_results: Sequence[dict[str, Any]]) -> dict:
     """Evaluate frozen current-campaign development outputs, never protected data."""
-    request, races, comparison, provenance, _ = _load_paper_inputs(
+    request, races, comparison, provenance, _, _ = _load_paper_inputs(
         request, campaign_dir=campaign_dir, terminal_results=terminal_results)
     reports, skipped = [], []
     for index, ((fold, race_id), frame) in enumerate(races[:request.max_races]):

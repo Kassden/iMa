@@ -44,6 +44,7 @@ class PaperResearchTests(unittest.TestCase):
                   'artifacts': {'predictions': str(directory / 'predictions.csv'), 'protocol': str(protocol)},
                   'lineage': {'dataset_hash': 'd1', 'dataset_id': 'dataset1', 'protocol_id': 'p1',
                               'protocol_hash': hashlib.sha256(protocol.read_bytes()).hexdigest(),
+                              'prediction_sha256': hashlib.sha256((directory / 'predictions.csv').read_bytes()).hexdigest(),
                               'evaluation_population_hash': digest, 'evaluation_population_id': 'evaluated-' + digest,
                               'availability_policy': 'strict', 'code_revision': 'test', 'environment_hash': 'env'}}
         return {'attempt_id': name, 'status': 'completed', 'result': result}
@@ -60,6 +61,8 @@ class PaperResearchTests(unittest.TestCase):
             self.assertEqual(preflight[name], report[name])
         self.assertEqual(preflight['rows'], 4)
         self.assertEqual(preflight['available_races'], 1)
+        self.assertGreater(preflight['input_memory_bytes'], 0)
+        self.assertGreater(preflight['cold_private_memory_bytes'], 512 * 1024**2)
 
     def test_contract_strict_bounds_and_unknown_fields(self):
         cases = [{'arbitrary_path': '/tmp/x'}, {'attempt_ids': ['../outside']},
@@ -146,9 +149,11 @@ class PaperResearchTests(unittest.TestCase):
         frame = self.frame.copy()
         frame.loc[0, 'horse_no'] = 'other'
         frame.to_csv(path, index=False)
+        self.rows[0]['result']['lineage']['prediction_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
         with self.assertRaisesRegex(ValueError, 'population hash'):
             self.run_request()
         pd.concat([self.frame, self.frame.iloc[:1]]).to_csv(path, index=False)
+        self.rows[0]['result']['lineage']['prediction_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
         with self.assertRaisesRegex(ValueError, 'Duplicate scored'):
             self.run_request()
 
@@ -157,6 +162,7 @@ class PaperResearchTests(unittest.TestCase):
         frame = self.frame.copy()
         frame['model_probability'] *= .5
         frame.to_csv(path, index=False)
+        self.rows[0]['result']['lineage']['prediction_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
         with self.assertRaisesRegex(ValueError, 'sum to one'):
             self.run_request()
 
