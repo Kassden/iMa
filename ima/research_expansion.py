@@ -1061,6 +1061,11 @@ def _capabilities(config,dataset,*,dataset_digest=None,registry=None):
             except (OSError,ValueError):
                 continue
     return {"recipe_schema":PipelineRecipe.model_json_schema(),
+            "parent_trial_id_contract":{
+                "sole_valid_source":"completed_trial_index[].attempt_id",
+                "references":"Historical context only. Reference champion attempt IDs are not valid parent_trial_ids unless also present in completed_trial_index.",
+                "initial_campaign":"When completed_trial_index is empty, every proposal must use empty parent_trial_ids.",
+            },
             "eligible_predictors":manifest.get("predictor_catalog",manifest.get("feature_catalog",manifest.get("eligible_predictors",[]))),
             "current_dataset":current,"dataset_request_inputs":inputs,
             "numeric_columns_by_schema":{k:list(v.numeric) for k,v in core.FEATURE_SCHEMAS.items()},

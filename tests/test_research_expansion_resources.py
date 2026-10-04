@@ -24,6 +24,47 @@ def executors(**kwargs):
 
 
 class ExpansionResourceIntegrationTests(unittest.TestCase):
+    def test_planner_prompt_distinguishes_reference_context_from_valid_parents(self):
+        from ima.openrouter_orchestrator import OpenRouterConfig, choose_research_decision
+        capabilities = _capabilities(self.config, self.dataset)
+        evidence = {"decision_id":"D000001", "evidence_id":"evidence-1",
+                    "completed_trial_index":[], "references":[{"attempt_id":"v5-historical"}],
+                    "capabilities":capabilities}
+        decision = PlannerDecision(decision_id="D000001", evidence_id="evidence-1",
+                                   trial_budget=1, programs=(proposal(),))
+        response = {"choices":[{"message":{"content":decision.model_dump_json()}}]}
+        with patch("ima.openrouter_orchestrator._post_json", return_value=response) as post:
+            choose_research_decision(evidence, {"trial_ceiling":5,"max_new_programs":2},
+                                     OpenRouterConfig(api_key="not-used", model="fixture"))
+        advertised = json.loads(post.call_args.args[1]["messages"][1]["content"])["evidence"]
+        instructions = post.call_args.args[1]["messages"][0]["content"]
+        self.assertIn("current campaign's completed_trial_index", instructions)
+        self.assertIn("references are historical context only", instructions)
+        self.assertIn("every proposal must use empty parent_trial_ids", instructions)
+        contract = advertised["capabilities"]["parent_trial_id_contract"]
+        self.assertEqual("completed_trial_index[].attempt_id", contract["sole_valid_source"])
+        self.assertIn("Historical context only", contract["references"])
+        self.assertIn("empty parent_trial_ids", contract["initial_campaign"])
+        self.assertEqual([], advertised["completed_trial_index"])
+        self.assertEqual([{"attempt_id":"v5-historical"}], advertised["references"])
+
+    def test_reference_parent_is_rejected_until_present_in_completed_index(self):
+        from dataclasses import replace
+        config = replace(self.config, dataset_path=None)
+        search = ProgramSearchController(config.campaign_dir)
+        store = DecisionStore(config.campaign_dir/"decisions.sqlite")
+        item = proposal().model_copy(update={"parent_trial_ids":("v5-historical",)})
+        decision = PlannerDecision(decision_id="D000001", evidence_id="evidence-1",
+                                   trial_budget=1, programs=(item,))
+        evidence = {"evidence_id":"evidence-1", "completed_trial_index":[],
+                    "references":[{"attempt_id":"v5-historical"}]}
+        with self.assertRaisesRegex(ValueError, "Unknown parent trial"):
+            apply_decision(decision,store,search,set(),config,evidence,None)
+        self.assertEqual({}, search.programs)
+        evidence["completed_trial_index"] = [{"attempt_id":"v5-historical"}]
+        accepted = apply_decision(decision,store,search,set(),config,evidence,None)
+        self.assertEqual(("v5-historical",), search.programs[accepted[0]].parent_trial_ids)
+
     def test_v6_upload_holds_trace_lock_and_releases_after_failure(self):
         from contextlib import contextmanager
         from ima.research_expansion import _upload_result_with_tracing_lock
