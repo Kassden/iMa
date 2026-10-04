@@ -356,7 +356,7 @@ The stages are probability estimation -> price/payout model -> edge/EV -> portfo
 - Entry point: terminal isolated canary and existing MLflow API/UI. No new product UI.
 - Fixtures: at least40 chronological meetings with8-12 horses, exact IDs, complete/incomplete event intervals, publication/capture distinctions, corrections, batch/individual trial times and official quote/dividend conventions; recorded planner responses avoid paid tests.
 - Workflow: request data -> inspect verified manifest and historical race/workout/trial speed -> approve isolated successor -> generate/select64 eligible generated features -> propose programs with occupied workers -> fit Benter/boosted/ensemble and shared/conditional-scale performance controls -> inspect current champions/USD -> derive joint outcomes and evaluate paper tickets -> restart -> replay model.
-- Proposed command (implement/test before use): `.venv/bin/python scripts/run_research_expansion_canary.py --fixture tests/fixtures/research_expansion --planner fixture --output .tmp/research-expansion-canary`.
+- Implemented canary entry point (full execution gate still required): `.venv/bin/python -m scripts.run_research_expansion_canary --planner fixture --output .tmp/research-expansion-canary`. It generates an explicitly synthetic fixture; it does not certify official-data coverage or live paid planning.
 - Assertions: no future leakage, honest missingness, preserved history, no hidden truncation/budget loss, safe OOF graph, latest evidence, resource refill, reconciled USD, correct paper arithmetic and no duplicated allocation/cost after restart.
 - Record stdout/status/manifests/selection/temporal audits/OOF/ledger/trace API/UI screenshot/resource timelines/settlement/replay diff.
 
@@ -438,7 +438,7 @@ The stages are probability estimation -> price/payout model -> edge/EV -> portfo
 ## Phase 3: Dataset Lifecycle
 ### Subphase 3.1: Requests, registry and verified builds
 - Objective: automatic dataset construction as a durable planner action.
-- Planned Touch Files: `ima/dataset_specs.py` (new), `ima/dataset_registry.py` (new), `ima/research_store.py`, `scripts/build_official_dataset.py`, `scripts/refresh_official_snapshot.py`, `scripts/verify_official_snapshot.py`, `tests/test_dataset_registry.py` (new), `tests/test_official_snapshot_refresh.py`.
+- Planned Touch Files: `ima/dataset_specs.py` (new), `ima/dataset_registry.py` (new), `ima/research_store.py`, `scripts/build_research_dataset.py` (new isolated consumer of immutable official snapshots), `scripts/build_official_dataset.py`, `scripts/refresh_official_snapshot.py`, `scripts/verify_official_snapshot.py`, `tests/test_dataset_registry.py` (new), `tests/test_official_snapshot_refresh.py`.
 - Commit: `feat(data): build and validate immutable dataset requests`.
 - Tests: `.venv/bin/python -m unittest tests.test_dataset_registry tests.test_official_snapshot_refresh tests.test_official_snapshot_verifier tests.test_research_store`.
 - Success Criteria: durable IDs resolve to verified/rejected artifact; partial/crashed/duplicate requests cannot overwrite verified data.
@@ -558,7 +558,7 @@ The stages are probability estimation -> price/payout model -> edge/EV -> portfo
 
 ### Subphase 6.2: Names, costs, bests and tracking reconciliation
 - Objective: Contract F consistently across CLI/evidence/traces/runs/models.
-- Planned Touch Files: `ima/research_telemetry.py` (new), `ima/mlflow_tracking.py`, `ima/research_evidence.py`, `ima/research_expansion.py`, `scripts/enrich_mlflow_research_identity.py`, `tests/test_mlflow_tracking.py`, `tests/test_enrich_mlflow_research_identity.py`, `docs/RESEARCH_NOMENCLATURE.md`.
+- Planned Touch Files: `ima/research_telemetry.py` (new), `ima/mlflow_tracking.py`, `ima/research_evidence.py`, `ima/research_expansion.py`, `scripts/enrich_mlflow_research_identity.py`, `tests/test_research_telemetry.py` (new), `tests/test_mlflow_tracking.py`, `tests/test_enrich_mlflow_research_identity.py`, `docs/RESEARCH_NOMENCLATURE.md`.
 - Commit: `feat(observability): standardize research identities USD and snapshots`.
 - Tests: exports/real isolated MLflow server/UI screenshot, idempotent historical dry-run, SDK-supported cost field readback.
 - Success Criteria: finite plan/execution/dataset traces distinguishable; USD/counts/bests/run links match one ledger snapshot.
@@ -613,7 +613,7 @@ The stages are probability estimation -> price/payout model -> edge/EV -> portfo
 ## Phase 8: Verification And Approved Rollout
 ### Subphase 8.1: Adversarial integration and measured performance
 - Objective: prove mechanisms together before replacing a campaign.
-- Planned Touch Files: `scripts/run_research_expansion_canary.py` (new), `scripts/benchmark_discovery_scheduler.py`, `scripts/benchmark_discovery_features.py`, `tests/test_research_expansion.py`, `docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md`.
+- Planned Touch Files: `scripts/run_research_expansion_canary.py` (new), `scripts/benchmark_discovery_scheduler.py`, `scripts/benchmark_discovery_features.py`, `tests/test_research_expansion.py`, `tests/test_research_executor_v6.py` (new integration and model replay gates), `tests/test_research_expansion_resources.py` (new queue/resource recovery gates), `docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md`.
 - Commit: `test(research): verify expansion discovery replay tracing and EV`.
 - Tests: `.venv/bin/python -m unittest discover -s tests`; deterministic CLI above; Armageddon matrix; full-history matched benchmark; actual MLflow UI/API readback.
 - Success Criteria: every acceptance criterion has concrete proof, no unresolved must-fix defect or fixture-only behavior claimed live.
@@ -626,7 +626,7 @@ The stages are probability estimation -> price/payout model -> edge/EV -> portfo
 
 ### Subphase 8.2: Isolated successor, monitoring and rollback
 - Objective: launch only an approved immutable own-user successor and verify ongoing feedback.
-- Planned Touch Files: `config/agentic_research_expansion.json` (new), `deploy/systemd/ima-research-expansion-supervisor.service` (new), `docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md` (new), `docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md`.
+- Planned Touch Files: `config/agentic_research_expansion.json` (new), `deploy/systemd/ima-research-expansion-supervisor.service` (new), `deploy/systemd/ima-research-expansion-supervisor` (new), `.github/workflows/research-expansion.yml` (only if existing workflow does not cover the gate), `scripts/optimize.py` (V6 CLI integration), `docs/AGENTIC_RESEARCH_EXPANSION_RUNBOOK.md` (new), `docs/AGENTIC_RESEARCH_EXPANSION_VALIDATION.md`.
 - Commit: `docs(ops): deploy verified research successor with rollback`.
 - Tests: own-user remote canary, source/data/model readback, multiple real planning/execution windows, resource/outbox/trace checks and rollback dry run.
 - Success Criteria: paid planner direction leads to completed graph trials and latest evidence/cost visibility; protected services unchanged.
