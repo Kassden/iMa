@@ -299,6 +299,100 @@ class SnapshotCostTests(unittest.TestCase):
         log_snapshot(self.campaign, self.payload(None), self.config, role="decision", number=1)
         self.assertEqual(self.mlflow.start_span.call_args.kwargs["span_type"], "LLM")
 
+    def test_d17_domain_failure_delivers_with_shared_summary_and_failure_tags(self):
+        from ima.research_summary import summary_preview
+        from tests.test_research_summary import failure_snapshot
+        payload = failure_snapshot()
+        before = copy.deepcopy(payload)
+        receipt = log_snapshot(self.campaign, payload, self.config, role="decision", number=17)
+        self.assertIsNone(receipt["total_cost_usd"])
+        self.assertEqual(payload, before)
+        emitted = self.span.set_outputs.call_args.args[0]
+        written = emitted["summary"]
+        self.assertEqual(written["operation"]["status"], "failed")
+        self.assertEqual(written["operation"]["delivery_status"], "pending")
+        self.assertEqual(emitted["planner_usage"], {})
+        self.assertEqual(self.span.set_status.call_args.args[0].status_code.value, "ERROR")
+        arguments = self.mlflow.update_current_trace.call_args.kwargs
+        self.assertEqual(arguments["response_preview"], summary_preview(written))
+        tags = arguments["tags"]
+        self.assertEqual(tags["ima.operation_status"], "failed")
+        self.assertIn("DNS", tags["ima.blocker"])
+        self.assertEqual(tags["ima.model_families"], "performance_probit")
+        self.assertEqual(tags["ima.active_trial_count"], "7")
+        self.assertEqual(tags["ima.completed_count"], "87")
+        self.assertEqual(tags["ima.summary_schema_version"], "1")
+        self.assertEqual(tags["mlflow.traceName"], "isolated-v6 | decision D000017")
+        artifacts = self.campaign / "traces" / "decision-000017"
+        self.assertEqual(json.loads((artifacts / "summary.json").read_text()), written)
+        self.assertEqual((artifacts / "summary.md").read_text(), emitted["summary_markdown"])
+        row, = self.outbox_rows()
+        self.assertEqual(row["delivered"], 1)
+        self.assertEqual(json.loads(row["payload"]), payload)
+        self.assertFalse(any(call.args[0] == "mlflow.llm.cost" for call in self.span.set_attribute.call_args_list))
+        self.assertEqual(receipt, log_snapshot(self.campaign, payload, self.config, role="decision", number=17))
+        self.assertEqual(self.mlflow.start_span.call_count, 1)
+
+    def test_unreported_numeric_cost_never_becomes_native_usd(self):
+        for status in ("estimated", "unavailable", "not_dispatched"):
+            with self.subTest(status=status):
+                self.span.reset_mock()
+                payload = self.payload() | {"planner_usage": {"cost_status": status, "total_cost_usd": 99,
+                                                             "input_tokens": 5}}
+                receipt = log_snapshot(self.campaign, payload, self.config, role="decision",
+                                       number={"estimated": 1, "unavailable": 2, "not_dispatched": 3}[status])
+                self.assertIsNone(receipt["total_cost_usd"])
+                emitted = self.span.set_outputs.call_args.args[0]
+                self.assertEqual(emitted["planner_usage"], payload["planner_usage"])
+                self.assertIsNone(emitted["summary"]["billing"]["total_cost_usd"])
+                self.assertFalse(any(call.args[0] == "mlflow.llm.cost" for call in self.span.set_attribute.call_args_list))
+                self.span.set_attribute.assert_any_call("mlflow.chat.tokenUsage", {"input_tokens": 5})
+
+    def test_proven_unsent_call_preserves_absent_receipt_without_native_usd(self):
+        payload = self.payload(None) | {
+            "planner_status": "failed", "error": "DNS failure", "transport_phase": "resolution",
+            "planner_usage": {"cost_status": "not_dispatched"},
+            "planner_spend": {"known_spend_usd": 0.477406735, "total_cost_usd": 0.477406735,
+                              "spend_unknown": False, "unresolved_decision_ids": [],
+                              "not_dispatched_decision_ids": ["decision-1"]},
+        }
+        receipt = log_snapshot(self.campaign, payload, self.config, role="decision", number=1)
+        self.assertIsNone(receipt["total_cost_usd"])
+        emitted = self.span.set_outputs.call_args.args[0]
+        self.assertEqual(emitted["planner_usage"], {"cost_status": "not_dispatched"})
+        self.assertFalse(emitted["summary"]["billing"]["total_unresolved"])
+        self.assertEqual(emitted["summary"]["billing"]["total_cost_usd"], 0.477406735)
+        self.assertFalse(any(call.args[0] in {"mlflow.llm.cost", "mlflow.chat.tokenUsage"}
+                             for call in self.span.set_attribute.call_args_list))
+
+    def test_failed_planner_readback_outage_keeps_failure_and_reuses_identity(self):
+        payload = self.payload() | {"planner_status": "failed", "error": "Invalid planner decision"}
+        with patch("ima.research_telemetry._verify_or_restore_trace", side_effect=RuntimeError("readback offline")):
+            with self.assertRaisesRegex(RuntimeError, "readback offline"):
+                log_snapshot(self.campaign, payload, self.config, role="decision", number=1)
+        row, = self.outbox_rows()
+        self.assertEqual(row["delivered"], 0)
+        self.assertIsNotNone(row["receipt"])
+        artifacts = self.campaign / "traces" / "decision-000001"
+        original_json = (artifacts / "summary.json").read_bytes()
+        original_markdown = (artifacts / "summary.md").read_bytes()
+        self.assertEqual(drain_trace_outbox(self.campaign, self.config)["pending"], 0)
+        self.assertEqual((artifacts / "summary.json").read_bytes(), original_json)
+        self.assertEqual((artifacts / "summary.md").read_bytes(), original_markdown)
+        self.assertEqual(self.mlflow.start_span.call_count, 1)
+        self.assertEqual(len([call for call in self.span.set_attribute.call_args_list
+                              if call.args[0] == "mlflow.llm.cost"]), 1)
+        self.assertEqual(self.outbox_rows()[0]["delivered"], 1)
+        self.assertEqual(self.span.set_outputs.call_args.args[0]["summary"]["operation"]["status"], "failed")
+
+    def test_old_delivered_trace_is_not_rewritten_to_new_summary(self):
+        receipt = log_snapshot(self.campaign, self.payload(), self.config, role="decision", number=1)
+        artifacts = self.campaign / "traces" / "decision-000001"
+        (artifacts / "summary.json").write_text('{"historical": true}')
+        self.assertEqual(receipt, log_snapshot(self.campaign, self.payload(), self.config, role="decision", number=1))
+        self.assertEqual(json.loads((artifacts / "summary.json").read_text()), {"historical": True})
+        self.assertEqual(self.mlflow.start_span.call_count, 1)
+
     def outbox_rows(self):
         with sqlite3.connect(self.campaign / "trace-outbox.sqlite") as conn:
             conn.row_factory = sqlite3.Row
@@ -312,6 +406,7 @@ class SnapshotCostTests(unittest.TestCase):
         self.assertEqual(row["attempts"], 1)
         self.assertEqual(row["delivered"], 0)
         self.assertEqual(json.loads(row["payload"]), self.payload())
+        self.assertTrue((self.campaign / "traces" / "decision-000001" / "summary.md").exists())
         self.mlflow.set_experiment.side_effect = None
         view = drain_trace_outbox(self.campaign, self.config)
         self.assertEqual(view, {"delivered": 1, "pending": 0, "errors": []})
@@ -344,7 +439,7 @@ class SnapshotCostTests(unittest.TestCase):
     def test_direct_serializer_rejects_actual_noop_before_inherited_context_access(self):
         from mlflow.entities import NoOpSpan
         with self.assertRaisesRegex(RuntimeError,"Delivery remains pending"):
-            _serialize_trace(NoOpSpan(),"1",{},"test","test",self.campaign,{})
+            _serialize_trace(NoOpSpan(),"1",{"ima.operation_status":"failed"},"test","test",self.campaign,{})
 
     def test_flush_failure_reuses_persisted_remote_identity_and_cost(self):
         self.mlflow.flush_trace_async_logging.side_effect = [RuntimeError("flush offline"), None]
@@ -417,7 +512,7 @@ class SnapshotCostTests(unittest.TestCase):
         self.assertEqual(next_trace_number(self.campaign, "execution"), 5)
         self.assertEqual(next_trace_number(self.campaign, "decision"), 1)
         directory = self.campaign / "traces"
-        directory.mkdir()
+        directory.mkdir(exist_ok=True)
         (directory / "execution-000010.json").write_text("{}")
         self.assertEqual(next_trace_number(self.campaign, "execution"), 11)
 
@@ -521,6 +616,47 @@ class SnapshotCostTests(unittest.TestCase):
 
 
 class LocalMLflowReadbackTests(unittest.TestCase):
+    def test_failed_decision_backend_and_serialized_restore_remain_error(self):
+        import mlflow
+        from mlflow.entities import TraceState, SpanStatusCode
+        from ima.research_controller import _tracking_names
+        from tests.test_research_summary import failure_snapshot
+        previous_uri = mlflow.get_tracking_uri()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = SimpleNamespace(research_policy="expansion_v6", mlflow_tracking_uri=f"sqlite:///{root / 'tracking.sqlite'}")
+            client = mlflow.MlflowClient(tracking_uri=config.mlflow_tracking_uri)
+            client.create_experiment(_tracking_names(config.research_policy)[0], artifact_location=(root / "artifacts").as_uri())
+            campaign = root / "campaign"
+            payload = failure_snapshot()
+            try:
+                with patch("ima.research_telemetry._verify_or_restore_trace", side_effect=RuntimeError("offline readback")):
+                    with self.assertRaisesRegex(RuntimeError, "offline readback"):
+                        log_snapshot(campaign, payload, config, role="decision", number=17)
+                with sqlite3.connect(campaign / "trace-outbox.sqlite") as conn:
+                    receipt, body = conn.execute("SELECT receipt,trace_json FROM traces").fetchone()
+                receipt, body = json.loads(receipt), json.loads(body)
+                self.assertEqual(body["info"]["state"], "ERROR")
+                self.assertEqual(body["data"]["spans"][0]["status"]["code"], "STATUS_CODE_ERROR")
+                self.assertNotIn("mlflow.trace.cost", body["info"]["trace_metadata"])
+                original = client.get_trace(receipt["trace_id"])
+                self.assertEqual(original.info.state, TraceState.ERROR)
+                client.delete_traces(experiment_id=receipt["experiment_id"], trace_ids=[receipt["trace_id"]])
+                with patch.object(mlflow, "start_span", side_effect=AssertionError("must reuse trace")):
+                    self.assertEqual(drain_trace_outbox(campaign, config), {"delivered": 1, "pending": 0, "errors": []})
+                trace = client.get_trace(receipt["trace_id"])
+                self.assertEqual(trace.info.state, TraceState.ERROR)
+                self.assertEqual(trace.data.spans[0].status.status_code, SpanStatusCode.ERROR)
+                self.assertIn("DNS", trace.data.spans[0].status.description)
+                self.assertEqual(trace.info.tags["ima.operation_status"], "failed")
+                self.assertEqual(trace.data.spans[0].outputs["planner_usage"], {})
+                self.assertEqual(trace.data.spans[0].outputs["summary"]["billing"]["known_subtotal_usd"], 0.477406735)
+                self.assertEqual(trace.info.tags["ima.evidence_id"], "input-17")
+                self.assertEqual(trace.info.tags["ima.output_evidence_id"], "output-17")
+                self.assertEqual(drain_trace_outbox(campaign, config)["delivered"], 0)
+            finally:
+                mlflow.set_tracking_uri(previous_uri)
+
     def test_required_tracing_preserves_disabled_and_sampling_policies(self):
         import mlflow
         from ima.research_telemetry import initialize_required_tracing
