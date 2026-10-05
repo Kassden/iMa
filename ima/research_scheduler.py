@@ -18,7 +18,7 @@ class ResourceRequest:
 
 
 class ResourceAdmission:
-    def __init__(self, max_jobs, cpu_threads, ram_gib, *, resident_gib=0, emergency_gib=0, max_preparations=None, max_fits=None, aging_seconds=30):
+    def __init__(self, max_jobs, cpu_threads, ram_gib, *, resident_gib=0, emergency_gib=0, max_preparations=None, max_fits=None, max_expensive_fits=None, aging_seconds=30):
         if min(max_jobs,cpu_threads,ram_gib) <= 0:
             raise ValueError("Resource budgets must be positive")
         self.max_jobs, self.cpu_threads, self.ram_gib = max_jobs,cpu_threads,ram_gib
@@ -26,6 +26,7 @@ class ResourceAdmission:
         self.resident_gib, self.emergency_gib = resident_gib, emergency_gib
         self.max_preparations = max_preparations
         self.max_fits = max_fits
+        self.max_expensive_fits = max_expensive_fits
         self.aging_seconds = aging_seconds
         self.memory_headroom_gib = None
         self.cgroup_headroom_gib = None
@@ -34,7 +35,7 @@ class ResourceAdmission:
         self.last_blockers = {}
         if min(resident_gib,emergency_gib,aging_seconds) < 0:
             raise ValueError("Invalid residency/headroom/aging policy")
-        if any(value is not None and value < 1 for value in (max_preparations,max_fits)):
+        if any(value is not None and value < 1 for value in (max_preparations,max_fits,max_expensive_fits)):
             raise ValueError("Positive separate preparation/fit limits required")
 
     @staticmethod
@@ -79,6 +80,10 @@ class ResourceAdmission:
             reasons.append("max_preparations")
         if self.max_fits is not None and fit(request) and sum(fit(r) for r in self.active.values()) >= self.max_fits:
             reasons.append("max_fits")
+        if self.max_expensive_fits is not None and expensive_fit(request) and sum(expensive_fit(r) for r in self.active.values()) >= self.max_expensive_fits:
+            reasons.append("max_expensive_fits")
+        if expensive_fit(request) and request.confidence!="measured_exact_workload" and any(expensive_fit(r) for r in self.active.values()):
+            reasons.append("cold_expensive_family")
         return reasons
 
     def admits(self, request):
@@ -108,6 +113,7 @@ class ResourceAdmission:
         private = sum(self._private(r) for r in self.active.values())
         shared = sum(self._shared(self.active.values()).values())/GIB
         result = {"running_jobs":len(self.active),"reserved_cpu_threads":sum(r.cpu_threads for r in self.active.values()),"reserved_ram_gib":private+shared,"max_jobs":self.max_jobs,"cpu_budget":self.cpu_threads,"ram_budget_gib":self.ram_gib}
+        result.update(max_fits=self.max_fits,max_expensive_fits=self.max_expensive_fits)
         if shared or any(isinstance(r,JobEstimate) for r in self.active.values()) or self.resident_gib or self.emergency_gib:
             result.update(private_ram_gib=private,shared_ram_gib=shared,resident_gib=self.resident_gib,emergency_gib=self.emergency_gib,admission_blockers=dict(self.last_blockers))
         return result
@@ -135,7 +141,7 @@ class ResourceAdmission:
                 since = self.deferred_since.setdefault(key,now)
                 standalone = self._private(request)+sum(request.shared_artifacts.values())/GIB+self.resident_gib+self.emergency_gib
                 possible = request.cpu_threads <= self.cpu_threads and standalone <= self.ram_gib
-                if possible and now-since >= self.aging_seconds:
+                if possible and now-since >= self.aging_seconds and not {"max_expensive_fits","cold_expensive_family"}.intersection(reasons):
                     aged.append((since,key,request))
             else:
                 feasible.append((key,request))
@@ -150,6 +156,11 @@ def memory_budget_gib(memory_budget_gb_decimal):
     if not math.isfinite(memory_budget_gb_decimal) or memory_budget_gb_decimal <= 0:
         raise ValueError("Positive decimal GB budget required")
     return memory_budget_gb_decimal * 1_000_000_000 / GIB
+
+
+def expensive_fit(request):
+    return isinstance(request,JobEstimate) and request.stage in {"fit","graph_component"} and (
+        "gaussian_probit" in request.family or request.family.startswith("graph:"))
 
 
 def fair_program_order(program_ids, reservations):
