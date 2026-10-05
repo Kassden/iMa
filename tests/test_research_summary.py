@@ -32,6 +32,35 @@ def failure_snapshot():
 
 
 class ResearchSummaryTests(unittest.TestCase):
+    def test_blocked_outcomes_are_failures_even_when_delivery_succeeded(self):
+        for status in ("blocked_tracking", "blocked_failures", "blocked_paper"):
+            with self.subTest(status=status):
+                value = summary({"status": status, "delivery_status": "delivered"})
+                self.assertEqual(value["operation"]["status"], status)
+                self.assertTrue(value["operation"]["failed"])
+                self.assertEqual(value["health"], "degraded")
+                self.assertEqual(value["operation"]["delivery_status"], "delivered")
+                self.assertIn(f"operation={status}", summary_preview(value))
+        for status in ("complete", "stopped", "training"):
+            with self.subTest(status=status):
+                self.assertFalse(summary({"status": status})["operation"]["failed"])
+
+    def test_effective_fit_cap_prefers_ramp_then_fit_limit_then_legacy_jobs(self):
+        cases = (
+            ({"capacity_ramp": {"cap": 4}, "resources": {"max_fits": 2, "max_jobs": 30}}, 4),
+            ({"capacity_ramp": {"cap": 0}, "resources": {"max_fits": 2, "max_jobs": 30}}, 0),
+            ({"resources": {"max_fits": 2, "max_jobs": 30}}, 2),
+            ({"resources": {"max_fits": 0, "max_jobs": 30}}, 0),
+            ({"resources": {"max_jobs": 17}}, 17),
+            ({}, None),
+        )
+        for snapshot, expected in cases:
+            with self.subTest(snapshot=snapshot):
+                value = summary(snapshot)
+                self.assertEqual(value["execution"]["caps"]["effective_fit_cap"], expected)
+                self.assertIsNone(value["execution"]["caps"]["fit_ceiling"])
+                self.assertIn(f"fit cap={expected if expected is not None else 'unknown'}", summary_preview(value))
+
     def test_d17_failure_is_distinct_from_delivery_and_keeps_unknown_billing(self):
         snapshot = failure_snapshot() | {"delivery_status": "delivered"}
         before = copy.deepcopy(snapshot)
@@ -202,6 +231,26 @@ class ResearchSummaryTests(unittest.TestCase):
                                             "progress": {"fold": 1, "stage": "training", "iteration": 30}}]})
         self.assertEqual(value["execution"]["active_trials"][0]["fold"], 1)
         self.assertEqual(value["execution"]["active_trials"][0]["stage"], "training")
+
+    def test_fold_id_is_read_from_worker_progress_without_losing_legacy_fold(self):
+        cases = (
+            ({"progress": {"fold_id": "fold-001", "stage": "training"}}, "fold-001"),
+            ({"fold_id": "row-fold", "progress": {"fold_id": "progress-fold"}}, "row-fold"),
+            ({"runtime": {"fold_id": "runtime-fold"}}, "runtime-fold"),
+            ({"fold": 0, "progress": {"fold_id": "progress-fold"}}, 0),
+            ({"progress": {"fold": 1, "fold_id": "progress-fold"}}, 1),
+            ({"progress": {"fold": None, "fold_id": "progress-fold"}}, "progress-fold"),
+            ({"runtime": {"fold": 2}}, 2),
+        )
+        for fields, expected in cases:
+            with self.subTest(fields=fields):
+                snapshot = {"active_trials": [{"attempt_id": "slow", "status": "running",
+                                                "model_family": "performance_probit", **fields}]}
+                before = copy.deepcopy(snapshot)
+                value = summary(snapshot)
+                self.assertEqual(value["execution"]["active_trials"][0]["fold"], expected)
+                self.assertIn(f"fold={expected}", summary_preview(value))
+                self.assertEqual(snapshot, before)
 
     def test_input_and_output_watermarks_and_details_stay_separate(self):
         value = summary({"evidence_id": "original", "input_terminal_watermark": 1,

@@ -344,7 +344,7 @@ def _serialize_trace(span, experiment_id, tags, name, preview, campaign, usage):
     end_time = span.end_time_ns or time.time_ns()
     serialized = span.to_dict()
     serialized["end_time_unix_nano"] = end_time
-    failed = tags.get("ima.operation_status") in {"failed", "error", "timeout", "timed_out", "interrupted"}
+    failed = summary({"operation_status": tags.get("ima.operation_status")})["operation"]["failed"]
     failed = failed or serialized.get("status", {}).get("code") == "STATUS_CODE_ERROR"
     if failed:
         serialized["status"] = {"code": "STATUS_CODE_ERROR",

@@ -616,6 +616,68 @@ class SnapshotCostTests(unittest.TestCase):
 
 
 class LocalMLflowReadbackTests(unittest.TestCase):
+    def test_blocked_final_execution_backend_and_durable_status_are_error(self):
+        import mlflow
+        from mlflow.entities import TraceState, SpanStatusCode
+        from ima.research_controller import _tracking_names
+        previous_uri = mlflow.get_tracking_uri()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = SimpleNamespace(research_policy="expansion_v6", mlflow_tracking_uri=f"sqlite:///{root / 'tracking.sqlite'}")
+            client = mlflow.MlflowClient(tracking_uri=config.mlflow_tracking_uri)
+            client.create_experiment(_tracking_names(config.research_policy)[0], artifact_location=(root / "artifacts").as_uri())
+            campaign = root / "campaign"
+            try:
+                for number, status in enumerate(("blocked_tracking", "blocked_failures", "blocked_paper"), 1):
+                    with self.subTest(status=status):
+                        payload = {"status": status, "evidence_id": f"final-{number}",
+                                   "counts": {"completed": 1, "failed": 1}, "active_trials": []}
+                        receipt = log_snapshot(campaign, payload, config, role="execution", number=number)
+                        trace = client.get_trace(receipt["trace_id"])
+                        span = trace.data.spans[0]
+                        self.assertEqual(trace.info.state, TraceState.ERROR)
+                        self.assertEqual(span.status.status_code, SpanStatusCode.ERROR)
+                        self.assertEqual(span.status.description, status)
+                        self.assertEqual(trace.info.tags["ima.operation_status"], status)
+                        self.assertTrue(span.outputs["summary"]["operation"]["failed"])
+                        self.assertIn(f"operation={status}", trace.info.response_preview)
+                        self.assertIsNone(receipt["total_cost_usd"])
+                        self.assertNotIn("mlflow.trace.cost", trace.info.trace_metadata)
+                        self.assertNotIn("mlflow.llm.cost", span.attributes)
+                        with sqlite3.connect(campaign / "trace-outbox.sqlite") as conn:
+                            delivered, body = conn.execute("SELECT delivered,trace_json FROM traces WHERE role='execution' AND number=?", (number,)).fetchone()
+                        body = json.loads(body)
+                        self.assertEqual(delivered, 1)
+                        self.assertEqual(body["info"]["state"], "ERROR")
+                        self.assertEqual(body["data"]["spans"][0]["status"]["code"], "STATUS_CODE_ERROR")
+                        with patch.object(mlflow, "start_span", side_effect=AssertionError("must reuse delivered trace")):
+                            self.assertEqual(log_snapshot(campaign, payload, config, role="execution", number=number), receipt)
+                self.assertEqual(drain_trace_outbox(campaign, config), {"delivered": 0, "pending": 0, "errors": []})
+            finally:
+                mlflow.set_tracking_uri(previous_uri)
+
+    def test_serializer_uses_shared_blocked_status_when_live_span_is_unset(self):
+        import mlflow
+        from ima.research_controller import _tracking_names
+        previous_uri = mlflow.get_tracking_uri()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tracking_uri = f"sqlite:///{root / 'tracking.sqlite'}"
+            name = _tracking_names("expansion_v6")[0]
+            client = mlflow.MlflowClient(tracking_uri=tracking_uri)
+            experiment_id = client.create_experiment(name, artifact_location=(root / "artifacts").as_uri())
+            try:
+                mlflow.set_tracking_uri(tracking_uri)
+                mlflow.set_experiment(name)
+                for status in ("blocked_tracking", "blocked_failures", "blocked_paper"):
+                    with self.subTest(status=status), mlflow.start_span(name=f"serializer-{status}") as span:
+                        body = _serialize_trace(span, experiment_id, {"ima.operation_status": status},
+                                                status, status, root / "campaign", {})
+                        self.assertEqual(body["info"]["state"], "ERROR")
+                        self.assertEqual(body["data"]["spans"][0]["status"]["code"], "STATUS_CODE_ERROR")
+            finally:
+                mlflow.set_tracking_uri(previous_uri)
+
     def test_failed_decision_backend_and_serialized_restore_remain_error(self):
         import mlflow
         from mlflow.entities import TraceState, SpanStatusCode

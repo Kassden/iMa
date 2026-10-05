@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 
 
 SUMMARY_SCHEMA_VERSION = 1
-_FAILURES = {"failed", "error", "timeout", "timed_out", "interrupted"}
+_FAILURES = {"failed", "error", "timeout", "timed_out", "interrupted",
+             "blocked_tracking", "blocked_failures", "blocked_paper"}
 _ACTIVE = {"reserved", "queued", "preparing", "running"}
 
 
@@ -58,10 +59,12 @@ def _active_trials(snapshot, observed_at):
         elapsed = row.get("elapsed_seconds", runtime.get("elapsed_seconds"))
         if elapsed is None and _timestamp(start) and _timestamp(observed_at):
             elapsed = max(0, (_timestamp(observed_at) - _timestamp(start)).total_seconds())
+        fold = next((source[name] for source in (row, progress_fields, runtime)
+                     for name in ("fold", "fold_id") if source.get(name) is not None), None)
         active.append({
             "attempt_id": row.get("attempt_id"), "program_id": row.get("program_id", row.get("payload", {}).get("program_id")),
             "status": status, "model_family": row.get("model_family", recipe.get("model", {}).get("kind")),
-            "target": row.get("target", recipe.get("target")), "fold": row.get("fold", progress_fields.get("fold", runtime.get("fold"))),
+            "target": row.get("target", recipe.get("target")), "fold": fold,
             "stage": row.get("stage", progress_fields.get("stage", runtime.get("stage"))), "progress": row.get("progress", runtime.get("progress")),
             "started_at": _utc(start), "elapsed_seconds": elapsed,
             "deadline_at": _utc(row.get("deadline_at", runtime.get("deadline_at"))),
@@ -198,7 +201,7 @@ def summary(snapshot: dict) -> dict:
         "execution": {"counts": counts, "active_trial_count": active_count, "active_trials": trials,
                       "active_details_complete": trials is not None and active_count == len(trials),
                       "preparing_programs": snapshot.get("preparing_programs"),
-                      "caps": {"effective_fit_cap": snapshot.get("capacity_ramp", {}).get("cap", resources.get("max_jobs")),
+                      "caps": {"effective_fit_cap": snapshot.get("capacity_ramp", {}).get("cap", resources.get("max_fits", resources.get("max_jobs"))),
                                "fit_ceiling": snapshot.get("max_fits", resources.get("fit_ceiling")),
                                "cpu_budget": resources.get("cpu_budget"), "ram_budget_gib": resources.get("ram_budget_gib")},
                       "resources": resources, "host_resources": snapshot.get("host_resources"),
