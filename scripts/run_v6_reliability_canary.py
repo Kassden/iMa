@@ -36,7 +36,7 @@ PROTOCOL = {"min_train_races": 200, "calibration_races": 25, "score_races": 25,
 MODELS = (
     ("benter_conditional_logit", {"l2": .1, "max_iter": 300}),
     ("boosted", {"max_iter": 40}),
-    ("gaussian_probit", {"heteroscedastic": True, "quadrature_order": 32,
+    ("gaussian_probit", {"heteroscedastic": True, "quadrature_order": 128,
                          "l2": .1, "scale_l2": .1, "max_iter": 300}),
 )
 
