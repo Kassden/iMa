@@ -4,10 +4,12 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import math
 import os
 import shutil
 import tempfile
 import time
+import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -108,6 +110,20 @@ class PreparationArtifact:
         return joblib.load(self.path/"fitted.joblib",mmap_mode="r") if "fitted.joblib" in manifest["checksums"] else None
 
 
+class PreparationCacheWaitTimeout(TimeoutError):
+    """Retryable infrastructure contention, not a model/scientific failure."""
+
+    def __init__(self, diagnostic):
+        self.diagnostic = diagnostic
+        self.cache_key = diagnostic["cache_key"]
+        self.owner = diagnostic["owner"]
+        self.stage = diagnostic["stage"]
+        super().__init__("Preparation cache wait timeout: " + json.dumps(diagnostic, sort_keys=True))
+
+    def __reduce__(self):
+        return type(self), (self.diagnostic,)
+
+
 class PreparationCache:
     """Only use an own-user cache root; Joblib objects are trusted local artifacts.
 
@@ -119,13 +135,56 @@ class PreparationCache:
         self.root.mkdir(parents=True,exist_ok=True,mode=0o700)
         if self.root.stat().st_uid != os.getuid() or self.root.stat().st_mode & 0o022:
             raise ValueError("Preparation cache must be owned by this user and not writable by others")
-        self.lock_timeout = lock_timeout
+        if not isinstance(lock_timeout, (int, float)) or not math.isfinite(lock_timeout) or lock_timeout < 0:
+            raise ValueError("Preparation lock timeout must be finite and nonnegative")
+        self.lock_timeout = float(lock_timeout)
         self.stats = {"hit":0,"miss":0,"wait":0,"builds":0}
 
+    def owner_status(self, identity):
+        """Last observed owner; flock, never this diagnostic, grants ownership."""
+        PreparationArtifact(str(self.root), identity, "hit").path
+        try:
+            status = json.loads((self.root/(identity+".owner.json")).read_text())
+            return status if isinstance(status, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
     @contextmanager
-    def _lock(self, identity, *, shared=False):
+    def _producer_status(self, identity, owner):
+        status = {"cache_key": identity, "owner": {**(owner or {}), "pid": os.getpid()},
+                  "stage": "validating", "acquired_at_epoch": time.time()}
+        stopped = threading.Event()
+        guard = threading.Lock()
+
+        def update(stage=None):
+            with guard:
+                if stage is not None:
+                    status["stage"] = stage
+                status["heartbeat_at_epoch"] = time.time()
+                path = self.root/(identity+".owner.json")
+                temporary = path.with_suffix(".tmp")
+                temporary.write_text(json.dumps(status, sort_keys=True))
+                os.replace(temporary, path)
+
+        def heartbeat():
+            while not stopped.wait(1):
+                update()
+
+        update()
+        thread = threading.Thread(target=heartbeat, daemon=True)
+        thread.start()
+        try:
+            yield update
+        finally:
+            stopped.set()
+            thread.join()
+            update("released")
+
+    @contextmanager
+    def _lock(self, identity, *, shared=False, owner=None, stage="preparing"):
         with open(self.root/(identity+".lock"),"a+b") as stream:
             start = time.monotonic()
+            deadline_epoch = time.time() + self.lock_timeout
             waited = False
             while True:
                 try:
@@ -134,19 +193,32 @@ class PreparationCache:
                 except BlockingIOError:
                     waited = True
                     if time.monotonic()-start >= self.lock_timeout:
-                        raise TimeoutError("Preparation cache lock timeout")
-                    time.sleep(.02)
+                        observed = self.owner_status(identity)
+                        raise PreparationCacheWaitTimeout({
+                            "failure_kind": "infrastructure_cache_wait", "retryable": True,
+                            "cache_key": identity, "owner": observed.get("owner"),
+                            "stage": observed.get("stage", "unknown"), "waiting_stage": stage,
+                            "heartbeat_at_epoch": observed.get("heartbeat_at_epoch"),
+                            "wait_seconds": time.monotonic()-start,
+                            "lock_timeout_seconds": self.lock_timeout,
+                            "deadline_at_epoch": deadline_epoch,
+                        })
+                    time.sleep(min(.02, max(0, self.lock_timeout-(time.monotonic()-start))))
             try:
-                yield waited, time.monotonic()-start
+                if shared:
+                    yield waited, time.monotonic()-start
+                else:
+                    with self._producer_status(identity, owner) as update:
+                        yield waited, time.monotonic()-start, update
             finally:
                 fcntl.flock(stream,fcntl.LOCK_UN)
 
-    def prepare_fold(self, key: PreparationKey, builder) -> PreparationArtifact:
+    def prepare_fold(self, key: PreparationKey, builder, *, owner=None) -> PreparationArtifact:
         key = key if isinstance(key,PreparationKey) else PreparationKey.model_validate(key)
         identity = key.cache_id()
         destination = self.root/identity
         if destination.exists():
-            with self._lock(identity,shared=True) as (waited,seconds):
+            with self._lock(identity,shared=True,stage="reading") as (waited,seconds):
                 artifact = PreparationArtifact(str(self.root),identity,"wait" if waited else "hit",seconds)
                 try:
                     if artifact.manifest()["key"] != key.model_dump(mode="json"):
@@ -156,7 +228,7 @@ class PreparationCache:
                     return artifact
                 except (OSError,ValueError,KeyError,EOFError):
                     pass
-        with self._lock(identity) as (waited, seconds):
+        with self._lock(identity,owner=owner) as (waited, seconds, update):
             artifact = PreparationArtifact(str(self.root),identity,"wait" if waited else "hit",seconds)
             try:
                 manifest = artifact.manifest()
@@ -171,10 +243,12 @@ class PreparationCache:
                 shutil.rmtree(destination)
             temporary = Path(tempfile.mkdtemp(prefix=identity+"-",dir=self.root))
             try:
+                update("building")
                 prepared = builder()
                 if not isinstance(prepared,PreparedFold):
                     raise TypeError("Preparation builder must return PreparedFold")
                 self._validate(prepared,key)
+                update("writing")
                 arrays = {name:np.ascontiguousarray(array) for name,array in prepared.arrays.items()}
                 joblib.dump(arrays,temporary/"arrays.joblib",compress=0)
                 checksums = {"arrays.joblib":_checksum(temporary/"arrays.joblib")}
@@ -189,6 +263,7 @@ class PreparationCache:
                 for name in checksums:
                     with open(temporary/name,"rb") as stream:
                         os.fsync(stream.fileno())
+                update("publishing")
                 os.replace(temporary,destination)
                 directory_fd = os.open(self.root,os.O_RDONLY)
                 try:
@@ -228,7 +303,7 @@ class PreparationCache:
     def pin(self, artifact):
         if Path(artifact.root) != self.root:
             raise ValueError("Foreign preparation artifact")
-        with self._lock(artifact.artifact_id,shared=True):
+        with self._lock(artifact.artifact_id,shared=True,stage="pinning"):
             artifact.manifest()
             yield artifact
 

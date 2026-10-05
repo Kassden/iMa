@@ -1,14 +1,20 @@
 import multiprocessing
+import os
+import pickle
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from ima.research_preparation import PreparationKey, PreparationCache, PreparedFold, build_numeric_fold
+from ima.research_preparation import (
+    PreparationKey, PreparationCache, PreparationCacheWaitTimeout, PreparedFold, build_numeric_fold,
+)
 
 
 def key(**changes):
@@ -43,7 +49,133 @@ def concurrent_prepare(arguments):
     return artifact.cache_status,artifact.load_arrays()["train_x"].tolist()
 
 
+def crash_prepare(root):
+    def crash():
+        os._exit(23)
+    PreparationCache(root).prepare_fold(key(), crash, owner={"attempt_id": "crashed-producer"})
+
+
 class PreparationTests(unittest.TestCase):
+    def test_one_producer_and_26_followers_with_bounded_pool(self):
+        with tempfile.TemporaryDirectory() as root:
+            started, blocked, release = threading.Event(), threading.Event(), threading.Event()
+            import fcntl
+            original_flock = fcntl.flock
+            def observed_flock(*args):
+                try:
+                    return original_flock(*args)
+                except BlockingIOError:
+                    blocked.set()
+                    raise
+            def builder():
+                started.set()
+                if not release.wait(5):
+                    raise TimeoutError("Test producer was not released")
+                return build()
+            cache = PreparationCache(root)
+            with patch("ima.research_preparation.fcntl.flock", side_effect=observed_flock), \
+                 ThreadPoolExecutor(max_workers=4) as pool:
+                producer = pool.submit(cache.prepare_fold, key(), builder)
+                try:
+                    self.assertTrue(started.wait(5))
+                    followers = [pool.submit(PreparationCache(root).prepare_fold, key(),
+                        lambda: self.fail("Follower recomputed artifact")) for _ in range(26)]
+                    self.assertTrue(blocked.wait(5))
+                finally:
+                    release.set()
+                outcomes = [producer.result(timeout=5), *(future.result(timeout=5) for future in followers)]
+            self.assertEqual(1, cache.stats["builds"])
+            self.assertEqual(1, sum(artifact.cache_status == "miss" for artifact in outcomes))
+            self.assertEqual(1, len({artifact.artifact_id for artifact in outcomes}))
+            self.assertTrue(any(artifact.cache_status == "wait" for artifact in outcomes))
+            for artifact in outcomes:
+                np.testing.assert_array_equal(artifact.load_arrays()["train_x"], [[1.], [2.]])
+
+    def test_prewarmed_producer_can_exceed_120_seconds_without_follower_wait(self):
+        with tempfile.TemporaryDirectory() as root:
+            clock = [0.]
+            def slow_builder():
+                clock[0] = 121.
+                return build()
+            cache = PreparationCache(root)
+            with patch("ima.research_preparation.time.monotonic", side_effect=lambda: clock[0]):
+                producer = cache.prepare_fold(key(), slow_builder)
+                follower = cache.prepare_fold(key(), lambda: self.fail("Follower rebuilt"))
+            self.assertEqual("miss", producer.cache_status)
+            self.assertEqual("hit", follower.cache_status)
+            self.assertEqual(0, follower.wait_seconds)
+            self.assertEqual(1, cache.stats["builds"])
+
+    def test_wait_timeout_is_typed_bounded_and_keeps_live_lock(self):
+        with tempfile.TemporaryDirectory() as root:
+            started, release = threading.Event(), threading.Event()
+            def builder():
+                started.set()
+                if not release.wait(5):
+                    raise TimeoutError("Test producer was not released")
+                return build()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                producer = pool.submit(PreparationCache(root).prepare_fold, key(), builder,
+                                       owner={"attempt_id": "producer", "fold_id": "fold-001"})
+                try:
+                    self.assertTrue(started.wait(5))
+                    lock = Path(root)/(key().cache_id()+".lock")
+                    inode = lock.stat().st_ino
+                    before = time.monotonic()
+                    with self.assertRaises(PreparationCacheWaitTimeout) as caught:
+                        PreparationCache(root, lock_timeout=.04).prepare_fold(key(), lambda: self.fail("Follower built"))
+                    self.assertLess(time.monotonic()-before, 1)
+                    error = caught.exception
+                    self.assertEqual(key().cache_id(), error.cache_key)
+                    self.assertEqual("producer", error.owner["attempt_id"])
+                    self.assertEqual("building", error.stage)
+                    self.assertTrue(error.diagnostic["retryable"])
+                    self.assertEqual("infrastructure_cache_wait", error.diagnostic["failure_kind"])
+                    self.assertIsNotNone(error.diagnostic["heartbeat_at_epoch"])
+                    self.assertEqual(error.diagnostic, pickle.loads(pickle.dumps(error)).diagnostic)
+                    self.assertEqual(inode, lock.stat().st_ino)
+                    self.assertFalse(PreparationCache(root).evict(key().cache_id()))
+                    heartbeat = error.diagnostic["heartbeat_at_epoch"]
+                    until = time.monotonic()+2
+                    while time.monotonic() < until:
+                        observed = PreparationCache(root).owner_status(key().cache_id())
+                        if observed["heartbeat_at_epoch"] > heartbeat:
+                            break
+                        time.sleep(.02)
+                    self.assertGreater(observed["heartbeat_at_epoch"], heartbeat)
+                    self.assertEqual("building", observed["stage"])
+                finally:
+                    release.set()
+                artifact = producer.result(timeout=5)
+                self.assertEqual("hit", PreparationCache(root).prepare_fold(key(), build).cache_status)
+                self.assertEqual("released", PreparationCache(root).owner_status(artifact.artifact_id)["stage"])
+
+    def test_unbounded_wait_configuration_is_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            for timeout in (None, float("inf"), float("nan"), -1):
+                with self.subTest(timeout=timeout), self.assertRaises(ValueError):
+                    PreparationCache(root, lock_timeout=timeout)
+
+    def test_producer_death_replays_without_deleting_lock(self):
+        with tempfile.TemporaryDirectory() as root:
+            context = multiprocessing.get_context("spawn")
+            producer = context.Process(target=crash_prepare, args=(root,))
+            producer.start()
+            producer.join(timeout=15)
+            if producer.is_alive():
+                producer.terminate()
+                producer.join(timeout=5)
+                self.fail("Crash fixture did not exit")
+            self.assertEqual(23, producer.exitcode)
+            cache = PreparationCache(root, lock_timeout=.5)
+            lock = Path(root)/(key().cache_id()+".lock")
+            inode = lock.stat().st_ino
+            self.assertFalse((Path(root)/key().cache_id()).exists())
+            artifact = cache.prepare_fold(key(), build)
+            self.assertEqual("miss", artifact.cache_status)
+            self.assertEqual(inode, lock.stat().st_ino)
+            self.assertEqual([[1.], [2.]], artifact.load_arrays()["train_x"].tolist())
+
     def test_reuse_readonly_pin_and_eviction(self):
         with tempfile.TemporaryDirectory() as root:
             cache = PreparationCache(root)
