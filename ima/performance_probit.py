@@ -8,6 +8,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from scipy.integrate import quad
 from scipy.optimize import minimize
 from scipy.special import erfcx, log_ndtr, logsumexp, roots_hermitenorm
 from sklearn.impute import SimpleImputer
@@ -20,7 +21,9 @@ from .performance_distributions import PerformanceDistribution, _row_keys
 @lru_cache(maxsize=16)
 def _quadrature(order):
     z, w = roots_hermitenorm(order)
-    return z, np.log(w / np.sqrt(2*np.pi))
+    with np.errstate(divide="ignore"):
+        log_weights = np.log(w / np.sqrt(2*np.pi))
+    return z, log_weights
 
 
 def gaussian_log_win_probabilities(location, scale, *, order=64):
@@ -84,6 +87,8 @@ def _gaussian_log_win_probabilities(location, scale, *, order, with_gradient=Fal
 
 def gaussian_win_probabilities(location, scale, *, order=64, tolerance=1e-6,
                                max_order=512, return_diagnostics=False):
+    if not np.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError("Gaussian quadrature requires a positive finite tolerance")
     previous = None
     refinement_error = np.inf
     while True:
@@ -100,7 +105,63 @@ def gaussian_win_probabilities(location, scale, *, order=64, tolerance=1e-6,
         previous = values
         order = min(max_order, 2*order)
     diagnostics = {"quadrature_order": order, "normalization_error": normalization_error,
-                   "refinement_error": refinement_error, "converged": converged}
+                   "refinement_error": refinement_error, "converged": converged,
+                   "integration_method": "gauss_hermite"}
+    if not converged:
+        diagnostics.update(integration_method="adaptive_quad",
+                           hermite_normalization_error=normalization_error,
+                           hermite_refinement_error=refinement_error)
+        mu, sigma = np.asarray(location, float), np.asarray(scale, float)
+
+        def adaptive_integral(budget):
+            probabilities, errors = np.zeros(len(mu)), np.zeros(len(mu))
+            for i in range(len(mu)):
+                mask = np.arange(len(mu)) != i
+                offsets = (mu[i]-mu[mask])/sigma[mask]
+                ratios = sigma[i]/sigma[mask]
+                centers = (mu[mask]-mu[i])/sigma[i]
+                widths = sigma[mask]/sigma[i]
+                transitions = np.r_[centers, centers-8*widths, centers+8*widths, 0.]
+                points = np.unique(transitions[(transitions > -8) & (transitions < 8)])
+
+                def integrand(z):
+                    return float(np.exp(-z*z/2-np.log(2*np.pi)/2
+                                        + log_ndtr(offsets+ratios*z).sum()))
+
+                # Explicit transitions prevent narrow CDF changes being missed;
+                # infinite tails retain the complete Gaussian winner likelihood.
+                for lower, upper, breakpoints in ((-np.inf,-8.,None),
+                                                   (-8.,8.,points), (8.,np.inf,None)):
+                    result = quad(integrand, lower, upper, points=breakpoints,
+                                  epsabs=budget/(3*len(mu)), epsrel=budget/(3*len(mu)),
+                                  limit=200, full_output=1)
+                    if len(result) != 3:
+                        raise RuntimeError(f"QUADPACK did not converge: {result[3]}")
+                    value, error, _ = result
+                    if not np.isfinite([value,error]).all() or value < 0 or error < 0:
+                        raise RuntimeError("QUADPACK returned invalid probability or error")
+                    probabilities[i] += value
+                    errors[i] += error
+            total = probabilities.sum()
+            if not np.isfinite(total) or total <= 0:
+                raise RuntimeError("QUADPACK returned invalid total probability")
+            # Include normalization's propagation of all per-runner error estimates.
+            bound = float((errors.max()+errors.sum())/total)
+            return probabilities/total, abs(float(total)-1), bound
+
+        try:
+            coarse, _, coarse_bound = adaptive_integral(tolerance/16)
+            fine, normalization_error, fine_bound = adaptive_integral(tolerance/64)
+            refinement_error = float(np.max(np.abs(fine-coarse)))
+            adaptive_bound = max(coarse_bound,fine_bound)
+            converged = (normalization_error <= tolerance and refinement_error <= tolerance
+                         and adaptive_bound <= tolerance)
+            values = fine
+            diagnostics.update(normalization_error=normalization_error,
+                               refinement_error=refinement_error,
+                               adaptive_error_bound=adaptive_bound, converged=converged)
+        except (RuntimeError, ValueError, FloatingPointError, OverflowError) as exc:
+            diagnostics.update(adaptive_error=str(exc), converged=False)
     underflows = int(np.count_nonzero(values == 0))
     diagnostics["float64_underflow_count"] = underflows
     diagnostics["probability_floor"] = float(np.finfo(float).tiny) if underflows else None
