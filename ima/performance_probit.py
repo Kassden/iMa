@@ -9,7 +9,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
-from scipy.special import log_ndtr, logsumexp, roots_hermitenorm
+from scipy.special import erfcx, log_ndtr, logsumexp, roots_hermitenorm
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -25,6 +25,21 @@ def _quadrature(order):
 
 def gaussian_log_win_probabilities(location, scale, *, order=64):
     """Log P(X_i=max X), integrating conditional normal CDF products."""
+    return _gaussian_log_win_probabilities(location, scale, order=order)
+
+
+def _inverse_mills_ratio(values):
+    """Normal density/CDF ratio without cancellation in the negative tail."""
+    result = np.empty_like(values)
+    negative = values < 0
+    result[negative] = np.sqrt(2/np.pi) / erfcx(-values[negative]/np.sqrt(2))
+    positive = values[~negative]
+    result[~negative] = np.exp(-positive**2/2 - np.log(2*np.pi)/2 - log_ndtr(positive))
+    return result
+
+
+def _gaussian_log_win_probabilities(location, scale, *, order, with_gradient=False):
+    """Optionally return Jacobians with respect to location and log(scale)."""
     mu, sigma = np.asarray(location, float), np.asarray(scale, float)
     if mu.ndim != 1 or mu.shape != sigma.shape or not len(mu):
         raise ValueError("Invalid Gaussian race shape")
@@ -32,18 +47,39 @@ def gaussian_log_win_probabilities(location, scale, *, order=64):
         raise ValueError("Nonfinite location or nonpositive scale")
     if order < 8:
         raise ValueError("Quadrature order must be at least eight")
+    if with_gradient:
+        location_jacobian = np.zeros((len(mu), len(mu)))
+        log_scale_jacobian = np.zeros_like(location_jacobian)
     if len(mu) == 1:
-        return np.zeros(1)
+        values = np.zeros(1)
+        return (values, location_jacobian, log_scale_jacobian) if with_gradient else values
     if len(mu) == 2:
-        difference = (mu[0]-mu[1])/np.hypot(*sigma)
-        return np.array([log_ndtr(difference), log_ndtr(-difference)])
+        total_scale = np.hypot(*sigma)
+        difference = (mu[0]-mu[1])/total_scale
+        signed_difference = np.array([difference, -difference])
+        values = log_ndtr(signed_difference)
+        if with_gradient:
+            ratios = _inverse_mills_ratio(signed_difference)
+            location_jacobian = (ratios*np.array([1., -1.])/total_scale)[:, None] * np.array([1., -1.])
+            log_scale_jacobian = (-ratios*signed_difference)[:, None] * (sigma/total_scale)**2
+            return values, location_jacobian, log_scale_jacobian
+        return values
     z, log_weights = _quadrature(order)
     values = np.empty(len(mu))
     for i in range(len(mu)):
         mask = np.arange(len(mu)) != i
         thresholds = (mu[i] + sigma[i]*z[:, None] - mu[mask]) / sigma[mask]
-        values[i] = logsumexp(log_weights + log_ndtr(thresholds).sum(axis=1))
-    return values
+        log_terms = log_weights + log_ndtr(thresholds).sum(axis=1)
+        values[i] = logsumexp(log_terms)
+        if with_gradient:
+            # Differentiate the same fixed quadrature, weighting nodes in log space.
+            weighted_ratios = np.exp(log_terms-values[i])[:, None] * _inverse_mills_ratio(thresholds)
+            location_terms = weighted_ratios / sigma[mask]
+            location_jacobian[i, mask] = -location_terms.sum(axis=0)
+            location_jacobian[i, i] = location_terms.sum()
+            log_scale_jacobian[i, mask] = -(weighted_ratios*thresholds).sum(axis=0)
+            log_scale_jacobian[i, i] = sigma[i]*np.sum(location_terms*z[:, None])
+    return (values, location_jacobian, log_scale_jacobian) if with_gradient else values
 
 
 def gaussian_win_probabilities(location, scale, *, order=64, tolerance=1e-6,
@@ -120,18 +156,13 @@ class GaussianRaceProbit:
                 raise ValueError("Probit requires complete pre-race fields")
         dimension = x.shape[1]
 
+        winners = [int(np.argmax(y[group])) for group in groups]
+
         def objective(parameters):
-            means = x @ parameters[:dimension]
-            scales = self._scales(x, parameters[dimension:], codes) if self.heteroscedastic else np.ones(len(x))
-            losses = []
-            for group in groups:
-                logs = gaussian_log_win_probabilities(means[group], scales[group], order=self.quadrature_order)
-                losses.append(-(logs-logsumexp(logs))[np.argmax(y[group])])
-            return float(np.mean(losses) + self.l2*np.sum(parameters[:dimension]**2)/2
-                         + self.scale_l2*np.sum(parameters[dimension:]**2)/2)
+            return self._objective_and_gradient(parameters, x, codes, groups, winners)
 
         result = minimize(objective, np.zeros(dimension*(2 if self.heteroscedastic else 1)),
-                          method="L-BFGS-B", options={"maxiter": self.max_iter, "ftol": 1e-9})
+                          jac=True, method="L-BFGS-B", options={"maxiter": self.max_iter, "ftol": 1e-9})
         if not result.success:
             raise RuntimeError(f"Probit likelihood fit did not converge: {result.message}")
         self.coefficients = result.x[:dimension]
@@ -152,6 +183,34 @@ class GaussianRaceProbit:
             "quadrature_order": self.quadrature_order,
             "training_quadrature_max_refinement_error": max(errors)}
         return self
+
+    def _objective_and_gradient(self, parameters, x, codes, groups, winners):
+        dimension = x.shape[1]
+        means = x @ parameters[:dimension]
+        scales = self._scales(x, parameters[dimension:], codes) if self.heteroscedastic else np.ones(len(x))
+        mean_gradient = np.zeros(len(x))
+        scale_gradient = np.zeros(len(x)) if self.heteroscedastic else None
+        losses = []
+        for group, winner in zip(groups, winners):
+            logs, location_jacobian, log_scale_jacobian = _gaussian_log_win_probabilities(
+                means[group], scales[group], order=self.quadrature_order, with_gradient=True)
+            normalizer = logsumexp(logs)
+            losses.append(-(logs-normalizer)[winner])
+            log_gradient = np.exp(logs-normalizer)
+            log_gradient[winner] -= 1
+            mean_gradient[group] = log_gradient @ location_jacobian
+            if self.heteroscedastic:
+                logged_gradient = log_gradient @ log_scale_jacobian
+                # Race centering's adjoint precedes the bounded tanh link's derivative.
+                scale_gradient[group] = logged_gradient-logged_gradient.mean()
+        gradient = np.empty_like(parameters)
+        gradient[:dimension] = x.T @ mean_gradient / len(groups) + self.l2*parameters[:dimension]
+        if self.heteroscedastic:
+            scale_gradient *= 1-np.tanh((x @ parameters[dimension:])/3)**2
+            gradient[dimension:] = x.T @ scale_gradient / len(groups) + self.scale_l2*parameters[dimension:]
+        value = float(np.mean(losses) + self.l2*np.sum(parameters[:dimension]**2)/2
+                      + self.scale_l2*np.sum(parameters[dimension:]**2)/2)
+        return value, gradient
 
     @staticmethod
     def _scales(x, coefficients, codes):

@@ -1,9 +1,11 @@
 import pickle
 import unittest
+from unittest.mock import patch
 import numpy as np
+from scipy.optimize import OptimizeResult
 from scipy.special import ndtr
-from ima.performance_probit import GaussianRaceProbit, gaussian_win_probabilities, gaussian_log_win_probabilities
-from tests.test_pipeline_graph import race_frame
+from ima.performance_probit import GaussianRaceProbit, fit_probit, gaussian_win_probabilities, gaussian_log_win_probabilities
+from tests.test_pipeline_graph import SCHEMA, race_frame
 
 
 class PerformanceProbitTests(unittest.TestCase):
@@ -44,3 +46,32 @@ class PerformanceProbitTests(unittest.TestCase):
         frame["target_win"] = 0
         with self.assertRaisesRegex(ValueError, "one winner"):
             GaussianRaceProbit(("ability",)).fit(frame)
+        frame = race_frame(5)
+        frame['field_size'] = 5
+        with self.assertRaisesRegex(ValueError, "complete pre-race fields"):
+            GaussianRaceProbit(("ability",)).fit(frame)
+
+    def test_optimizer_and_quadrature_gates_are_preserved(self):
+        with self.assertRaisesRegex(RuntimeError, "did not converge"):
+            GaussianRaceProbit(("ability", "context"), max_iter=1).fit(race_frame(10))
+        failure = OptimizeResult(success=False, message='iteration limit')
+        with patch('ima.performance_probit.minimize', return_value=failure):
+            with self.assertRaisesRegex(RuntimeError, "did not converge: iteration limit"):
+                GaussianRaceProbit(("ability",)).fit(race_frame(5))
+        model = GaussianRaceProbit(("ability", "context"), max_iter=120)
+        with patch('ima.performance_probit.gaussian_win_probabilities', return_value=np.full(4, 0.25)):
+            with self.assertRaisesRegex(RuntimeError, "higher quadrature_order"):
+                model.fit(race_frame(10))
+        self.assertIsNone(model.coefficients)
+        self.assertIsNone(model.scale_coefficients)
+        with patch('ima.performance_probit.gaussian_win_probabilities', side_effect=RuntimeError('Gaussian quadrature did not converge')):
+            with self.assertRaisesRegex(RuntimeError, "Gaussian quadrature did not converge"):
+                GaussianRaceProbit(("ability",), max_iter=120).fit(race_frame(5))
+
+    def test_parent_dispatch_prediction_contract(self):
+        model = fit_probit(race_frame(30), SCHEMA, {'heteroscedastic': True, 'max_iter': 120})
+        probabilities = model.predict_proba(race_frame(3, 30))
+        self.assertTrue(np.isfinite(probabilities).all())
+        self.assertTrue((probabilities > 0).all())
+        np.testing.assert_allclose(probabilities.reshape(-1, 4).sum(axis=1), 1)
+        self.assertTrue(model.fit_diagnostics['converged'])
