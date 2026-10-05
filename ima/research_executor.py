@@ -474,6 +474,15 @@ def _recipe_fold_inputs(request, frame):
         target=contract,
         **protocol_parameters,
     )
+    if recipe.schema_version == 3 and recipe.target.kind == "win_probability" and not any((
+        recipe.pipeline_graph,recipe.feature_discovery,recipe.transforms,recipe.performance_distribution)):
+        required = set(schema.features) | {"race_id","date","race_no","horse_no","horse_id",
+            "target_win","target_probability","market_probability","result","field_size","win_odds","finishing_status"}
+        attributes = dict(labelled.attrs)
+        before = len(labelled.columns)
+        labelled = labelled.loc[:,[name for name in labelled if name in required]]
+        labelled.attrs = attributes | {"column_projection":{"before":before,"after":len(labelled.columns),
+            "scope":"flat_untransformed_win_recipe"}}
     return labelled, schema, protocol, exclusions
 
 
