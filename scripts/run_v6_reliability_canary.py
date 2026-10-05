@@ -37,7 +37,7 @@ MODELS = (
     ("benter_conditional_logit", {"l2": .1, "max_iter": 300}),
     ("boosted", {"max_iter": 40}),
     ("gaussian_probit", {"heteroscedastic": True, "quadrature_order": 128,
-                         "l2": .1, "scale_l2": .1, "max_iter": 300}),
+                         "l2": .1, "scale_l2": 10., "max_iter": 300}),
 )
 
 
