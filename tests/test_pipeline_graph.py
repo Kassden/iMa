@@ -301,6 +301,15 @@ class PipelineGraphTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "fold-local distribution preprocessing"):
                     PipelineRecipe.model_validate(example)
 
+        spec = graph_spec()
+        spec["nodes"].append({"node_id": "unused", "kind": "estimator",
+            "parameters": {"model_kind": "ridge_regressor"},
+            "output": {"kind": "performance_distribution", "target": "target_speed", "unit": "log_mps"}})
+        # An unused distribution does not execute the unsupported preprocessing path.
+        PipelineRecipe(schema_version=3, model={"kind": "benter_conditional_logit"},
+            pipeline_graph=spec, transforms=({"kind": "signed_log1p",
+                                             "parameters": {"columns": ["horse_rating"]}},))
+
     def test_rank_adapter_forward_fit_cache_state_and_nested_chronology(self):
         from ima.probabilistic_adapters import ranking_scores_to_probabilities
         spec = {"graph_id": "fitted-rank", "output_node_id": "win", "n_splits": 2, "nodes": [
