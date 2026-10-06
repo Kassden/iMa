@@ -84,6 +84,63 @@ def _batch_winner_loss_gradient(mu, sigma, winners, order):
     return losses, mean_grad, scale_grad
 
 
+def _batch_log_win_probabilities(mu, sigma, order):
+    count, size = mu.shape
+    if size <= 2 or size*size*order > 262144:
+        return np.stack([gaussian_log_win_probabilities(m,s,order=order) for m,s in zip(mu,sigma)])
+    z, weights = _quadrature(order)
+    chunk = max(1,262144//(size*size*order))
+    values = np.empty_like(mu)
+    diagonal = np.arange(size)
+    for start in range(0,count,chunk):
+        m,s = mu[start:start+chunk],sigma[start:start+chunk]
+        thresholds = (m[:, :, None, None]+s[:, :, None, None]*z[None,None,:,None]
+                      -m[:,None,None,:])/s[:,None,None,:]
+        logs = log_ndtr(thresholds)
+        logs[:,diagonal,:,diagonal] = 0
+        values[start:start+chunk] = logsumexp(weights[None,None,:]+logs.sum(axis=-1),axis=-1)
+    return values
+
+
+def _batched_win_probabilities(location, scale, *, order=64, tolerance=1e-6, max_order=512):
+    mu,sigma = np.asarray(location,dtype=float),np.asarray(scale,dtype=float)
+    if (mu.ndim!=2 or mu.shape!=sigma.shape or not mu.shape[1]
+            or not np.isfinite(mu).all() or not np.isfinite(sigma).all() or np.any(sigma<=0)):
+        raise ValueError("Invalid batched Gaussian race shape or scale")
+    if not np.isfinite(tolerance) or tolerance<=0 or order<8 or max_order<order:
+        raise ValueError("Invalid batched Gaussian quadrature bounds or tolerance")
+    if not len(mu):
+        return np.empty_like(mu)
+    if mu.shape[1]<=2:
+        return np.stack([gaussian_win_probabilities(m,s,order=order,tolerance=tolerance,
+                         max_order=max_order) for m,s in zip(mu,sigma)])
+    result = np.empty_like(mu)
+    previous = np.full_like(mu,np.nan)
+    remaining = np.arange(len(mu))
+    current_order = order
+    while len(remaining):
+        logs = _batch_log_win_probabilities(mu[remaining],sigma[remaining],current_order)
+        normalizers = logsumexp(logs,axis=1)
+        values = np.exp(logs-normalizers[:,None])
+        normalization_error = np.abs(np.exp(normalizers)-1)
+        refinement_error = np.max(np.abs(values-previous[remaining]),axis=1)
+        accepted = (normalization_error<=tolerance)&(refinement_error<=tolerance)
+        result[remaining[accepted]] = values[accepted]
+        previous[remaining] = values
+        remaining = remaining[~accepted]
+        if current_order>=max_order:
+            # Only unresolved races pay for the existing strict adaptive oracle.
+            for index in remaining:
+                result[index] = gaussian_win_probabilities(mu[index],sigma[index],order=current_order,
+                    tolerance=tolerance,max_order=max_order)
+            break
+        current_order = min(max_order,2*current_order)
+    if np.any(result==0):
+        result = np.maximum(result,np.finfo(float).tiny)
+        result /= result.sum(axis=1,keepdims=True)
+    return result
+
+
 @lru_cache(maxsize=16)
 def _quadrature(order):
     z, w = roots_hermitenorm(order)
@@ -283,6 +340,7 @@ class GaussianRaceProbit:
 
         winners = [int(np.argmax(y[group])) for group in groups]
         batches = _race_batches(groups, winners, self.quadrature_order)
+        configured_order = self.quadrature_order
         preparation_seconds = perf_counter()-started
         objective_seconds, evaluations = 0.0, 0
 
@@ -294,32 +352,49 @@ class GaussianRaceProbit:
             evaluations += 1
             return result
 
-        optimizer_started = perf_counter()
-        result = minimize(objective, np.zeros(dimension*(2 if self.heteroscedastic else 1)),
-                          jac=True, method="L-BFGS-B", options={"maxiter": self.max_iter, "ftol": 1e-9})
-        optimizer_seconds = perf_counter()-optimizer_started
-        if not result.success:
-            raise RuntimeError(f"Probit likelihood fit did not converge: {result.message}")
+        initial = np.zeros(dimension*(2 if self.heteroscedastic else 1))
+        remaining_iterations = self.max_iter
+        optimizer_seconds,verification_seconds,iterations = 0.,0.,0
+        rounds = []
+        while True:
+            optimizer_started = perf_counter()
+            result = minimize(objective,initial,jac=True,method="L-BFGS-B",
+                              options={"maxiter":remaining_iterations,"ftol":1e-9})
+            optimizer_seconds += perf_counter()-optimizer_started
+            if not result.success:
+                raise RuntimeError(f"Probit likelihood fit did not converge: {result.message}")
+            iterations += int(result.nit)
+            remaining_iterations -= max(1,int(result.nit))
+            means = x@result.x[:dimension]
+            scales = self._scales(x,result.x[dimension:],codes) if self.heteroscedastic else np.ones(len(x))
+            verification_started = perf_counter()
+            errors = []
+            for indices,_ in batches:
+                coarse = _batch_log_win_probabilities(means[indices],scales[indices],self.quadrature_order)
+                fine = _batched_win_probabilities(means[indices],scales[indices],order=self.quadrature_order,
+                                                 max_order=max(512,self.quadrature_order))
+                errors.append(float(np.max(np.abs(np.exp(coarse-logsumexp(coarse,axis=1)[:,None])-fine))))
+            verification_seconds += perf_counter()-verification_started
+            rounds.append({"quadrature_order":self.quadrature_order,"iterations":int(result.nit),
+                           "max_refinement_error":max(errors)})
+            if max(errors)<=1e-4:
+                break
+            if self.quadrature_order>=max(512,configured_order) or remaining_iterations<=0:
+                self.coefficients,self.scale_coefficients = None,None
+                raise RuntimeError("Fitted probit likelihood quadrature needs a higher quadrature_order")
+            self.quadrature_order = min(max(512,configured_order),2*self.quadrature_order)
+            batches = _race_batches(groups,winners,self.quadrature_order)
+            initial = result.x
         self.coefficients = result.x[:dimension]
         self.scale_coefficients = result.x[dimension:] if self.heteroscedastic else None
-        means = x @ self.coefficients
-        scales = self._scales(x, self.scale_coefficients, codes) if self.heteroscedastic else np.ones(len(x))
-        verification_started = perf_counter()
-        errors = []
-        for group in groups:
-            coarse = gaussian_log_win_probabilities(means[group], scales[group], order=self.quadrature_order)
-            fine = gaussian_win_probabilities(means[group], scales[group], order=self.quadrature_order)
-            errors.append(float(np.max(np.abs(np.exp(coarse-logsumexp(coarse))-fine))))
-        if max(errors) > 1e-4:
-            self.coefficients, self.scale_coefficients = None, None
-            raise RuntimeError("Fitted probit likelihood quadrature needs a higher quadrature_order")
         self.fit_diagnostics = {"fit_regime": "winner_likelihood", "objective": float(result.fun),
-            "iterations": int(result.nit), "converged": True, "lane": "experimental",
+            "iterations": iterations, "converged": True, "lane": "experimental",
             "identification": "race-centered mean; race geometric-mean sigma=1; bounded log-scale link; no intercept",
             "quadrature_order": self.quadrature_order,
+            "configured_quadrature_order":configured_order,"quadrature_rounds":rounds,
             "objective_evaluations": evaluations, "objective_seconds": objective_seconds,
             "preparation_seconds": preparation_seconds, "optimizer_seconds": optimizer_seconds,
-            "quadrature_verification_seconds": perf_counter()-verification_started,
+            "quadrature_verification_seconds": verification_seconds,
             "fit_seconds": perf_counter()-started, "objective_engine": "bounded_numpy_batches_v1",
             "training_quadrature_max_refinement_error": max(errors)}
         return self
@@ -364,9 +439,10 @@ class GaussianRaceProbit:
         dist = self.predict_distribution(frame)
         values = np.empty(len(frame))
         codes = pd.factorize(frame["race_id"], sort=False)[0]
-        for code in np.unique(codes):
-            rows = np.flatnonzero(codes == code)
-            values[rows] = gaussian_win_probabilities(dist.location[rows], dist.scale[rows], order=self.quadrature_order)
+        groups = _race_groups(codes)
+        for rows,_ in _race_batches(groups,np.zeros(len(groups),dtype=int),self.quadrature_order):
+            values[rows] = _batched_win_probabilities(dist.location[rows],dist.scale[rows],
+                order=self.quadrature_order,max_order=max(512,self.quadrature_order))
         return values
 
     predict_proba = predict_fundamental_proba
