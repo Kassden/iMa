@@ -50,6 +50,7 @@ Branch: fix/v7-planner-adapter-guidance. Surface: examples, planner prompt/retry
 - Success Criteria: executable examples; original JSON and actionable feedback retained without bypass.
 - Planned Touch Files:
   - `ima/research_planner_examples.py`
+  - `ima/research_specs.py`
   - `ima/openrouter_orchestrator.py`
   - `tests/test_research_expansion.py`
   - `tests/test_pipeline_graph.py`
