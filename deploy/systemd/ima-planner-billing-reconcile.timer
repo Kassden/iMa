@@ -1,0 +1,11 @@
+[Unit]
+Description=Reconcile interrupted iMa planner charges every minute
+
+[Timer]
+OnBootSec=10
+OnUnitActiveSec=60
+AccuracySec=5
+Unit=ima-planner-billing-reconcile.service
+
+[Install]
+WantedBy=timers.target
