@@ -151,6 +151,47 @@ class PlannerAPITests(unittest.TestCase):
         self.assertEqual(actual["repair_count"], 1)
         self.assertEqual(actual["usage"]["total_tokens"], 24)
         self.assertEqual(actual["usage"]["total_cost_usd"], 0.006)
+        messages = post.call_args.args[1]["messages"]
+        self.assertEqual(messages[-2], {"role": "assistant", "content": json.dumps(invalid)})
+        feedback = json.loads(messages[-1]["content"])
+        self.assertEqual(feedback["task"], "repair_previous_decision")
+        self.assertIn("allocations", feedback["instructions"])
+
+    def test_extra_field_repair_preserves_programs_and_reports_exact_path(self):
+        from ima.openrouter_orchestrator import OpenRouterConfig, choose_research_decision
+
+        item = decision(trial_budget=5, programs=(proposal("first", 2), proposal("second", 3)))
+        valid = item.model_dump(mode="json")
+        invalid = valid | {"evidence_id_check": "unnecessary"}
+        responses = [{"choices": [{"message": {"content": json.dumps(body)}}]}
+                     for body in (invalid, valid)]
+        with patch("ima.openrouter_orchestrator._post_json", side_effect=responses) as post:
+            actual = choose_research_decision(
+                {"decision_id": item.decision_id, "evidence_id": item.evidence_id},
+                {"trial_ceiling": 260, "max_new_programs": 12},
+                OpenRouterConfig(api_key="test-only", model="test"))
+        messages = post.call_args.args[1]["messages"]
+        self.assertEqual(json.loads(messages[-2]["content"]), invalid)
+        feedback = json.loads(messages[-1]["content"])
+        self.assertEqual(feedback["errors"][0]["path"], ["evidence_id_check"])
+        self.assertEqual(feedback["errors"][0]["type"], "extra_forbidden")
+        self.assertNotIn("input", feedback["errors"][0])
+        self.assertEqual(actual["decision"]["programs"], valid["programs"])
+        bundle = json.loads(messages[1]["content"])
+        self.assertEqual(len(bundle["adapter_recipe_examples"]), 3)
+        self.assertIn("bare_regressor_win", bundle["model_target_guidance"])
+
+    def test_malformed_response_retries_once_without_fabricating_candidate(self):
+        from ima.openrouter_orchestrator import OpenRouterConfig, OpenRouterError, choose_research_decision
+
+        for response in ({"choices": []}, {"choices": [{"message": {"content": "not JSON"}}]}):
+            with self.subTest(response=response), patch(
+                    "ima.openrouter_orchestrator._post_json", return_value=response) as post:
+                with self.assertRaises(OpenRouterError):
+                    choose_research_decision({"decision_id": "D1", "evidence_id": "E1"},
+                        {"trial_ceiling": 260, "max_new_programs": 12},
+                        OpenRouterConfig(api_key="test-only", model="test"))
+                self.assertEqual(post.call_count, 2)
 
 
 class PlannerDecisionTests(unittest.TestCase):

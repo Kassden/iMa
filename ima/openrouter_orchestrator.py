@@ -596,6 +596,7 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
     from .feature_definitions import FeatureDefinition
     from .research_specs import PerformanceDistributionSpec
     from .research_planner_context import compact_planner_evidence
+    from .research_planner_examples import adapter_recipe_examples, MODEL_TARGET_GUIDANCE
     memo = evidence_bundle.get("capabilities", {}).get("research_memo")
     messages = [{"role": "system", "content": (
         "You direct horse-racing ML research. Return one strict JSON decision matching the schema. "
@@ -657,6 +658,8 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         "feature_definition_schema": FeatureDefinition.model_json_schema(),
         "dataset_request_schema": DatasetRequest.model_json_schema(),
         "performance_distribution_schema": PerformanceDistributionSpec.model_json_schema(),
+        "adapter_recipe_examples": adapter_recipe_examples(),
+        "model_target_guidance": MODEL_TARGET_GUIDANCE,
         "graph_example": {
             "graph_id": "benter-boosted-pool", "primary_node_id": "benter",
             "fundamental_node_id": "pool", "output_node_id": "pool",
@@ -708,9 +711,27 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         except Exception as exc:
             if attempt == 1:
                 raise OpenRouterError(f"Invalid V6 decision: {exc}") from exc
-            payload["messages"].append({"role": "user", "content":
-                                        f"Decision validation failed: {str(exc)[:2000]}. Correct the JSON. "
-                                        "Preserve evidence/decision IDs and exact budget reconciliation."})
+            # A schema repair needs the candidate, not a fresh research decision.
+            choices = response.get("choices", []) if isinstance(response, dict) else []
+            message = (choices[0].get("message", {})
+                       if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {})
+            content = message.get("content") if isinstance(message, dict) else None
+            if isinstance(content, str) and content:
+                payload["messages"].append({"role": "assistant", "content": content})
+            from pydantic import ValidationError
+            errors = ([{"path": list(error["loc"]), "type": error["type"],
+                        "message": error["msg"][:1000]}
+                       for error in exc.errors(include_input=False, include_url=False)[:12]]
+                      if isinstance(exc, ValidationError) else [{"message": str(exc)[:2000]}])
+            payload["messages"].append({"role": "user", "content": json.dumps({
+                "task": "repair_previous_decision", "errors": errors,
+                "instructions": "Return complete corrected JSON, making only changes necessary to fix "
+                    "errors. Remove extra fields rather than regenerate programs. Retain unaffected "
+                    "programs, hypotheses, model choices and allocations. Preserve required identities "
+                    "and exact budget reconciliation. For regressor/win incompatibility, use the tested "
+                    "adapter_recipe_examples when the speed target exists, or a compatible model/target. "
+                    "Do not bypass validation or silently drop programs.",
+            }, separators=(",", ":"))})
     raise AssertionError("Decision retry loop did not return")
 
 

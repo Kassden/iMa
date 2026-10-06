@@ -237,6 +237,30 @@ class PipelineGraphTests(unittest.TestCase):
         np.testing.assert_allclose(fitted.predict_proba(score).reshape(-1, 4).sum(axis=1), 1)
         self.assertTrue(fitted.fit_report["oof_populations"])
 
+    def test_advertised_planner_adapter_recipes_validate_and_execute(self):
+        from ima.research_planner_examples import adapter_recipe_examples
+        from ima.research_specs import PipelineRecipe, validate_recipe
+
+        train, score = race_frame(30), race_frame(3, 30)
+        rng = np.random.default_rng(51)
+        train["speed"] = np.exp(2.7 + .02*train.ability + .04*train.context
+                                + rng.normal(0, .025, len(train)))
+        for example in adapter_recipe_examples():
+            with self.subTest(model=example["model"]["kind"]):
+                recipe = PipelineRecipe.model_validate(example)
+                validate_recipe(recipe)
+                spec = copy.deepcopy(recipe.pipeline_graph)
+                if recipe.model.kind == "catboost_regressor":
+                    spec["nodes"][0]["parameters"]["model_parameters"] = {
+                        "iterations": 40, "depth": 3, "thread_count": 1}
+                fitted = fit_pipeline_graph(spec, train, feature_schema=SCHEMA)
+                probabilities = fitted.predict_fundamental_proba(score)
+                self.assertTrue(np.isfinite(probabilities).all())
+                self.assertTrue((probabilities >= 0).all())
+                np.testing.assert_allclose(probabilities.reshape(-1, 4).sum(axis=1), 1)
+                np.testing.assert_allclose(probabilities,
+                    pickle.loads(pickle.dumps(fitted)).predict_fundamental_proba(score))
+
     def test_rank_adapter_forward_fit_cache_state_and_nested_chronology(self):
         from ima.probabilistic_adapters import ranking_scores_to_probabilities
         spec = {"graph_id": "fitted-rank", "output_node_id": "win", "n_splits": 2, "nodes": [
