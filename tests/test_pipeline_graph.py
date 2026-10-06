@@ -237,6 +237,79 @@ class PipelineGraphTests(unittest.TestCase):
         np.testing.assert_allclose(fitted.predict_proba(score).reshape(-1, 4).sum(axis=1), 1)
         self.assertTrue(fitted.fit_report["oof_populations"])
 
+    def test_advertised_planner_adapter_recipes_validate_and_execute(self):
+        from ima.research_planner_examples import adapter_recipe_examples
+        from ima.research_specs import PipelineRecipe, validate_recipe
+
+        train, score = race_frame(30), race_frame(3, 30)
+        rng = np.random.default_rng(51)
+        train["target_speed"] = np.exp(2.7 + .02*train.ability + .04*train.context
+                                + rng.normal(0, .025, len(train)))
+        for example in adapter_recipe_examples():
+            with self.subTest(model=example["model"]["kind"]):
+                recipe = PipelineRecipe.model_validate(example)
+                validate_recipe(recipe)
+                spec = copy.deepcopy(recipe.pipeline_graph)
+                if recipe.model.kind == "catboost_regressor":
+                    spec["nodes"][0]["parameters"]["model_parameters"] = {
+                        "iterations": 40, "depth": 3, "thread_count": 1}
+                fitted = fit_pipeline_graph(spec, train, feature_schema=SCHEMA)
+                probabilities = fitted.predict_fundamental_proba(score)
+                self.assertTrue(np.isfinite(probabilities).all())
+                self.assertTrue((probabilities >= 0).all())
+                np.testing.assert_allclose(probabilities.reshape(-1, 4).sum(axis=1), 1)
+                np.testing.assert_allclose(probabilities,
+                    pickle.loads(pickle.dumps(fitted)).predict_fundamental_proba(score))
+
+    def test_advertised_adapters_execute_through_campaign_target_mapping(self):
+        from ima.research_executor import RecipeExecutionRequest, execute_recipe
+        from ima.research_planner_examples import adapter_recipe_examples
+        from ima.research_specs import PipelineRecipe
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            frame = pd.read_csv("tests/fixtures/research_races.csv")
+            frame["distance"] = 1200
+            frame["finish_seconds"] = 70 + frame["horse_no"]
+            frame["field_size"] = frame.groupby("race_id")["horse_no"].transform("size")
+            dataset = root / "timed.csv"
+            frame.to_csv(dataset, index=False)
+            for example in adapter_recipe_examples():
+                kind = example["model"]["kind"]
+                with self.subTest(model=kind):
+                    if kind == "catboost_regressor":
+                        example["model"]["parameters"] = {"iterations": 40, "depth": 3}
+                    recipe = PipelineRecipe.model_validate(example)
+                    result = execute_recipe(RecipeExecutionRequest(
+                        attempt_id=f"attempt-{kind}", proposal_id="adapter-canary", trial_number=0,
+                        recipe=recipe, dataset_path=dataset, output_dir=root / kind,
+                        protocol_parameters={"min_train_races": 3, "calibration_races": 1,
+                                             "score_races": 1, "max_folds": 1}))
+                    self.assertEqual(result.status, "completed", result.error)
+                    self.assertTrue(np.isfinite(result.objective_value))
+                    predictions = pd.read_csv(result.artifacts["predictions"])
+                    np.testing.assert_allclose(
+                        predictions.groupby("race_id")["model_probability"].sum(), 1)
+
+    def test_distribution_graph_preprocessing_is_rejected_before_execution(self):
+        from ima.research_planner_examples import adapter_recipe_examples
+        from ima.research_specs import PipelineRecipe
+
+        for example in adapter_recipe_examples():
+            with self.subTest(model=example["model"]["kind"]):
+                example["transforms"] = [{"kind": "signed_log1p", "parameters": {"columns": ["horse_rating"]}}]
+                with self.assertRaisesRegex(ValueError, "fold-local distribution preprocessing"):
+                    PipelineRecipe.model_validate(example)
+
+        spec = graph_spec()
+        spec["nodes"].append({"node_id": "unused", "kind": "estimator",
+            "parameters": {"model_kind": "ridge_regressor"},
+            "output": {"kind": "performance_distribution", "target": "target_speed", "unit": "log_mps"}})
+        # An unused distribution does not execute the unsupported preprocessing path.
+        PipelineRecipe(schema_version=3, model={"kind": "benter_conditional_logit"},
+            pipeline_graph=spec, transforms=({"kind": "signed_log1p",
+                                             "parameters": {"columns": ["horse_rating"]}},))
+
     def test_rank_adapter_forward_fit_cache_state_and_nested_chronology(self):
         from ima.probabilistic_adapters import ranking_scores_to_probabilities
         spec = {"graph_id": "fitted-rank", "output_node_id": "win", "n_splits": 2, "nodes": [
