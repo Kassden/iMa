@@ -76,13 +76,20 @@ def verify_quote_sources(quotes, official_dir):
     return [official_dir / name for name in sources]
 
 
-def build_forecast(frames, calibration, scores, quotes, units):
+def build_forecast(frames, calibration, scores, quotes, units, *, families=FAMILIES):
+    if isinstance(families, str):
+        raise ValueError("Families must be a nonempty collection of unique names")
+    families = tuple(families)
+    if not families or any(not isinstance(name, str) or not name.strip() for name in families) or len(set(families)) != len(families):
+        raise ValueError("Families must be a nonempty collection of unique names")
+    if set(families) != set(frames):
+        raise ValueError("Family names must match frame dictionary keys")
     win_unit = units.get("WIN", {})
     if win_unit.get("displayed_odds_to_D10_factor") != 10 or win_unit.get("displayed_odds_basis") != "gross_return_multiple_per_HKD1":
         raise ValueError("WIN displayed odds basis is not verified gross multiples")
     runners, combinations = [], []
     population = None
-    for family in FAMILIES:
+    for family in families:
         frame = frames[family].copy()
         if frame.duplicated(KEYS).any():
             raise ValueError("Duplicate tomorrow runner identity")

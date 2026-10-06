@@ -31,6 +31,34 @@ def fixtures():
 
 
 class ForecastTests(unittest.TestCase):
+    def test_two_named_families_and_identical_default_output(self):
+        frames, cal, scores, quotes, units = fixtures()
+        default = build_forecast(frames, cal, scores, quotes, units)
+        explicit = build_forecast(frames, cal, scores, quotes, units, families=FAMILIES)
+        for actual, expected in zip(explicit, default):
+            pd.testing.assert_frame_equal(actual, expected)
+        mapping = {"baseline_pool": "pool", "candidate_pool": "boosted"}
+        two_frames = {name: frames[source] for name, source in mapping.items()}
+        two_cal = {name: cal[source] for name, source in mapping.items()}
+        two_scores = {name + "_market_blend_hindsight": scores[source + "_market_blend_hindsight"]
+                      for name, source in mapping.items()}
+        pair = build_forecast(two_frames, two_cal, two_scores, quotes, units, families=tuple(two_frames))
+        self.assertEqual(len(pair[0]), 100)
+        self.assertEqual(len(pair[1]), 240)
+        for actual, expected in zip(pair, default):
+            expected = expected[expected.family.isin(mapping.values())].copy()
+            expected["family"] = expected.family.map({source: name for name, source in mapping.items()})
+            expected["model"] = expected.family
+            order = ["family", "race_no"] + (["pool"] if "pool" in expected else []) + ["rank"]
+            expected = expected.sort_values(order).reset_index(drop=True)
+            pd.testing.assert_frame_equal(actual, expected)
+
+    def test_rejects_empty_duplicate_invalid_or_mismatched_family_names(self):
+        frames, cal, scores, quotes, units = fixtures()
+        for families in ((), ("pool", "pool"), ("",), (None,), "pool", ("pool",), (*FAMILIES, "extra")):
+            with self.subTest(families=families), self.assertRaises(ValueError):
+                build_forecast(frames, cal, scores, quotes, units, families=families)
+
     def test_200_rows_normalization_contract_ev_and_frozen_transform(self):
         frames, cal, scores, quotes, units = fixtures()
         with patch.object(MarketBlend, "fit", side_effect=AssertionError("No retraining")):
