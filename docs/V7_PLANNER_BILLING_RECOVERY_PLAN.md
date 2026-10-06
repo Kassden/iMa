@@ -4,12 +4,12 @@
 Recover authoritative OpenRouter charges after interrupted requests automatically, resume the existing campaign without a source hotpatch, and distinguish active V7 research from legacy draining telemetry.
 
 ## Acceptance Criteria
-- [ ] D9 charge retrieved by its recorded generation ID, never guessed or zeroed.
-- [ ] Missing billing receipts are reconciled idempotently by a bounded periodic job.
-- [ ] Wrong identities, missing IDs, nonfinite charges, existing receipts and transient provider errors fail closed.
-- [ ] V7 accepts a new planner decision and completes additional model work after recovery.
-- [ ] Active-campaign MLflow view excludes legacy V6 heartbeat traces without deleting history or stopping preserved fits.
-- [ ] Code/tests pushed and merged, pinned own-user timer deployed and read back.
+- [x] D9 charge retrieved by its recorded generation ID, never guessed or zeroed.
+- [x] Missing billing receipts are reconciled idempotently by a bounded periodic job.
+- [x] Wrong identities, missing IDs, nonfinite charges, existing receipts and transient provider errors fail closed.
+- [x] V7 accepts a new planner decision and completes additional model work after recovery.
+- [x] Active-campaign MLflow view excludes legacy V6 heartbeat traces without deleting history or stopping preserved fits.
+- [x] Code/tests pushed and merged, pinned own-user timer deployed and read back.
 
 ## Root-Cause Baseline
 - Proven: V7 D9 received HTTP 200 and generation ID `gen-1791269393-76ySmlR9x6UIxpUXhgri`; its response body was cancelled at the 300-second absolute deadline.
@@ -44,7 +44,14 @@ Existing mechanism: physical receipt accounting for every campaign. Recurrence: 
 - Branch strategy: dedicated repair branch, preserving unrelated dirty files.
 - Protected: honest unknown-cost freezes when lookup is unavailable; exact identity/transport coverage; historical failed decisions; model/data identities; preserved legacy fits and other services.
 - Consumers: existing `_planner_spend`, planner retry loop, physical receipt history and MLflow.
-- Planned touch files: `ima/openrouter_billing.py`, `scripts/reconcile_planner_billing.py`, `tests/test_openrouter_billing.py`, `deploy/systemd/ima-planner-billing-reconcile.service`, `deploy/systemd/ima-planner-billing-reconcile.timer`, `deploy/systemd/ima-planner-billing-reconcile`, this document.
+- Planned touch files:
+- `ima/openrouter_billing.py`
+- `scripts/reconcile_planner_billing.py`
+- `tests/test_openrouter_billing.py`
+- `deploy/systemd/ima-planner-billing-reconcile.service`
+- `deploy/systemd/ima-planner-billing-reconcile.timer`
+- `deploy/systemd/ima-planner-billing-reconcile`
+- `docs/V7_PLANNER_BILLING_RECOVERY_PLAN.md`
 - Atomic units: recovery implementation/tests; deploy templates; verification documentation.
 - Generality decision: one reusable missing-receipt reconciler for any campaign, using existing receipt format; no experiment-specific exception in accounting.
 
@@ -70,8 +77,8 @@ Existing mechanism: physical receipt accounting for every campaign. Recurrence: 
 - Tests: independent deterministic reconciliation, identity/accounting/idempotency/error cases and full regression.
 - Success Criteria: existing campaign accounting accepts exact provider receipts; no fabricated response/proposal.
 - Checklist:
-  - [ ] Confirm incident identity and exact provider charge.
-  - [ ] Implement and test bounded reconciliation.
+  - [x] Confirm incident identity and exact provider charge.
+  - [x] Implement and test bounded reconciliation.
 
 ## Phase 2: Deployment
 ### Subphase 2.1: Pinned Own-User Timer
@@ -79,8 +86,8 @@ Existing mechanism: physical receipt accounting for every campaign. Recurrence: 
 - Tests: wrapper/unit syntax, own-root/revision checks, no-secret preflight and timer/service readback.
 - Success Criteria: minute-scale recovery runs independently of live training source; no existing campaign restart.
 - Checklist:
-  - [ ] Push/merge green source and stage immutable recovery release.
-  - [ ] Enable own-user timer and verify its receipt/result.
+  - [x] Push/merge green source and stage immutable recovery release.
+  - [x] Enable own-user timer and verify its receipt/result.
 
 ## Phase 3: Scientific Continuation And Visibility
 ### Subphase 3.1: Real Recovery Proof
@@ -88,5 +95,19 @@ Existing mechanism: physical receipt accounting for every campaign. Recurrence: 
 - Tests: accepted post-freeze decision, additional completed work, MLflow accounting and active-campaign browser view.
 - Success Criteria: new model work actually resumes and old heartbeat traces are recognizably excluded.
 - Checklist:
-  - [ ] Verify automatic continuation and new completed models.
-  - [ ] Verify active view and final runtime readback.
+  - [x] Verify automatic continuation and new completed models.
+  - [x] Verify active view and final runtime readback.
+
+## Verification Evidence
+- Local full regression: 975 tests passed in 269.490s; the final expanded nine-test billing suite additionally passed after adversarial corrections.
+- Independent verifier reproduced and then checked fixes for active-generation charges, lookup starvation, malformed records, duplicate generation IDs, malformed finalization and oversized charges.
+- Final recovery revision: `c5f629324ccbfe126624d1b808ad2e5d50595cb8`; committed archive SHA256 `3704f83a545981384bd207eb682071be50ca3349e0ff597d4557abbc3d072077`.
+- PR22 merged after green CI: all 978 tests passed in 295.416s, dependency checks, CLI checks and committed-package integrity passed. Pinned recovery release remains the tested source revision; the training source remains `efe1f6b`.
+- Own-user timer enabled and active. First invocation at 10:37:22 UTC succeeded with exit0, zero metadata requests, no unresolved charges and all original receipts skipped. Service is GET-only, CPUQuota25%, MemoryMax768M, TimeoutStartSec65; timer interval60s.
+- Training unit stayed on MainPID1243852 / InvocationIDfdd779d8fb884abdaa384f40867a72f8 / NRestarts0 throughout recovery.
+- Real server qualification recovered the recorded D9 charge using GET generation metadata; a second invocation made zero requests and preserved receipt bytes. No inference replay.
+- D10 accepted five programs / 14 trials; D11 accepted another 15 allocated trials. V7 advanced beyond 67 completed to 84 by the 10:32:29 UTC snapshot.
+- Post-D10 model versions 351 and 352 verified READY, their runs FINISHED, objective values matching the ledger and training source identity unchanged.
+- Fresh-browser active-campaign view: http://100.95.24.121:5000/#/experiments/7/traces?traceViewShareKey=1791282124750bcwr3d5s. Shows D11 Tokens101001 / Cost USD0.038013 and execution progress, excluding legacy V6 without deleting history.
+- D9 remains ERROR; additive trace tags record its recovered USD0.00851584 and provider generation identity. The original unknown-cost trace output is not rewritten as success.
+- Residual, separate issue: one experimental graph failed with `Unknown model kind: catboost_classifier`; valid work continued. Some execution summaries incorrectly describe in-flight unknown costs as a freeze. Those pinned-source observability/model-adapter defects are not claimed repaired by billing reconciliation.
