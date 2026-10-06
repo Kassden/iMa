@@ -155,8 +155,8 @@ if not release.is_dir() or release.is_symlink():
     raise SystemExit('V6 release must be an immutable directory, not a release alias')
 if not dependencies.is_dir() or 'v5-dependencies' in dependencies.resolve().parts:
     raise SystemExit('V6 requires a separate existing dependency directory')
-if campaign.parent != base / 'campaigns' or not campaign.name.startswith('agentic_v6_'):
-    raise SystemExit('V6 campaign must be a direct campaigns/agentic_v6_* child')
+if campaign.parent != base / 'campaigns' or not campaign.name.startswith(('agentic_v6_', 'agentic_v7_')):
+    raise SystemExit('Research campaign must be a direct campaigns/agentic_v6_* or agentic_v7_* child')
 if campaign.is_symlink() or not campaign.is_dir():
     raise SystemExit('V6 campaign must be a separate existing directory')
 if not config_path.resolve().is_relative_to(campaign.resolve()):

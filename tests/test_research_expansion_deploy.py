@@ -24,7 +24,7 @@ class ResearchExpansionDeployTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.base = Path(temporary.name).resolve()
         self.release = self.base / 'release'
-        self.campaign = self.base / 'campaigns/agentic_v6_mock'
+        self.campaign = self.base / 'campaigns' / getattr(self, 'campaign_name', 'agentic_v6_mock')
         self.dependencies = self.base / 'dependencies'
         self.snapshot = self.campaign / 'inputs/snapshot'
         self.registry = self.campaign / 'registry'
@@ -119,6 +119,23 @@ class ResearchExpansionDeployTests(unittest.TestCase):
         self.assertIn('preflight passed', output)
         self.assertIn('NOT a guaranteed hard billing bound', output)
         self.assertFalse((self.registry / 'locks').exists())
+
+    def test_v7_name_is_accepted_without_bypassing_provenance_checks(self):
+        self.campaign_name = 'agentic_v7_mock'
+        self.setUp()
+        self.assertIn('preflight passed', self.check())
+        self.raw['fixture_only'] = True
+        self.seal()
+        with self.assertRaisesRegex(SystemExit, 'fixture provenance'):
+            self.check()
+
+    def test_other_generation_and_nested_campaign_names_are_rejected(self):
+        for name in ('agentic_v5_mock', 'agentic_v7_mock/nested'):
+            with self.subTest(name=name):
+                self.campaign_name = name
+                self.setUp()
+                with self.assertRaisesRegex(SystemExit, 'direct campaigns'):
+                    self.check()
 
     def test_production_policy_and_numeric_caps(self):
         cases = {'planner_mode': ['fixture', 'local'], 'research_policy': ['discovery_v5'],
