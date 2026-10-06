@@ -378,6 +378,59 @@ class SeasonReadinessCliTests(unittest.TestCase):
             self.evaluate()
         self.assertEqual([], self.fits)
 
+    def test_top_pick_metrics_follow_win_tickets_for_ties_and_permuted_outcome_rows(self):
+        for record in self.season:
+            for runner in record["runners"]:
+                if runner["horse_no"] == 1:
+                    runner["horse_no"] = 10
+                runner["win_odds"] = 3 if runner["horse_no"] in {2, 10} else 100
+            for pool in record["dividends"].values():
+                for settlement in pool["records"]:
+                    settlement["combination"] = [10 if n == 1 else n for n in settlement["combination"]]
+        self.write_json(self.official / "races.json", self.season)
+        metadata = self.prepare_predictions()
+        ordered = metadata.sort_values(["race_id", "result"], kind="stable", na_position="last").reset_index(drop=True)
+        first_race = ordered[ordered.race_id.eq("HKJC:2026-09-06:ST:R1")]
+        self.assertEqual([10, 2], first_race.horse_no.iloc[:2].tolist())
+        for noise in (0, 4e-14):
+            with self.subTest(noise=noise):
+                for name in VECTORS:
+                    path = self.predictions / f"{name}.csv"
+                    predictions = pd.read_csv(path)
+                    season = predictions.race_id.str.contains("2026-09-06", regex=False)
+                    predictions.loc[season, "model_probability"] = predictions.loc[season, "horse_no"].map({
+                        10: 0.3 + noise, 2: 0.3 - noise, 3: 0.08, 4: 0.08,
+                        5: 0.08, 6: 0.08, 7: 0.08,
+                    })
+                    predictions.to_csv(path, index=False)
+                self.write_readback()
+                original_metrics = {}
+                original_picks = {}
+                for permutation, rows in enumerate((ordered, ordered.iloc[::-1].reset_index(drop=True))):
+                    rows.to_parquet(self.output / "query-metadata.parquet", index=False)
+                    summaries = self.evaluate()
+                    for name, summary in summaries.items():
+                        win = self.ledger(name)
+                        win = win[win.pool.eq("WIN")]
+                        self.assertEqual({"2"}, set(win.combination), name)
+                        self.assertEqual(summary["by_pool"]["WIN"]["hit_rate"], summary["top_pick_win_hit_rate"], name)
+                        self.assertEqual(0, summary["top_pick_win_hit_rate"], name)
+                        runners = pd.read_csv(self.output / "evaluation" / f"{name}-runners.csv")
+                        picks = win.assign(horse_no=win.combination.astype(int)).merge(
+                            runners[["race_id", "horse_no", "result"]], on=["race_id", "horse_no"],
+                            validate="one_to_one",
+                        )
+                        self.assertEqual(0.5, summary["top_pick_top3_hit_rate"], name)
+                        self.assertEqual(float(picks.result.le(3).mean()), summary["top_pick_top3_hit_rate"], name)
+                        metrics = (summary["top_pick_win_hit_rate"], summary["top_pick_top3_hit_rate"],
+                                   summary["by_pool"]["WIN"]["hit_rate"])
+                        tickets = win.set_index("race_id").combination.to_dict()
+                        if permutation == 0:
+                            original_metrics[name], original_picks[name] = metrics, tickets
+                        else:
+                            self.assertEqual(original_metrics[name], metrics, name)
+                            self.assertEqual(original_picks[name], tickets, name)
+
     def test_fundamental_allocation_ignores_actual_results_and_final_price(self):
         metadata = self.prepare_predictions()
         self.evaluate()

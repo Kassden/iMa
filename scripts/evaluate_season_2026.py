@@ -432,7 +432,10 @@ def evaluate(args):
                 roi_samples = meetings.realized_net_hkd.to_numpy()[sampled].sum(axis=1) / meetings.stake_hkd.to_numpy()[sampled].sum(axis=1)
                 roi_interval = np.quantile(roi_samples, [0.025, 0.975]).tolist()
             work.to_csv(result_dir / f'{variant}-runners.csv', index=False)
-            top = work.loc[work.groupby('race_id').model_probability.idxmax()]
+            top = work.assign(_pick_probability=work.model_probability.round(12),
+                              _pick_horse_no=pd.to_numeric(work.horse_no, errors='raise')).sort_values(
+                ['race_id', '_pick_probability', '_pick_horse_no'], ascending=[True, False, True]
+            ).groupby('race_id', sort=False).head(1)
             summary = evaluation.summary | {'race_log_loss': race_log_loss(probabilities, work),
                 'top_pick_win_hit_rate': float(top.result.eq(1).mean()),
                 'top_pick_top3_hit_rate': float(top.result.le(3).mean()),
