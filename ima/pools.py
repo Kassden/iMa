@@ -108,12 +108,80 @@ def fit_order_exponents(frame: pd.DataFrame, probability_column: str) -> OrderEx
     return OrderExponents(float(second.x), float(third.x))
 
 
+def _combination_rank_key(item: CombinationProbability) -> tuple:
+    """Ignore rounding noise for ranking, without changing reported probability."""
+    runners = tuple((0, int(str(runner))) if str(runner).isdigit() else (1, str(runner))
+                    for runner in item.runners)
+    if item.pool in UNORDERED_POOLS or item.pool == "QPL":
+        runners = tuple(sorted(runners))
+    return -round(item.probability, 12), runners
+
+
+def _paid_position_rankings(
+    runner_ids: list[str], strengths: np.ndarray, exponents: OrderExponents,
+) -> dict[str, list[CombinationProbability]]:
+    """Accumulate both paid-position marginals from each finish order once."""
+    places = paid_place_count(len(runner_ids))
+    place_probabilities = [0.0] * len(runner_ids)
+    pair_probabilities = dict.fromkeys(itertools.combinations(range(len(runner_ids)), 2), 0.0)
+    for order in itertools.permutations(range(len(runner_ids)), places):
+        probability = benter_order_probability(order, strengths, exponents)
+        for index in order:
+            place_probabilities[index] += probability
+        for pair in itertools.combinations(order, 2):
+            pair_probabilities[tuple(sorted(pair))] += probability
+    return {
+        "PLACE": sorted([
+            CombinationProbability("PLACE", (runner_id,), place_probabilities[index])
+            for index, runner_id in enumerate(runner_ids)
+        ], key=_combination_rank_key),
+        "QPL": sorted([
+            CombinationProbability("QPL", tuple(sorted(runner_ids[i] for i in pair)), probability)
+            for pair, probability in pair_probabilities.items()
+        ], key=_combination_rank_key),
+    }
+
+
+def rank_pool_combinations(
+    runner_ids: list[str],
+    probabilities: np.ndarray,
+    pools: Iterable[str] = SUPPORTED_POOLS,
+    exponents: OrderExponents = OrderExponents(),
+) -> dict[str, list[CombinationProbability]]:
+    """Rank requested pools, sharing one enumeration for PLACE and QPL.
+
+    Returns the same rankings as rank_combinations; no fitting or result inputs.
+    Single-pool callers can continue to use rank_combinations unchanged.
+    Ties use probabilities rounded to 12 decimals, then numeric runner tuples;
+    reported probabilities remain unrounded.
+    """
+    if len(runner_ids) != len(probabilities):
+        raise ValueError("Runner ids and probabilities must have equal length")
+    pools = tuple(canonical_pool_name(pool) for pool in pools)
+    strengths = np.clip(np.asarray(probabilities, dtype=float), 1e-12, None)
+    paid = _paid_position_rankings(runner_ids, strengths, exponents) if any(
+        pool in {"PLACE", "QPL"} for pool in pools
+    ) else {}
+    return {
+        pool: paid[pool] if pool in paid else rank_combinations(
+            runner_ids, strengths, pool, exponents,
+        )
+        for pool in pools
+    }
+
+
 def rank_combinations(
     runner_ids: list[str],
     probabilities: np.ndarray,
     pool: str,
     exponents: OrderExponents = OrderExponents(),
 ) -> list[CombinationProbability]:
+    """Rank by probability rounded to 12 decimals, then numeric runner tuple.
+
+    Rounding is used only for ordering. All returned probabilities retain their
+    exact calculated floats, including values differing below the ranking precision.
+    Unordered tuple comparisons use numeric order; output serialization is unchanged.
+    """
     if len(runner_ids) != len(probabilities):
         raise ValueError("Runner ids and probabilities must have equal length")
     strengths = np.clip(np.asarray(probabilities, dtype=float), 1e-12, None)
@@ -135,28 +203,9 @@ def rank_combinations(
             results.append(
                 CombinationProbability(pool, tuple(sorted(runner_ids[i] for i in combination)), probability)
             )
-    elif pool == "QPL":
-        places = paid_place_count(len(runner_ids))
-        for combination in itertools.combinations(range(len(runner_ids)), 2):
-            selected = set(combination)
-            probability = sum(
-                benter_order_probability(order, strengths, exponents)
-                for order in itertools.permutations(range(len(runner_ids)), places)
-                if selected.issubset(order)
-            )
-            results.append(
-                CombinationProbability(pool, tuple(sorted(runner_ids[i] for i in combination)), probability)
-            )
-    elif pool == "PLACE":
-        places = paid_place_count(len(runner_ids))
-        for index, runner_id in enumerate(runner_ids):
-            probability = sum(
-                benter_order_probability(order, strengths, exponents)
-                for order in itertools.permutations(range(len(runner_ids)), places)
-                if index in order
-            )
-            results.append(CombinationProbability(pool, (runner_id,), probability))
-    return sorted(results, key=lambda item: item.probability, reverse=True)
+    elif pool in {"PLACE", "QPL"}:
+        return _paid_position_rankings(runner_ids, strengths, exponents)[pool]
+    return sorted(results, key=_combination_rank_key)
 
 
 def _unordered_probability(
