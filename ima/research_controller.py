@@ -56,10 +56,16 @@ class PlannerSpendCapReached(RuntimeError):
 class DatasetFeatureProfile:
     """Check transform inputs against the frozen development training folds."""
 
-    def __init__(self, dataset_path: Path, protocol: dict[str, Any]) -> None:
+    def __init__(self, dataset_path: Path, protocol: dict[str, Any], *,
+                 extra_numeric_features: tuple[str, ...] = (),
+                 prepared_frame: pd.DataFrame | None = None) -> None:
         numeric = set().union(*(schema.numeric for schema in FEATURE_SCHEMAS.values()))
+        numeric.update(extra_numeric_features)
+        self.numeric_columns = numeric
         required = {"race_id", "race_no", "date", "target_win", "source", "horse_id", "jockey_id", "jockey_key", "trainer_id", "trainer_key", "finish_seconds", "lengths_raw", "actual_weight"}
-        if dataset_path.suffix == ".parquet":
+        if prepared_frame is not None:
+            frame = prepared_frame[[column for column in prepared_frame if column in numeric | required]].copy()
+        elif dataset_path.suffix == ".parquet":
             frame = pd.read_parquet(dataset_path)
             frame = frame[[column for column in frame if column in numeric | required]]
         else:
@@ -143,11 +149,14 @@ class DatasetFeatureProfile:
         schema = drop_feature_families(
             FEATURE_SCHEMAS[recipe.feature_schema], recipe.drop_feature_families
         )
+        effective_numeric = set(schema.numeric) | (
+            set(recipe.extra_numeric_features or ()) & self.numeric_columns
+        )
         for transform in recipe.transforms:
             for column in transform.parameters["columns"]:
                 if recipe.feature_discovery and re.fullmatch(r"dfs_[a-f0-9]{24}",column):
                     continue
-                if column not in schema.numeric:
+                if column not in effective_numeric:
                     return f"{column} is not in the effective numeric feature schema"
                 if column in self.unavailable[recipe.train_window]:
                     return f"{column} has no numeric observations in a training fold"

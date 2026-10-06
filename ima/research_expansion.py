@@ -245,7 +245,8 @@ def apply_decision(decision, store, search, retired, config, evidence, profile):
             if not awaiting_publication:
                 context = _program_context(proposal.recipe,config,registry)
                 _preflight_recipe(proposal.recipe,context,config)
-        if profile is not None and not proposal.recipe.dataset_ref:
+        if (profile is not None and not proposal.recipe.dataset_ref
+                and not (proposal.recipe.extra_numeric_features and getattr(config,"dataset_path",None))):
             checked = proposal.recipe
             if checked.feature_discovery and checked.feature_discovery.schema_version == 2:
                 standard = tuple(m for m in checked.feature_discovery.measurements if m in {"speed_mps","beaten_lengths","carried_weight"})
@@ -778,6 +779,15 @@ def _preflight_recipe(recipe,context,config):
     from .research_executor import _load_dataset,_v6_feature_frame
     request = RecipeExecutionRequest("preflight","preflight",0,recipe,context["dataset"],Path(config.campaign_dir)/"preflight"/recipe.recipe_hash(),context["protocol"],context["digest"],"preflight","preflight",V6_PORTFOLIO_VERSION)
     frame = _v6_feature_frame(_load_dataset(context["dataset"]),request)
+    if recipe.extra_numeric_features:
+        # Validate extras after catalog verification and pre-race availability masking.
+        profile = core.DatasetFeatureProfile(
+            context["dataset"], context["protocol"],
+            extra_numeric_features=recipe.extra_numeric_features, prepared_frame=frame,
+        )
+        error = profile.admission_error(recipe)
+        if error:
+            raise ValueError(error)
     if recipe.pipeline_graph:
         from .pipeline_graph import PipelineGraph
         PipelineGraph.from_dict(recipe.pipeline_graph).validate()
@@ -1244,6 +1254,7 @@ def run_expansion_campaign(config):
                             completed_trial_index=[{"attempt_id":r["attempt_id"]} for r in terminal if r["status"]=="completed"],
                             available_new_program_slots=max(0,config.max_pending_programs-programs_waiting),
                             next_required_lane=_lane(len(ledger.reserved_attempts())),
+                            recent_planner_failures=_recent_planner_failures(directory),
                             dataset_registry={"states":[registry.get(value["request_id"]) for value in decisions.dataset_actions()],"building":list(item[0] for item in building_datasets.values()),"errors":dict(dataset_errors)},
                             capabilities=_capabilities(config,dataset,dataset_digest=digest,registry=registry))
                         core._write_json_atomic(directory/"evidence"/f"{evidence['decision_id']}.json",evidence)
@@ -1676,6 +1687,18 @@ def _preparation_program_order(capacity, programs, ready, preparing, reservation
         covered.add(lane(pid))
         eligible.remove(pid)
     return ordered
+
+
+def _recent_planner_failures(directory, limit=5):
+    failures = []
+    for path in sorted((Path(directory)/"decisions").glob("D*.json"), reverse=True):
+        decision = core._read_json(path)
+        if decision.get("planner_status") == "failed":
+            failures.append({"decision_id":decision.get("decision_id",path.stem),
+                             "error":str(decision.get("error",""))[:2000]})
+            if len(failures) >= limit:
+                break
+    return failures
 
 
 def _lane(index):
