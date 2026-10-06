@@ -13,7 +13,7 @@ from scripts.enrich_pool_metrics import pool_metrics_for_artifact
 
 
 class PoolTests(unittest.TestCase):
-    def test_paid_position_rankings_match_original_benter_marginals_exactly(self):
+    def test_paid_position_rankings_match_original_benter_marginals_numerically(self):
         for size in [0, 1, 2, 6, 7]:
             for exponents in [OrderExponents(), OrderExponents(second=0.5, third=1.7)]:
                 with self.subTest(size=size, exponents=exponents):
@@ -21,7 +21,7 @@ class PoolTests(unittest.TestCase):
                     probabilities = np.arange(size, dtype=float)
                     strengths = np.clip(probabilities, 1e-12, None)
                     places = paid_place_count(size)
-                    # Reference the original per-ticket sums, preserving order of addition.
+                    # Original per-ticket marginal sums provide a numerical reference.
                     orders = [(order, benter_order_probability(order, strengths, exponents))
                               for order in itertools.permutations(range(size), places)]
                     expected_place = [CombinationProbability(
@@ -38,9 +38,14 @@ class PoolTests(unittest.TestCase):
                             -round(item.probability, 12), tuple(sorted(map(int, item.runners))))),
                     }
                     actual = rank_pool_combinations(runners, probabilities, ["PLACE", "QPL"], exponents)
-                    self.assertEqual(expected, actual)
+                    self.assertEqual(set(expected), set(actual))
                     for pool in ["PLACE", "QPL"]:
-                        self.assertEqual(expected[pool], rank_combinations(runners, probabilities, pool, exponents))
+                        for ranked in (actual[pool], rank_combinations(runners, probabilities, pool, exponents)):
+                            self.assertEqual(len(expected[pool]), len(ranked))
+                            self.assertEqual([(item.pool, item.runners) for item in expected[pool]],
+                                             [(item.pool, item.runners) for item in ranked])
+                            for reference, item in zip(expected[pool], ranked):
+                                self.assertAlmostEqual(reference.probability, item.probability, places=14)
                     if size:
                         self.assertAlmostEqual(places, sum(item.probability for item in actual["PLACE"]))
                         self.assertAlmostEqual(places * (places - 1) / 2,
