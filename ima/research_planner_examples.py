@@ -18,7 +18,7 @@ def adapter_recipe_examples() -> list[dict]:
                     "performance_distribution": {
                         "kind": distribution, "coordinate": "log_speed_mps",
                     },
-                }, "output": {"kind": "performance_distribution", "target": "speed",
+                }, "output": {"kind": "performance_distribution", "target": "target_speed",
                               "unit": "log_mps"}},
                 {"node_id": "win", "kind": "probabilistic_adapter", "inputs": ["speed"]},
             ],
@@ -35,7 +35,7 @@ MODEL_TARGET_GUIDANCE = {
     "bare_regressor_win": "Invalid: ridge_regressor, hist_gradient_regressor and catboost_regressor "
         "cannot directly predict win_probability. Use a complete adapter graph example; "
         "its speed estimator learns observed physical speed, while the outer target remains win_probability.",
-    "speed_distribution": "Use output target=speed, kind=performance_distribution, unit=log_mps. "
+    "speed_distribution": "Use output target=target_speed, kind=performance_distribution, unit=log_mps. "
         "shared_residual learns scale from later chronological calibration observations; "
         "catboost_uncertainty learns conditional mean and variance. Speed labels are training-only.",
     "adapter": "probabilistic_adapter takes one performance_distribution parent and produces "

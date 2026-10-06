@@ -243,7 +243,7 @@ class PipelineGraphTests(unittest.TestCase):
 
         train, score = race_frame(30), race_frame(3, 30)
         rng = np.random.default_rng(51)
-        train["speed"] = np.exp(2.7 + .02*train.ability + .04*train.context
+        train["target_speed"] = np.exp(2.7 + .02*train.ability + .04*train.context
                                 + rng.normal(0, .025, len(train)))
         for example in adapter_recipe_examples():
             with self.subTest(model=example["model"]["kind"]):
@@ -260,6 +260,35 @@ class PipelineGraphTests(unittest.TestCase):
                 np.testing.assert_allclose(probabilities.reshape(-1, 4).sum(axis=1), 1)
                 np.testing.assert_allclose(probabilities,
                     pickle.loads(pickle.dumps(fitted)).predict_fundamental_proba(score))
+
+    def test_advertised_adapters_execute_through_campaign_target_mapping(self):
+        from ima.research_executor import RecipeExecutionRequest, execute_recipe
+        from ima.research_planner_examples import adapter_recipe_examples
+        from ima.research_specs import PipelineRecipe
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            frame = pd.read_csv("tests/fixtures/research_races.csv")
+            frame["distance"] = 1200
+            frame["finish_seconds"] = 70 + frame["horse_no"]
+            dataset = root / "timed.csv"
+            frame.to_csv(dataset, index=False)
+            for example in adapter_recipe_examples():
+                kind = example["model"]["kind"]
+                with self.subTest(model=kind):
+                    if kind == "catboost_regressor":
+                        example["model"]["parameters"] = {"iterations": 40, "depth": 3, "thread_count": 1}
+                    recipe = PipelineRecipe.model_validate(example)
+                    result = execute_recipe(RecipeExecutionRequest(
+                        attempt_id=f"attempt-{kind}", proposal_id="adapter-canary", trial_number=0,
+                        recipe=recipe, dataset_path=dataset, output_dir=root / kind,
+                        protocol_parameters={"min_train_races": 3, "calibration_races": 1,
+                                             "score_races": 1, "max_folds": 1}))
+                    self.assertEqual(result.status, "completed", result.error)
+                    self.assertTrue(np.isfinite(result.objective_value))
+                    predictions = pd.read_csv(result.artifacts["predictions"])
+                    np.testing.assert_allclose(
+                        predictions.groupby("race_id")["model_probability"].sum(), 1)
 
     def test_rank_adapter_forward_fit_cache_state_and_nested_chronology(self):
         from ima.probabilistic_adapters import ranking_scores_to_probabilities
