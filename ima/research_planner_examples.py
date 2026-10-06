@@ -40,6 +40,10 @@ MODEL_TARGET_GUIDANCE = {
         "catboost_uncertainty learns conditional mean and variance. Speed labels are training-only.",
     "adapter": "probabilistic_adapter takes one performance_distribution parent and produces "
         "race-normalized win probabilities. Normalizing raw point predictions is not a substitute.",
+    "distribution_preprocessing": "Distribution graph examples currently require transforms=[] and "
+        "feature_discovery=null: fold-local graph transform/discovery factories do not support "
+        "distribution ancestors. Registered numeric features and typed feature formulas are still "
+        "available. Do not combine these adapters with that unsupported learned-preprocessing path.",
     "native_probit": "gaussian_probit directly supports win_probability, including its heteroscedastic "
         "option; it does not require an explicit adapter node.",
     "ranking": "Bare ranking models use ranking_strength. A supported graph ranking_score estimator "

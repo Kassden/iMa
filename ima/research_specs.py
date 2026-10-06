@@ -268,6 +268,12 @@ class PipelineRecipe(StrictModel):
         if self.pipeline_graph is not None:
             from .pipeline_graph import PipelineGraph
             graph = PipelineGraph.from_dict(self.pipeline_graph).validate()
+            if (self.transforms or self.feature_discovery) and any(
+                node.kind == "estimator" and node.output.kind == "performance_distribution"
+                for node in graph.nodes
+            ):
+                raise ValueError("Distribution graph ancestors require transforms=[] and feature_discovery=null; "
+                                 "fold-local distribution preprocessing is not supported")
             if graph.primary_node_id is None:
                 raise ValueError("Tunable graphs require primary_node_id")
             for field, disabled in (("calibration", CalibrationSpec(kind="none")),

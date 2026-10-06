@@ -291,6 +291,16 @@ class PipelineGraphTests(unittest.TestCase):
                     np.testing.assert_allclose(
                         predictions.groupby("race_id")["model_probability"].sum(), 1)
 
+    def test_distribution_graph_preprocessing_is_rejected_before_execution(self):
+        from ima.research_planner_examples import adapter_recipe_examples
+        from ima.research_specs import PipelineRecipe
+
+        for example in adapter_recipe_examples():
+            with self.subTest(model=example["model"]["kind"]):
+                example["transforms"] = [{"kind": "signed_log1p", "parameters": {"columns": ["horse_rating"]}}]
+                with self.assertRaisesRegex(ValueError, "fold-local distribution preprocessing"):
+                    PipelineRecipe.model_validate(example)
+
     def test_rank_adapter_forward_fit_cache_state_and_nested_chronology(self):
         from ima.probabilistic_adapters import ranking_scores_to_probabilities
         spec = {"graph_id": "fitted-rank", "output_node_id": "win", "n_splits": 2, "nodes": [
