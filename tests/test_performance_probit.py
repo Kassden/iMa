@@ -77,7 +77,7 @@ class PerformanceProbitTests(unittest.TestCase):
             with np.errstate(invalid='raise'), self.assertRaises(FloatingPointError):
                 _quadrature(513)
 
-    def test_training_coarse_gate_rejects_32_and_accepts_higher_orders(self):
+    def test_training_coarse_gate_refines_32_without_weakening_accuracy(self):
         frame = race_frame(1).iloc[:3].copy()
         frame['target_win'] = [1, 0, 0]
         logged = np.log([.25, 1., 1.5])
@@ -89,14 +89,13 @@ class PerformanceProbitTests(unittest.TestCase):
             with self.subTest(order=order), patch.object(model, '_matrix',
                     return_value=(matrix, np.zeros(3, dtype=int))), patch(
                     'ima.performance_probit.minimize', return_value=result):
+                model.fit(frame)
+                self.assertEqual(model.fit_diagnostics['configured_quadrature_order'],order)
+                self.assertLessEqual(model.fit_diagnostics['training_quadrature_max_refinement_error'], 1e-4)
                 if order == 32:
-                    with self.assertRaisesRegex(RuntimeError, 'higher quadrature_order'):
-                        model.fit(frame)
-                    self.assertIsNone(model.coefficients)
-                    self.assertIsNone(model.scale_coefficients)
-                else:
-                    model.fit(frame)
-                    self.assertLessEqual(model.fit_diagnostics['training_quadrature_max_refinement_error'], 1e-4)
+                    self.assertGreater(model.quadrature_order,32)
+                    self.assertGreater(len(model.fit_diagnostics['quadrature_rounds']),1)
+                    self.assertGreater(model.fit_diagnostics['quadrature_rounds'][0]['max_refinement_error'],1e-4)
 
     def test_symmetric_analytic_shift_scale_controls(self):
         for n in (2, 3, 6):
@@ -148,14 +147,29 @@ class PerformanceProbitTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "did not converge: iteration limit"):
                 GaussianRaceProbit(("ability",)).fit(race_frame(5))
         model = GaussianRaceProbit(("ability", "context"), max_iter=120)
-        with patch('ima.performance_probit.gaussian_win_probabilities', return_value=np.full(4, 0.25)):
+        uniform = lambda mu,sigma,**kwargs: np.full_like(mu,1/mu.shape[1])
+        with patch('ima.performance_probit._batched_win_probabilities', side_effect=uniform):
             with self.assertRaisesRegex(RuntimeError, "higher quadrature_order"):
                 model.fit(race_frame(10))
         self.assertIsNone(model.coefficients)
         self.assertIsNone(model.scale_coefficients)
-        with patch('ima.performance_probit.gaussian_win_probabilities', side_effect=RuntimeError('Gaussian quadrature did not converge')):
+        with patch('ima.performance_probit._batched_win_probabilities', side_effect=RuntimeError('Gaussian quadrature did not converge')):
             with self.assertRaisesRegex(RuntimeError, "Gaussian quadrature did not converge"):
                 GaussianRaceProbit(("ability",), max_iter=120).fit(race_frame(5))
+
+    def test_refinement_does_not_multiply_the_iteration_budget(self):
+        frame = race_frame(1).iloc[:3].copy()
+        frame['target_win'] = [1,0,0]
+        logged = np.log([.25,1.,1.5])
+        logged -= logged.mean()
+        matrix = (3*np.arctanh(logged/3))[:,None]
+        result = OptimizeResult(success=True,x=np.array([0.,1.]),fun=1.,nit=5)
+        model = GaussianRaceProbit(('ability',),heteroscedastic=True,quadrature_order=32,max_iter=5)
+        with patch.object(model,'_matrix',return_value=(matrix,np.zeros(3,dtype=int))), \
+                patch('ima.performance_probit.minimize',return_value=result) as optimizer:
+            with self.assertRaisesRegex(RuntimeError,'higher quadrature_order'):
+                model.fit(frame)
+        optimizer.assert_called_once()
 
     def test_parent_dispatch_prediction_contract(self):
         model = fit_probit(race_frame(30), SCHEMA, {'heteroscedastic': True, 'max_iter': 120})
