@@ -230,6 +230,53 @@ class JobEstimate:
         return {"estimate":self.to_dict(),"actual":asdict(actual),"private_error_bytes":actual.private_peak_bytes-self.private_peak_bytes,"wall_error_seconds":actual.wall_seconds-self.wall_seconds}
 
 
+def _family_cost(workload):
+    """Cold heuristics, not benchmark claims. Settings are part of the exact key.
+
+    Probit settings: quadrature_order, heteroscedastic, mean_parameters,
+    variance_parameters, parameter_dimension, max_iter (or iterations/
+    iteration_bucket), race_count,
+    max_runners, gradient_mode. Missing shape uses conservative defaults.
+    """
+    settings = workload.search_settings
+    def positive(name, default):
+        value = settings.get(name)
+        value = default if value is None else value
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError("Positive finite cost setting required: " + name)
+        return float(value)
+
+    iterations = positive("max_iter", positive("iterations", positive("iteration_bucket", 1) * 200))
+    folds = workload.folds
+    family = workload.family.removeprefix("graph:")
+    if family == "gaussian_probit":
+        heteroscedastic = settings.get("heteroscedastic")
+        heteroscedastic = False if heteroscedastic is None else heteroscedastic
+        if not isinstance(heteroscedastic, bool):
+            raise ValueError("heteroscedastic must be boolean")
+        mean = positive("mean_parameters", max(1, workload.selected_features) + 1)
+        variance = positive("variance_parameters", mean) if heteroscedastic else 0
+        dimension = max(mean + variance, positive("parameter_dimension", mean + variance))
+        quadrature = positive("quadrature_order", 48)
+        runners = positive("max_runners", 14)
+        races = positive("race_count", max(1, workload.rows / runners))
+        gradient = settings.get("gradient_mode", "numerical")
+        if gradient not in {"numerical", "analytic"}:
+            raise ValueError("Unknown probit gradient cost mode")
+        # Gaussian winner integration is quadratic in runners. Numerical
+        # differences add one evaluation per parameter, including variance.
+        evaluations = dimension + 1 if gradient == "numerical" else max(2, dimension / 16)
+        wall = 3600 * max(1, races / 1000) * max(1, runners / 14) ** 2
+        wall *= max(1, quadrature / 48) * max(1, iterations / 200) * folds
+        wall *= max(1, evaluations / 17) * (2 if heteroscedastic else 1)
+        memory = 2 * GIB + workload.rows * int(math.ceil(dimension)) * 8 * 12
+        memory += math.ceil(runners * runners * quadrature * 8 * 8)
+        return memory, wall
+    if family in {"boosted", "catboost_classifier", "catboost_regressor"}:
+        return 0, 600 * folds * max(1, iterations / 200) * max(1, positive("depth", 6) / 6) ** 2
+    return 0, 600 * folds * max(1, iterations / 200)
+
+
 def estimate_job(workload: JobWorkload, samples=(), *, quantile=.95, margin=1.25, cold_private_bytes=None, cold_wall_seconds=None) -> JobEstimate:
     """Exact workload samples only; failures/OOM bounds never disappear in a quantile."""
     if not 0 < quantile <= 1 or not math.isfinite(margin) or margin < 1:
@@ -243,9 +290,16 @@ def estimate_job(workload: JobWorkload, samples=(), *, quantile=.95, margin=1.25
     multipliers = {"feature_generation":12,"selection":8,"preparation":4,"fit":8,"graph_component":8,"simulation":6}
     cold = max(512*1024**2,dense_bytes*multipliers[workload.stage]) if cold_private_bytes is None else cold_private_bytes
     wall = {"feature_generation":300.,"selection":600.,"preparation":120.,"fit":600.,"graph_component":600.,"simulation":120.}[workload.stage] if cold_wall_seconds is None else cold_wall_seconds
+    if workload.stage in {"fit", "graph_component"}:
+        family_private, family_wall = _family_cost(workload)
+        if cold_private_bytes is None:
+            cold = max(cold, family_private)
+        if cold_wall_seconds is None:
+            wall = max(wall, family_wall)
     if cold <= 0 or not math.isfinite(wall) or wall <= 0:
         raise ValueError("Conservative cold estimate must be positive")
-    representative = [s for s in matching if not s.censored]
+    # Failed samples remain bounds, never evidence for lowering cold estimates.
+    representative = [s for s in matching if not s.censored and not s.failed]
     measured = len(representative) >= 5
     if measured:
         cold = float(np.quantile([s.private_peak_bytes for s in representative],quantile))
@@ -281,7 +335,19 @@ class JobEstimator:
     def estimate(self, workload, **kwargs):
         return estimate_job(workload,self.samples,**kwargs)
 
-    def record(self, workload, actual):
+    def record_censored_history(self, workload, snapshot):
+        """Import known per-fit interruption bounds once, never unit-wide peaks."""
+        workload = workload if isinstance(workload, JobWorkload) else JobWorkload.model_validate(workload)
+        records = []
+        for row in snapshot["interrupted_attempts"]:
+            actual = row.get("actual")
+            if actual and actual["workload_fingerprint"] == workload.fingerprint():
+                identity = json.dumps([row["invocation_id"], row["attempt_id"]], separators=(",", ":"))
+                records.append(self.record(workload, JobMeasurement(**dict(actual, failed=True, censored=True)),
+                                           sample_id="interrupted:" + identity))
+        return records
+
+    def record(self, workload, actual, *, sample_id=None):
         workload = workload if isinstance(workload,JobWorkload) else JobWorkload.model_validate(workload)
         if isinstance(actual,dict):
             if not actual.get("supported",True):
@@ -295,8 +361,16 @@ class JobEstimator:
                 payload = json.loads(self.path.read_text()) if self.path.exists() else {"schema_version":1,"samples":[]}
                 if payload["schema_version"] != 1:
                     raise ValueError("Unsupported job-estimate ledger version")
+                if sample_id is not None:
+                    previous = next((row for row in payload["samples"] if row.get("sample_id") == sample_id), None)
+                    if previous is not None:
+                        if previous["actual"] != asdict(actual):
+                            raise ValueError("Idempotent estimate sample identity reused with different measurement")
+                        return previous
                 before = estimate_job(workload,[JobMeasurement(**row["actual"]) for row in payload["samples"]])
                 record = {"workload":workload.model_dump(mode="json"),"actual":asdict(actual),"comparison":before.comparison(actual)}
+                if sample_id is not None:
+                    record["sample_id"] = sample_id
                 payload["samples"].append(record)
                 fd,temporary = tempfile.mkstemp(dir=self.path.parent,prefix=self.path.name+"-")
                 try:
@@ -362,8 +436,17 @@ def observe_cgroup():
         root = Path("/sys/fs/cgroup") / relative.lstrip("/")
         result = {"supported":True,"path":str(root)}
         for filename in ("memory.current","memory.peak","memory.max","memory.events"):
-            raw = (root/filename).read_text().strip()
+            try:
+                raw = (root/filename).read_text().strip()
+            except FileNotFoundError:
+                if filename == "memory.peak":
+                    continue
+                raise
             result[filename] = raw if filename == "memory.events" or raw == "max" else int(raw)
+        try:
+            result["boot_id"] = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        except OSError:
+            pass
         return result
     except (OSError,StopIteration,ValueError):
         return {"supported":False,"reason":"own cgroup v2 memory interface unavailable"}
@@ -421,7 +504,8 @@ class JobMonitor:
 
 class ProgressiveCapacity:
     """Explicit cap ladder; representative folds and sustained measured headroom gate rises."""
-    def __init__(self, caps=(2,4,8,12,16,26), *, sustain_seconds=30, emergency_gib=2):
+    def __init__(self, caps=(2,4,8,12,16,26), *, sustain_seconds=30, emergency_gib=2,
+                 representative_baseline=None):
         if not caps or tuple(sorted(set(caps))) != tuple(caps) or caps[0] < 1 or sustain_seconds < 30 or emergency_gib < 0:
             raise ValueError("Ordered positive caps and at least 30 seconds of headroom required")
         self.caps = tuple(caps)
@@ -431,6 +515,24 @@ class ProgressiveCapacity:
         self.since = None
         self.fold_baseline = 0
         self.paused = False
+        self._evidence_baseline = None
+        if representative_baseline is not None:
+            self.reset(representative_baseline=representative_baseline)
+
+    def reset(self, *, representative_baseline):
+        """Restart at the first cap; count only successes above this startup count.
+
+        Pass the durable successful sample count at startup. An isolated cheap
+        canary finishing before the first headroom sample is then eligible.
+        Each rise consumes the current count, so evidence cannot fund two rises.
+        """
+        if isinstance(representative_baseline, bool) or not isinstance(representative_baseline, int) or representative_baseline < 0:
+            raise ValueError("Nonnegative representative sample baseline required")
+        self.index = 0
+        self.since = None
+        self.paused = False
+        self.fold_baseline = representative_baseline
+        self._evidence_baseline = representative_baseline
 
     @property
     def cap(self):
@@ -451,9 +553,12 @@ class ProgressiveCapacity:
             self.since = None
             return {"cap":self.cap,"reason":"increment_headroom","changed":False,"needed_gib":needed}
         if self.since is None:
-            self.since, self.fold_baseline = now, representative_folds
+            self.since = now
+            self.fold_baseline = representative_folds if self._evidence_baseline is None else self._evidence_baseline
         if now-self.since >= self.sustain_seconds and representative_folds > self.fold_baseline:
             self.index += 1
             self.since = None
+            if self._evidence_baseline is not None:
+                self._evidence_baseline = representative_folds
             return {"cap":self.cap,"reason":"sustained_representative_headroom","changed":True}
         return {"cap":self.cap,"reason":"await_sustained_headroom_and_new_fold","changed":False}

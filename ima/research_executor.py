@@ -26,6 +26,7 @@ from .research_evaluation import (
 )
 from .research_model_package import FeatureReplayContext, ResearchModelPackage, speed_to_finish_seconds
 from .research_models import ResearchClassifier, ResearchRegressor, secondary_target_diagnostics
+from .research_preparation import PreparationArtifact, PreparationCacheWaitTimeout
 from .research_specs import PerformanceDistributionSpec, PipelineRecipe, is_fundamental_first_portfolio
 from .research_targets import apply_target_contract, target_contract
 from .research_transforms import (
@@ -184,28 +185,157 @@ class FittedGraphRecipeModel:
         return self.model.predict_joint(self._frame(frame))
 
 
+def _preparation_implementation(recipe):
+    from importlib.metadata import version
+    modules = ("research_executor", "research_preparation", "research_evaluation", "research_targets",
+               "research_transforms", "data", "feature_sets", "feature_definitions", "feature_expressions",
+               "feature_discovery_specs")
+    if recipe.feature_discovery:
+        modules += ("feature_program", "feature_screening", "feature_residuals")
+    return {
+        "modules": {name: _hash_file(Path(__file__).with_name(name+".py")) for name in modules},
+        "dependencies": {name: version(name) for name in (
+            "numpy", "pandas", "scipy", "scikit-learn", "joblib", "pydantic",
+            *(("feature-engine", "featuretools", "woodwork") if recipe.feature_discovery else ()))},
+    }
+
+
+def preparation_dependency_id(
+    request_or_recipe: RecipeExecutionRequest | PipelineRecipe,
+    dataset_hash: str | None = None,
+    protocol: dict[str, Any] | ProtocolManifest | None = None,
+    *, code_revision: str | None = None, environment_hash: str | None = None,
+    dataset_manifest_hash: str | None = None,
+) -> str | None:
+    """Conservative producer grouping ID, without loading a frame or fitting anything.
+
+    Flat V3 recipes share only when all preprocessing inputs match. Model, calibration,
+    blend and distribution parameters are downstream of this preparation path. Targets
+    (including differently named aliases) are never merged. V2 and graphs return None;
+    graph selectors/transforms must stay inside their nested training folds.
+
+    Prefer the request form, which binds the dataset sidecar, code and environment.
+    The recipe form requires a content hash and protocol; supply the same sidecar/revision
+    arguments to reproduce a request ID. This groups producers, not artifact keys: actual
+    ordered rows and labels remain bound by each PreparationKey during preparation.
+    """
+    request = request_or_recipe if isinstance(request_or_recipe, RecipeExecutionRequest) else None
+    recipe = request.recipe if request is not None else request_or_recipe
+    if recipe.schema_version != 3 or recipe.pipeline_graph is not None:
+        return None
+    if request is not None:
+        observed = _hash_file(request.dataset_path)
+        if any(value is not None and value != observed for value in (dataset_hash, request.dataset_hash)):
+            raise ValueError("dataset hash does not match preparation request")
+        dataset_hash = observed
+        protocol = request.protocol_parameters if protocol is None else protocol
+        code_revision = request.code_revision if code_revision is None else code_revision
+        environment_hash = request.environment_hash if environment_hash is None else environment_hash
+        path = request.dataset_path.parent/"manifest.json"
+        observed_manifest = _hash_file(path) if path.exists() else None
+        if dataset_manifest_hash is not None and dataset_manifest_hash != observed_manifest:
+            raise ValueError("dataset manifest hash does not match preparation request")
+        dataset_manifest_hash = observed_manifest
+    if not dataset_hash or protocol is None:
+        raise ValueError("Preparation dependency requires dataset hash and protocol")
+    if isinstance(protocol, ProtocolManifest):
+        protocol_payload = protocol.to_dict()
+    else:
+        protocol_payload = dict(protocol)
+        protocol_payload.setdefault("whole_meeting_boundaries", True)
+    schema = _effective_schema(recipe)
+    payload = {
+        "schema_version": 1, "dataset_hash": dataset_hash, "dataset_manifest_hash": dataset_manifest_hash,
+        "protocol": protocol_payload, "target": recipe.target.model_dump(mode="json"),
+        "schema": {"name": schema.name, "numeric": schema.numeric, "categorical": schema.categorical},
+        "extra_numeric_features": recipe.extra_numeric_features or (),
+        "feature_definitions": recipe.feature_definitions or (),
+        "feature_discovery": recipe.feature_discovery.model_dump(mode="json") if recipe.feature_discovery else None,
+        "transforms": [s.model_dump(mode="json") for s in recipe.transforms],
+        "train_window": recipe.train_window, "seed": recipe.seed,
+        "code_revision": code_revision or "unknown", "environment_hash": environment_hash or "unknown",
+        "implementation": _preparation_implementation(recipe),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def _execution_progress(request, stage, *, fold_id=None, fold_index=None, fold_count=None, **details):
+    """Executor-owned progress; the process supervisor owns runtime.json."""
+    _write_json_atomic(request.output_dir/"progress.json", {
+        "attempt_id": request.attempt_id, "pid": os.getpid(), "stage": stage,
+        "updated_at_epoch": time.time(), "fold_id": fold_id,
+        "fold_index": fold_index, "fold_count": fold_count, **details,
+    })
+
+
+def _load_recipe_features(request):
+    _execution_progress(request, "loading_dataset")
+    _write_json_atomic(request.output_dir/"stage.json", {"phase": "loading_dataset", "started_at_epoch": time.time()})
+    frame = _load_dataset(request.dataset_path)
+    observed_hash = _hash_file(request.dataset_path)
+    if request.dataset_hash is not None and request.dataset_hash != observed_hash:
+        raise ValueError("dataset hash does not match execution request")
+    if request.recipe.schema_version == 3:
+        frame = _v6_feature_frame(frame, request)
+    manifest = None
+    if request.recipe.feature_discovery:
+        from .feature_program import materialize
+        _execution_progress(request, "building_features", discovery_id=request.recipe.feature_discovery.discovery_id())
+        _write_json_atomic(request.output_dir/"stage.json", {"phase": "building_features",
+            "discovery_id": request.recipe.feature_discovery.discovery_id(), "started_at_epoch": time.time()})
+        matrix, manifest = materialize(frame, request.recipe.feature_discovery, observed_hash,
+            request.output_dir.parent.parent / "discovery-cache", shared=request.recipe.schema_version == 3,
+            input_metadata=frame.attrs.get("synthesis_metadata",frame.attrs.get("input_metadata")))
+        if request.recipe.schema_version == 3:
+            frame.attrs["discovery_matrix"] = matrix
+        else:
+            frame = matrix
+        _write_json_atomic(request.output_dir / "discovery-manifest.json", manifest)
+    return frame, observed_hash, manifest
+
+
+def prepare_recipe_folds(request: RecipeExecutionRequest) -> dict[str, PreparationArtifact]:
+    """Prewarm all flat V3 folds without fitting the target estimator.
+
+    Schedule one call per preparation_dependency_id before admitting dependent fits.
+    Returned descriptors are pickleable, checksummed read-only memmaps. The caller must
+    pin them if eviction can occur between this return and fit admission; fits acquire
+    their own existing trial pins. Infrastructure waits raise PreparationCacheWaitTimeout.
+    V2/graphs have no dependency and return an empty mapping without loading the dataset.
+    """
+    dependency_id = preparation_dependency_id(request)
+    if dependency_id is None:
+        return {}
+    try:
+        frame, observed_hash, _ = _load_recipe_features(request)
+        labelled, schema, protocol, _ = _recipe_fold_inputs(request, frame)
+        contract = target_contract(request.recipe.target.kind, request.recipe.target.parameters)
+        label = "target_win" if contract.kind == "win_probability" else contract.label_column
+        artifacts = {}
+        for index, fold in enumerate(protocol.folds, 1):
+            _execution_progress(request, "preparing", fold_id=fold.fold_id,
+                                fold_index=index, fold_count=len(protocol.folds))
+            calibration = select_fold(labelled, fold.calibration_race_ids)
+            train = _apply_training_window(select_fold(labelled, fold.train_race_ids), calibration, request.recipe.train_window)
+            score = select_fold(labelled, fold.score_race_ids)
+            artifacts[fold.fold_id] = _prepared_fold(
+                request, train, calibration, score, schema, fold.fold_id, label, artifact_only=True)
+        _write_json_atomic(request.output_dir/"preparation-dependencies.json", {
+            "dependency_id": dependency_id, "dataset_hash": observed_hash,
+            "folds": {name: asdict(artifact) for name, artifact in artifacts.items()},
+        })
+        _execution_progress(request, "prepared", fold_count=len(artifacts))
+        return artifacts
+    except PreparationCacheWaitTimeout as exc:
+        _execution_progress(request, "preparation_wait_timeout", cache_wait=exc.diagnostic)
+        raise
+
+
 def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
     """Train/evaluate one recipe and atomically persist its accepted artifacts."""
     started = time.perf_counter()
     try:
-        _write_json_atomic(request.output_dir/"stage.json",{"phase":"loading_dataset","started_at_epoch":time.time()})
-        frame = _load_dataset(request.dataset_path)
-        observed_hash = _hash_file(request.dataset_path)
-        if request.dataset_hash is not None and request.dataset_hash != observed_hash:
-            raise ValueError("dataset hash does not match execution request")
-        if request.recipe.schema_version == 3:
-            frame = _v6_feature_frame(frame, request)
-        if request.recipe.feature_discovery:
-            from .feature_program import materialize
-            _write_json_atomic(request.output_dir/"stage.json",{"phase":"building_features","discovery_id":request.recipe.feature_discovery.discovery_id(),"started_at_epoch":time.time()})
-            matrix, manifest = materialize(frame, request.recipe.feature_discovery, observed_hash,
-                request.output_dir.parent.parent / "discovery-cache", shared=request.recipe.schema_version == 3,
-                input_metadata=frame.attrs.get("synthesis_metadata",frame.attrs.get("input_metadata")))
-            if request.recipe.schema_version == 3:
-                frame.attrs["discovery_matrix"] = matrix
-            else:
-                frame = matrix
-            _write_json_atomic(request.output_dir / "discovery-manifest.json", manifest)
+        frame, observed_hash, manifest = _load_recipe_features(request)
         _write_json_atomic(request.output_dir/"stage.json",{"phase":"training","started_at_epoch":time.time()})
         with ExitStack() as pins:
             result = _execute_frame(request, frame, observed_hash, started, pins=pins)
@@ -227,7 +357,7 @@ def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
             status="failed",
             objective_name=_objective_name(request.recipe.target.kind),
             objective_value=None,
-            metrics={},
+            metrics={"infrastructure_failure": exc.diagnostic} if isinstance(exc, PreparationCacheWaitTimeout) else {},
             artifacts={},
             lineage={
                 "dataset_hash": request.dataset_hash or "unknown",
@@ -238,6 +368,8 @@ def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
             error=f"{type(exc).__name__}: {exc}",
         )
         _write_json_atomic(request.output_dir / "result.json", result.serializable())
+    _execution_progress(request, result.status, failure_kind=(
+        "infrastructure_cache_wait" if result.metrics.get("infrastructure_failure") else None))
     return result
 
 
@@ -312,13 +444,8 @@ def _v6_result_lineage(request, frame, result, dataset_hash):
     return lineage
 
 
-def _execute_frame(
-    request: RecipeExecutionRequest,
-    frame: pd.DataFrame,
-    dataset_hash: str,
-    started: float,
-    *, pins=None,
-) -> RecipeExecutionResult:
+def _recipe_fold_inputs(request, frame):
+    """Shared eligibility, labels, feature schema and temporal split for prep and fit."""
     recipe = request.recipe
     contract = target_contract(recipe.target.kind, recipe.target.parameters)
     exclusions: dict[str, Any] = {}
@@ -347,6 +474,27 @@ def _execute_frame(
         target=contract,
         **protocol_parameters,
     )
+    if recipe.schema_version == 3 and recipe.target.kind == "win_probability" and not any((
+        recipe.pipeline_graph,recipe.feature_discovery,recipe.transforms,recipe.performance_distribution)):
+        required = set(schema.features) | {"race_id","date","race_no","horse_no","horse_id",
+            "target_win","target_probability","market_probability","result","field_size","win_odds","finishing_status"}
+        attributes = dict(labelled.attrs)
+        before = len(labelled.columns)
+        labelled = labelled.loc[:,[name for name in labelled if name in required]]
+        labelled.attrs = attributes | {"column_projection":{"before":before,"after":len(labelled.columns),
+            "scope":"flat_untransformed_win_recipe"}}
+    return labelled, schema, protocol, exclusions
+
+
+def _execute_frame(
+    request: RecipeExecutionRequest,
+    frame: pd.DataFrame,
+    dataset_hash: str,
+    started: float,
+    *, pins=None,
+) -> RecipeExecutionResult:
+    recipe = request.recipe
+    labelled, schema, protocol, exclusions = _recipe_fold_inputs(request, frame)
     if recipe.pipeline_graph is not None:
         return _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, started, pins=pins)
     if recipe.target.kind != "win_probability":
@@ -358,13 +506,16 @@ def _execute_frame(
     prediction_rows: list[pd.DataFrame] = []
     final_model: FittedWinRecipeModel | None = None
     effective_training: list[dict[str, Any]] = []
-    for fold in protocol.folds:
+    for fold_index, fold in enumerate(protocol.folds, 1):
+        progress = {"fold_id": fold.fold_id, "fold_index": fold_index, "fold_count": len(protocol.folds)}
+        _execution_progress(request, "preparing", **progress)
         train = select_fold(labelled, fold.train_race_ids)
         calibration = select_fold(labelled, fold.calibration_race_ids)
         score = select_fold(labelled, fold.score_race_ids)
         train = _apply_training_window(train, calibration, recipe.train_window)
         transformed_train, transformed_calibration, transformed_score, fitted_transforms, fold_schema, residual_history = _prepared_fold(
             request,train,calibration,score,schema,fold.fold_id,"target_win",pins=pins)
+        _execution_progress(request, "training", **progress)
         if recipe.model.kind == "gaussian_probit":
             from .performance_probit import fit_probit
             model = fit_probit(transformed_train,fold_schema,recipe.model.parameters)
@@ -373,6 +524,7 @@ def _execute_frame(
                 kind=recipe.model.kind, parameters=dict(recipe.model.parameters),
                 random_state=recipe.seed, feature_schema=fold_schema,
             ).fit(transformed_train)
+        _execution_progress(request, "evaluating", **progress)
         calibration_probabilities = model.predict_proba(transformed_calibration)
         calibrator = None
         if recipe.calibration.kind == "temperature":
@@ -478,6 +630,7 @@ def _execute_frame(
             transformed_calibration if recipe.schema_version == 3 else calibration,
             transformed_score if recipe.schema_version == 3 else score, recipe,request.output_dir,fold.fold_id,
             prepared=recipe.schema_version == 3)
+        _execution_progress(request, "fold_completed", **progress)
 
     if not folds or final_model is None:
         raise ValueError("protocol produced no executable folds")
@@ -709,7 +862,9 @@ def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, star
     learned_features = bool(recipe.transforms or recipe.feature_discovery)
     folds, prediction_rows, reports, effective_training = [], [], [], []
     final_model = None
-    for fold in protocol.folds:
+    for fold_index, fold in enumerate(protocol.folds, 1):
+        progress = {"fold_id": fold.fold_id, "fold_index": fold_index, "fold_count": len(protocol.folds)}
+        _execution_progress(request, "training", **progress)
         calibration = select_fold(labelled, fold.calibration_race_ids)
         train = _apply_training_window(select_fold(labelled, fold.train_race_ids), calibration, recipe.train_window)
         score = select_fold(labelled, fold.score_race_ids)
@@ -738,6 +893,7 @@ def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, star
         fitted = fit_graph(graph_spec, train, calibration, schema, recipe.seed,
             model_spec=recipe.model, estimator_factories=factories or None,
             prediction_store=PredictionStore(request.output_dir.parent.parent/"graph-prediction-cache"))
+        _execution_progress(request, "evaluating", **progress)
         component_features = []
         visited = set()
         def collect(node):
@@ -789,6 +945,7 @@ def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, star
         effective_training.append({"fold_id": fold.fold_id, "rows": len(train), "races": train.race_id.nunique(),
             "features": list(replay_schema.features), "fit_scope": "recursive_forward_oof",
             "training_cutoff": fitted.fit_report["training_cutoff"]})
+        _execution_progress(request, "fold_completed", **progress)
     if final_model is None:
         raise ValueError("Graph protocol produced no executable folds")
     fundamental_first = is_fundamental_first_portfolio(request.portfolio_version)
@@ -833,7 +990,9 @@ def _execute_secondary_frame(
     prediction_rows: list[pd.DataFrame] = []
     final_model: FittedSecondaryRecipeModel | None = None
     effective_training: list[dict[str, Any]] = []
-    for fold in protocol.folds:
+    for fold_index, fold in enumerate(protocol.folds, 1):
+        progress = {"fold_id": fold.fold_id, "fold_index": fold_index, "fold_count": len(protocol.folds)}
+        _execution_progress(request, "preparing", **progress)
         calibration = select_fold(labelled, fold.calibration_race_ids)
         train = _apply_training_window(
             select_fold(labelled, fold.train_race_ids),
@@ -843,6 +1002,7 @@ def _execute_secondary_frame(
         score = select_fold(labelled, fold.score_race_ids)
         transformed_train, transformed_calibration, transformed_score, fitted_transforms, fold_schema, residual_history = _prepared_fold(
             request,train,calibration,score,schema,fold.fold_id,contract.label_column,pins=pins)
+        _execution_progress(request, "training", **progress)
 
         distribution_model = recipe.performance_distribution is not None
         if distribution_model:
@@ -861,6 +1021,7 @@ def _execute_secondary_frame(
                 transformed_train, fold_schema, contract.label_column
             )
             shuffled_model = ResearchRegressor(model_kind, dict(recipe.model.parameters))
+        _execution_progress(request, "evaluating", **progress)
         calibrator = None
         if contract.kind == "placing_top_k":
             calibration_labels = transformed_calibration[contract.label_column].to_numpy()
@@ -1013,6 +1174,7 @@ def _execute_secondary_frame(
             transformed_calibration if recipe.schema_version == 3 else calibration,
             transformed_score if recipe.schema_version == 3 else score,recipe,request.output_dir,fold.fold_id,
             prepared=recipe.schema_version == 3)
+        _execution_progress(request, "fold_completed", **progress)
 
     if not folds or final_model is None:
         raise ValueError("protocol produced no executable folds")
@@ -1451,7 +1613,39 @@ def _feature_replay_context(request, schema, score, *, dataset_hash=None):
         source.attrs.get("dataset_manifest_hash"))
 
 
-def _prepared_fold(request, train, calibration, score, schema, fold_id, label, *, pins=None):
+def _preparation_row_keys(frame):
+    return tuple(json.dumps([str(r), str(h)], separators=(",", ":"))
+                 for r, h in zip(frame.race_id, frame.horse_no))
+
+
+def _fold_preparation_key(request, train, calibration, score, schema, label):
+    from .research_preparation import PreparationKey
+    from .feature_discovery_specs import content_id
+    recipe = request.recipe
+    frames = {"train": train, "calibration": calibration, "score": score}
+    keys = {name: _preparation_row_keys(frame) for name, frame in frames.items()}
+    implementation = _preparation_implementation(recipe)
+    # Selection consumes train labels; bind every population so relabelling cannot reuse
+    # an artifact under a different evaluation contract, even with a caller-pinned hash.
+    labels = {name: {column: frame[column].tolist() for column in dict.fromkeys(
+        (label, "target_probability" if recipe.target.kind == "win_probability" else label))}
+        for name, frame in frames.items()}
+    return PreparationKey(source_content_hash=request.dataset_hash or _hash_file(request.dataset_path),
+        training_row_keys=keys["train"], calibration_row_keys=keys["calibration"], score_row_keys=keys["score"],
+        target_labels_hash=content_id({"target": recipe.target.model_dump(mode="json"), "labels": labels}),
+        availability_policy={"rule": train.attrs.get("availability_policy", "validated_pre_race_schema"),
+            "metadata": train.attrs.get("input_metadata", {}), "manifest_hash": train.attrs.get("dataset_manifest_hash"),
+            "matrix_id": getattr(train.attrs.get("discovery_matrix"), "matrix_id", None)},
+        feature_definitions=tuple(recipe.feature_definitions or ()) + ({"schema": schema.name,
+            "numeric": list(schema.numeric), "categorical": list(schema.categorical)},),
+        selection_settings=recipe.feature_discovery.model_dump(mode="json") if recipe.feature_discovery else {},
+        fitted_transform_settings={"transforms": [s.model_dump(mode="json") for s in recipe.transforms], "window": recipe.train_window},
+        fold_dates=tuple(str(f.date.min())+"/"+str(f.date.max()) for f in frames.values()),
+        seed=recipe.seed, implementation_revision=request.code_revision+":"+content_id(implementation["modules"])+":"+request.environment_hash,
+        dependency_versions=implementation["dependencies"])
+
+
+def _prepared_fold(request, train, calibration, score, schema, fold_id, label, *, pins=None, artifact_only=False):
     """Cache pure fold preparation, independent of downstream model-only parameters."""
     recipe = request.recipe
     def build_frames():
@@ -1471,24 +1665,9 @@ def _prepared_fold(request, train, calibration, score, schema, fold_id, label, *
         return (*prepared,transforms,effective,residual)
     if recipe.schema_version == 2:
         return build_frames()
-    from .research_preparation import PreparationCache, PreparationKey, PreparedFold
-    from importlib.metadata import version
-    from .feature_discovery_specs import content_id
-    def row_keys(frame):
-        return tuple(json.dumps([str(r),str(h)],separators=(",",":")) for r,h in zip(frame.race_id,frame.horse_no))
-    keys = {"train":row_keys(train),"calibration":row_keys(calibration),"score":row_keys(score)}
-    key = PreparationKey(source_content_hash=request.dataset_hash or _hash_file(request.dataset_path),
-        training_row_keys=keys["train"],calibration_row_keys=keys["calibration"],score_row_keys=keys["score"],
-        target_labels_hash=content_id({"target":recipe.target.model_dump(mode="json"),"labels":train[label].tolist()}),
-        availability_policy={"rule":train.attrs.get("availability_policy","validated_pre_race_schema"),
-            "metadata":train.attrs.get("input_metadata",{}), "manifest_hash":train.attrs.get("dataset_manifest_hash"),
-            "matrix_id":getattr(train.attrs.get("discovery_matrix"),"matrix_id",None)},
-        feature_definitions=tuple(recipe.feature_definitions or ())+( {"schema":schema.name,"features":list(schema.features)},),
-        selection_settings=recipe.feature_discovery.model_dump(mode="json") if recipe.feature_discovery else {},
-        fitted_transform_settings={"transforms":[s.model_dump(mode="json") for s in recipe.transforms],"window":recipe.train_window},
-        fold_dates=tuple(str(f.date.min())+"/"+str(f.date.max()) for f in (train,calibration,score)),
-        seed=recipe.seed, implementation_revision=request.code_revision+":"+_hash_file(Path(__file__)),
-        dependency_versions={n:version(n) for n in ("numpy","pandas","scikit-learn","joblib",*( ("feature-engine", "featuretools") if recipe.feature_discovery else ()))})
+    from .research_preparation import PreparationCache, PreparedFold
+    key = _fold_preparation_key(request, train, calibration, score, schema, label)
+    keys = {"train": key.training_row_keys, "calibration": key.calibration_row_keys, "score": key.score_row_keys}
     cache = PreparationCache(request.output_dir.parent.parent/"fold-preparation-cache")
     def builder():
         left,middle,right,transforms,effective,residual = build_frames()
@@ -1504,9 +1683,15 @@ def _prepared_fold(request, train, calibration, score, schema, fold_id, label, *
         return PreparedFold(arrays,tuple(effective.numeric),keys,
             fitted_state={"transforms":transforms,"schema":effective,"residual":residual,
                           "reports":reports, "selector":joblib.load(selector_path) if selector_path.exists() else None})
-    artifact = cache.prepare_fold(key,builder)
+    artifact = cache.prepare_fold(key, builder, owner={"attempt_id": request.attempt_id, "fold_id": fold_id})
     if pins is not None:
         pins.enter_context(cache.pin(artifact))
+    if artifact_only:
+        _write_json_atomic(request.output_dir/f"preparation-{fold_id}.json", {
+            **asdict(artifact), "path": str(artifact.path), "key": key.model_dump(mode="json"),
+            "pin_scope": "caller_unpinned",
+        })
+        return artifact
     state,arrays = artifact.load_fitted_state(),artifact.load_arrays()
     for suffix, report in state.get("reports",{}).items():
         _write_json_atomic(request.output_dir/f"discovery-{suffix}-{fold_id}.json",report)

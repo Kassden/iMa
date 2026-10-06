@@ -9,6 +9,7 @@ import sqlite3
 import time
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,14 +18,16 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 from . import research_controller as core
 from .feature_discovery_specs import content_id
-from .research_executor import RecipeExecutionRequest, execute_recipe
+from .research_executor import RecipeExecutionRequest, execute_recipe, preparation_dependency_id, prepare_recipe_folds
 from .research_hypotheses import HypothesisMemory
 from .research_search import ProgramSearchController
 from .research_specs import PipelineRecipe, ResearchProposal, V6_PORTFOLIO_VERSION
 from .research_store import ResearchLedger, utc_now
-from .research_telemetry import evidence_snapshot, log_snapshot
+from .research_telemetry import evidence_snapshot, log_snapshot, next_trace_number
 from .research_betting import PaperResearchRequest
 from .research_external_planner import read_external_decision as _external_decision
+from .research_worker_runtime import BoundedFitExecutor, active_attempt_summary, cleanup_attempt_group, read_runtime
+from .research_runtime_history import RuntimeHistory, read_own_unit_journal
 
 
 class PlannerDecision(BaseModel):
@@ -508,6 +511,158 @@ def _prepare_program(dataset, recipe, digest, root):
     return dict(prepared,worker_resources=monitor.report())
 
 
+def _prepare_fold_dependency(request, workload):
+    from .research_resources import JobMonitor
+    with JobMonitor() as monitor:
+        artifacts = prepare_recipe_folds(request)
+    return {"artifacts":artifacts,"worker_resources":monitor.report()}
+
+
+def _dependency_request(recipe,context,directory,revision,environment):
+    identity = preparation_dependency_id(recipe,context["digest"],context["protocol"],
+        code_revision=revision,environment_hash=environment,
+        dataset_manifest_hash=core._hash_file(context["dataset"].parent/"manifest.json") if (context["dataset"].parent/"manifest.json").is_file() else None)
+    request = RecipeExecutionRequest(identity or "graph", "fold-dependency",0,recipe,
+        context["dataset"],directory/"trials"/("prepare-"+(identity or "graph")),
+        context["protocol"],context["digest"],revision,environment,V6_PORTFOLIO_VERSION)
+    return identity,request
+
+
+def _pending_fold_request(payload, context, directory):
+    bound = dict(context, dataset=Path(payload.get("dataset_path",context["dataset"])),
+                 digest=payload["dataset_hash"], protocol=payload["protocol_parameters"])
+    return _dependency_request(PipelineRecipe.model_validate(payload["recipe"]),bound,directory,
+                               payload["code_revision"],payload["environment_hash"])
+
+
+class _FoldDependencies:
+    """Parent-owned preparation circuit and reader leases, shared by all followers."""
+
+    def __init__(self, directory):
+        import weakref
+        self.path = Path(directory)/"fold-dependency-errors.json"
+        stored = core._read_json(self.path) if self.path.is_file() else {"schema_version":1,"errors":{}}
+        if stored.get("schema_version") != 1 or not isinstance(stored.get("errors"),dict):
+            raise ValueError("Invalid fold dependency error state")
+        self.errors = stored["errors"]
+        for error in self.errors.values():
+            if not isinstance(error,dict) or not isinstance(error.get("failures"),int) or error["failures"] < 1:
+                raise ValueError("Invalid fold dependency failure count")
+            error["blocked"] = error["failures"] >= 3
+        self.ready, self._pins, self._stamps = {}, {}, {}
+        # Finalization covers campaign returns without changing the executor lifetime.
+        self._finalizer = weakref.finalize(self,type(self)._release_pins,self._pins)
+
+    @staticmethod
+    def _release_pins(pins):
+        while pins:
+            _, stack = pins.popitem()
+            stack.close()
+
+    def close(self):
+        self._finalizer()
+        self.ready.clear()
+        self._stamps.clear()
+
+    def _save(self):
+        core._write_json_atomic(self.path,{"schema_version":1,"errors":self.errors})
+
+    def blocked(self, dependency):
+        return self.errors.get(dependency,{}).get("blocked",False)
+
+    def can_prepare(self, dependency):
+        error = self.errors.get(dependency,{})
+        return not self.blocked(dependency) and time.time() >= error.get("retry_at_epoch",0)
+
+    def failed(self, dependency, pid, exc):
+        self.invalidate(dependency)
+        failures = self.errors.get(dependency,{}).get("failures",0)+1
+        diagnostic = getattr(exc,"diagnostic",None)
+        self.errors[dependency] = {"error":f"{type(exc).__name__}: {exc}","program_id":pid,
+            "failures":failures,"blocked":failures>=3,"last_failure_at_epoch":time.time(),
+            "retry_at_epoch":time.time()+30,"diagnostic":diagnostic}
+        self._save()
+
+    def invalidate(self, dependency):
+        self.ready.pop(dependency,None)
+        self._stamps.pop(dependency,None)
+        stack = self._pins.pop(dependency,None)
+        if stack is not None:
+            stack.close()
+
+    @staticmethod
+    def _stamp(artifact, names):
+        result = []
+        for name in names:
+            stat = (artifact.path/name).stat()
+            result.append((stat.st_dev,stat.st_ino,stat.st_size,stat.st_mtime_ns,stat.st_ctime_ns))
+        return tuple(result)
+
+    def is_ready(self, dependency):
+        if dependency is None:
+            return True
+        if self.blocked(dependency) or dependency not in self.ready:
+            return False
+        try:
+            # Checksums are verified when acquiring the lease. Inode/ctime/mtime checks
+            # detect replacement or corruption without hashing whole memmaps each loop.
+            for name, artifact in self.ready[dependency].items():
+                files, before = self._stamps[dependency][name]
+                if self._stamp(artifact,files) != before:
+                    self.invalidate(dependency)
+                    return False
+        except OSError:
+            self.invalidate(dependency)
+            return False
+        return True
+
+    def publish(self, dependency, artifacts):
+        from contextlib import ExitStack
+        from .research_preparation import PreparationArtifact, PreparationCache
+        if not isinstance(artifacts,dict) or not artifacts:
+            raise ValueError("Fold dependency must publish nonempty artifact descriptors")
+        stamps = {}
+        with ExitStack() as pins:
+            for name, artifact in artifacts.items():
+                if not isinstance(artifact,PreparationArtifact):
+                    raise TypeError("Invalid fold preparation descriptor")
+                pins.enter_context(PreparationCache(artifact.root,lock_timeout=0).pin(artifact))
+                manifest = artifact.manifest()
+                artifact.load_arrays()
+                files = ("manifest.json",*sorted(manifest["checksums"]))
+                stamps[name] = (files,self._stamp(artifact,files))
+            self.errors.pop(dependency,None)
+            self._save()
+            self.invalidate(dependency)
+            self._pins[dependency] = pins.pop_all()
+            self._stamps[dependency] = stamps
+            self.ready[dependency] = dict(artifacts)
+
+
+def _fail_fold_allocation(row, dependency, error, ledger, hypotheses, directory):
+    """Terminalize only an unstarted durable allocation; preserve its attempt identity."""
+    from .research_executor import RecipeExecutionResult
+    attempt, payload = row["attempt_id"], row["payload"]
+    if attempt not in {item["attempt_id"] for item in ledger.pending_attempts()}:
+        return False
+    recipe = PipelineRecipe.model_validate(payload["recipe"])
+    diagnostic = dict(error,dependency_id=dependency,failure_kind="infrastructure_preparation_failed")
+    result = RecipeExecutionResult(1,attempt,payload["proposal_id"],payload["trial_number"],
+        recipe.recipe_hash(),recipe.target.kind,"failed","preparation_failed",None,
+        {"infrastructure_failure":diagnostic},{},
+        {name:payload[name] for name in ("dataset_hash","code_revision","environment_hash")},
+        0.,f"FoldPreparationBlocked: {error['error']}").serializable()
+    result.update(core._portfolio_identity(recipe,"expansion_v6"),
+                  target_parameters=recipe.target.parameters,failure_class="preparation_failed")
+    ledger.complete_attempt(attempt,result,status="failed")
+    core._write_json_atomic(Path(directory)/"trials"/attempt/"result.json",result)
+    core._append_jsonl(Path(directory)/"trials.jsonl",result)
+    hypotheses.record("outcome:"+attempt,payload["program_id"],"evaluated",
+        {"attempt_id":attempt,"objective_value":None,"status":"failed",
+         "error":result["error"],"failure_class":"preparation_failed","dependency_id":dependency})
+    return True
+
+
 def _prepare_program_frame(dataset, recipe, digest, root):
     from .research_executor import _load_dataset, _v6_feature_frame
     if core._hash_file(dataset) != digest:
@@ -534,6 +689,8 @@ def _workload(recipe, rows, revision, environment, *, stage="fit", shared=None,n
         selected_features=len(schema.numeric)+selected+len(recipe.extra_numeric_features or ()),
         categorical_cardinalities=(128,128) if schema.categorical else (), folds=3,
         native_threads=native_threads, native_thread_settings={"native":native_threads}, search_settings={"depth":recipe.model.parameters.get("depth"),
+            "quadrature_order":recipe.model.parameters.get("quadrature_order"),
+            "heteroscedastic":recipe.model.parameters.get("heteroscedastic"),
             "iteration_bucket":math.ceil(recipe.model.parameters.get("max_iter",recipe.model.parameters.get("iterations",200))/200),
             "graph_structure":_graph_cost_structure(recipe.pipeline_graph),
             "discovery_id":spec.discovery_id() if spec else None},
@@ -544,7 +701,7 @@ def _workload(recipe, rows, revision, environment, *, stage="fit", shared=None,n
 def _graph_cost_structure(graph):
     if not graph:
         return None
-    cost = {"depth","max_depth","max_leaf_nodes","max_iter","iterations","n_estimators","folds","samples"}
+    cost = {"depth","max_depth","max_leaf_nodes","max_iter","iterations","n_estimators","folds","samples","quadrature_order","heteroscedastic"}
     return [{"id":node.get("node_id"),"kind":node.get("kind"),"inputs":node.get("inputs",()),"model":node.get("parameters",{}).get("model_kind"),"cost":{k:v for k,v in node.get("parameters",{}).get("model_parameters",{}).items() if k in cost}} for node in graph.get("nodes",())]
 
 
@@ -674,7 +831,15 @@ def _reference_context(path):
         rows = conn.execute("SELECT attempt_id,status,payload_json,result_json FROM attempts WHERE status='completed'").fetchall()
     from .research_telemetry import champions
     terminal = [{"attempt_id":a,"status":s,"payload":json.loads(p),"result":json.loads(r)} for a,s,p,r in rows]
-    return list(champions(terminal)["champions_by_family"].values())
+    current = list(champions(terminal)["champions_by_family"].values())
+    inherited_path = Path(path)/"reference-champions.json"
+    inherited = core._read_json(inherited_path) if inherited_path.is_file() else []
+    by_family = {}
+    for value in [*(inherited if isinstance(inherited,list) else []),*current]:
+        key = (value["comparison_key"],value["recipe"]["model"]["kind"])
+        if key not in by_family or value["objective_value"]<by_family[key]["objective_value"]:
+            by_family[key] = value
+    return list(by_family.values())
 
 
 def _upload_result_with_tracing_lock(config, dataset, attempt):
@@ -717,6 +882,11 @@ def run_expansion_campaign(config):
         base_context["rows"] = rows
         del inspection
         references = _reference_context(config.reference_campaign_dir)
+        reference_bests = {}
+        for value in references:
+            key = value["comparison_key"]
+            if key not in reference_bests or value["objective_value"]<reference_bests[key]["objective_value"]:
+                reference_bests[key] = value
         core._write_json_atomic(directory/"reference-champions.json", references)
         retired_path = directory/"retired-programs.json"
         retired = set(core._read_json(retired_path) if retired_path.is_file() else [])
@@ -726,6 +896,16 @@ def run_expansion_campaign(config):
                 raise ValueError("Recorded decision has no durable evidence")
             old_evidence = core._read_json(evidence_path)
             apply_decision(decision, decisions, search, retired, config, old_evidence, profile)
+        history = RuntimeHistory(directory/"runtime-history.json")
+        history_snapshot = history.startup(interrupted_attempts=[row["attempt_id"] for row in ledger.reserved_attempts() if row["status"]=="running"],
+                                          journal_entries=read_own_unit_journal(history.unit))
+        for row in ledger.reserved_attempts():
+            workload_path = directory/"trials"/row["attempt_id"]/"workload.json"
+            if workload_path.is_file():
+                from .research_resources import JobWorkload
+                estimator.record_censored_history(JobWorkload.model_validate(core._read_json(workload_path)),history_snapshot)
+            if row["status"] in {"running","reserved"}:
+                cleanup_attempt_group(directory/"trials"/row["attempt_id"]/"runtime.json")
         ledger.recover_running()
         startup_tell_error = None
         try:
@@ -734,6 +914,13 @@ def run_expansion_campaign(config):
             startup_tell_error = str(exc)
         pending = list(ledger.pending_attempts())
         inflight, preparing, ready, exhausted = {}, {}, {}, set()
+        fold_state = _FoldDependencies(directory)
+        fold_preparing,fold_ready,fold_errors = {},fold_state.ready,fold_state.errors
+        def retire_fold_program(pid, dependency):
+            if pid not in retired:
+                retired.add(pid)
+                core._write_json_atomic(retired_path,sorted(retired))
+                hypotheses.record("fold-preparation:"+pid,pid,"preparation_rejected",fold_errors[dependency])
         building_datasets = {}
         dataset_errors = {}
         planning = uploading = None
@@ -750,26 +937,26 @@ def run_expansion_campaign(config):
         tracking_errors = [startup_tell_error] if startup_tell_error else []
         stop_mode = None
         last_error = None
-        last_plan = last_snapshot = 0.
+        last_plan = last_snapshot = last_history = last_trace = last_journal = 0.
+        last_summary_signature = None
         terminal_since_plan = 0
         decision_number = 1 + max([int(p.stem[1:]) for p in (directory/"evidence").glob("D*.json")]+[0])
-        snapshot_number = 1 + max([int(p.stem.split("-")[-1]) for p in (directory/"traces").glob("execution-*.json")]+[0])
+        snapshot_number = next_trace_number(directory,"execution")
         jobs = config.max_concurrent_trials if isinstance(config.max_concurrent_trials, int) else config.cpu_thread_budget
         cpu = min(config.cpu_thread_budget, max(1, (psutil.cpu_count() or 1)-config.host_reserve_cpu_threads))
         budget_gib = min(memory_budget_gib(config.memory_budget_gb_decimal), config.ram_budget_gib)
         residency = observe_process_tree().get("private_bytes",0)/1024**3
-        ramp = ProgressiveCapacity(tuple(sorted(set([min(jobs,2),*(n for n in (4,8,12,16) if n<jobs),jobs]))),emergency_gib=config.host_reserve_ram_gib)
+        ramp = ProgressiveCapacity(tuple(sorted(set([min(jobs,2),*(n for n in (4,8,12,16) if n<jobs),jobs]))),emergency_gib=config.host_reserve_ram_gib,
+                                   representative_baseline=sum(not sample.failed and not sample.censored for sample in estimator.samples))
         resources = ResourceAdmission(jobs+config.max_active_preparations+1, cpu, budget_gib, resident_gib=residency,
                                       emergency_gib=config.host_reserve_ram_gib,
-                                      max_preparations=config.max_active_preparations,max_fits=ramp.cap)
+                                      max_preparations=config.max_active_preparations,max_fits=ramp.cap,max_expensive_fits=1)
         core._write_json_atomic(directory/"campaign.json", config.serializable())
         from .research_telemetry import initialize_required_tracing
         initialize_required_tracing(config)
-        with ProcessPoolExecutor(max_workers=jobs, mp_context=multiprocessing.get_context("spawn"),
-                                 max_tasks_per_child=config.worker_max_tasks) as fits, \
+        with BoundedFitExecutor(max_workers=jobs,max_tasks_per_child=config.worker_max_tasks) as fits, \
              ThreadPoolExecutor(max_workers=1) as planner, \
-             ProcessPoolExecutor(max_workers=config.max_active_preparations,
-                                 mp_context=multiprocessing.get_context("spawn"), max_tasks_per_child=1) as builders, \
+             BoundedFitExecutor(max_workers=config.max_active_preparations,max_tasks_per_child=1) as builders, \
              ThreadPoolExecutor(max_workers=1) as uploader:
             while True:
                 now = time.monotonic()
@@ -787,6 +974,25 @@ def run_expansion_campaign(config):
                 paper_drain_expired = drain_expired or (paper_drain_started is not None and now-paper_drain_started>=30)
                 host = psutil.virtual_memory()
                 cgroup = observe_cgroup()
+                active_runtime = active_attempt_summary(directory,ledger.reserved_attempts())
+                if now-last_history>=10:
+                    measurements = {}
+                    for item in active_runtime:
+                        if item["status"]=="running" and item["elapsed_seconds"] is not None and item["runtime"].get("private_peak_bytes",0)>0:
+                            work = next((value[2] for value in inflight.values() if value[0]==item["attempt_id"]),None)
+                            if work is not None:
+                                measurements[item["attempt_id"]] = {"workload_fingerprint":work.fingerprint(),
+                                    "private_peak_bytes":item["runtime"]["private_peak_bytes"],"wall_seconds":item["elapsed_seconds"],
+                                    "failed":False,"censored":False,"memory_metric":"uss"}
+                    journal = read_own_unit_journal(history.unit) if now-last_journal>=60 else []
+                    if now-last_journal>=60:
+                        last_journal = now
+                    history_snapshot = history.observe(cgroup=cgroup,
+                        running_attempts=[value[0] for value in inflight.values()],attempt_measurements=measurements,journal_entries=journal)
+                    last_history = now
+                observed = observe_process_tree().get("private_bytes",0)/1024**3
+                active_private = sum(item["runtime"].get("private_current_bytes",0) for item in active_runtime if item["status"]=="running")/1024**3
+                resources.resident_gib = max(residency,observed-active_private)
                 limit = cgroup.get("memory.max")
                 cgroup_headroom = (limit-cgroup.get("memory.current",0))/1024**3 if isinstance(limit,int) else None
                 resources.set_headroom(memory_available_gib=max(0,host.available/1024**3-config.host_reserve_ram_gib),
@@ -797,6 +1003,7 @@ def run_expansion_campaign(config):
                 remaining = budget_gib-resources.snapshot()["reserved_ram_gib"]-resources.resident_gib
                 ramp_state = ramp.observe(headroom_gib=min(remaining,host.available/1024**3,cgroup_headroom if cgroup_headroom is not None else remaining),private_per_fit_gib=per_fit,representative_folds=len(representative),now=now)
                 resources.max_fits = ramp.cap
+                resources.max_expensive_fits = max(1,ramp.cap-1)
 
                 if uploading and uploading[0].done():
                     future, attempt = uploading
@@ -833,6 +1040,7 @@ def run_expansion_campaign(config):
                     if not future.done():
                         continue
                     request_id,workload = building_datasets.pop(future)
+                    cleanup_attempt_group(directory/"dataset-runtime"/request_id/"runtime.json")
                     resources.release("dataset:"+request_id)
                     try:
                         manifest = future.result()
@@ -849,6 +1057,7 @@ def run_expansion_campaign(config):
                     if not future.done():
                         continue
                     pid = preparing.pop(future)
+                    cleanup_attempt_group(directory/"preparation-runtime"/pid/"runtime.json")
                     resources.release(f"prepare:{pid}")
                     try:
                         ready[pid] = future.result()
@@ -862,19 +1071,56 @@ def run_expansion_campaign(config):
                         core._write_json_atomic(retired_path,sorted(retired))
                         hypotheses.record(f"preparation:{pid}",pid,"preparation_rejected",{"error":str(exc)})
 
+                for future in list(fold_preparing):
+                    if not future.done():
+                        continue
+                    dependency,pid,workload,request = fold_preparing.pop(future)
+                    cleanup_attempt_group(request.output_dir/"runtime.json")
+                    resources.release("fold:"+dependency)
+                    try:
+                        outcome = future.result()
+                        fold_state.publish(dependency,outcome["artifacts"])
+                    except Exception as exc:
+                        fold_state.failed(dependency,pid,exc)
+                        if fold_state.blocked(dependency):
+                            for candidate in contexts:
+                                context = contexts[candidate]
+                                candidate_dependency,_ = _dependency_request(search.programs[candidate].recipe,context,directory,revision,environment)
+                                if candidate_dependency==dependency:
+                                    retire_fold_program(candidate,dependency)
+                    else:
+                        actual = outcome.get("worker_resources",{})
+                        if actual.get("supported"):
+                            try:
+                                preparation_estimator.record(workload,actual)
+                            except Exception as exc:
+                                tracking_errors.append(f"Fold preparation measurement {dependency}: {exc}")
+
                 for future in list(inflight):
                     if not future.done():
                         continue
                     attempt,payload,workload = inflight.pop(future)
+                    cleanup_attempt_group(directory/"trials"/attempt/"runtime.json")
                     resources.release(attempt)
                     try:
                         result = future.result().serializable()
                     except Exception as exc:
+                        runtime_path = directory/"trials"/attempt/"runtime.json"
+                        if isinstance(exc,TimeoutError):
+                            cleanup_attempt_group(runtime_path)
+                        runtime = read_runtime(runtime_path)
+                        if runtime:
+                            core._write_json_atomic(runtime_path,runtime | {"status":"timed_out" if isinstance(exc,TimeoutError) else "failed"})
                         result = {"schema_version":1,"attempt_id":attempt,"status":"failed",
                             "proposal_id":payload["proposal_id"],"trial_number":payload["trial_number"],
                             "recipe_hash":payload["recipe_hash"],"target_kind":payload["recipe"]["target"]["kind"],
                             "objective_name":"worker_failure","objective_value":None,"metrics":{},
-                            "artifacts":{},"lineage":{"dataset_hash":payload["dataset_hash"]},"duration_seconds":0,"error":str(exc)}
+                            "artifacts":{},"lineage":{"dataset_hash":payload["dataset_hash"]},
+                            "duration_seconds":max(0,time.time()-datetime.fromisoformat(runtime["started_at"]).timestamp()) if runtime.get("started_at") else 0,
+                            "error":f"{type(exc).__name__}: {exc}","failure_class":"execution_timeout" if isinstance(exc,TimeoutError) else "worker_failure"}
+                        if runtime.get("private_peak_bytes"):
+                            result["metrics"]["worker_resources"] = {"supported":True,"private_peak_bytes":runtime["private_peak_bytes"],
+                                "wall_seconds":result["duration_seconds"],"failed":True,"censored":True,"memory_metric":"uss"}
                         last_error = str(exc)
                     result.update(core._portfolio_identity(PipelineRecipe.model_validate(payload["recipe"]),"expansion_v6"))
                     result["target_parameters"] = payload["recipe"]["target"]["parameters"]
@@ -893,6 +1139,7 @@ def run_expansion_campaign(config):
 
                 if paper_future and paper_future[0].done():
                     future,action,workload = paper_future
+                    cleanup_attempt_group(directory/"paper-runtime"/action["action_id"]/f"attempt-{_paper_attempt_count(decisions,action)}.json")
                     resources.release("paper:"+action["action_id"])
                     try:
                         outcome = future.result()
@@ -937,7 +1184,8 @@ def run_expansion_campaign(config):
                     decisions.receipt(action["decision_id"],f"betting-attempt:{action['action_id']}:{attempts+1}",
                                       {"attempt":attempts+1,"estimate":estimate.to_dict()})
                     try:
-                        future = fits.submit(_paper_worker,action["request"],directory,ledger.terminal_results())
+                        future = fits.submit(_paper_worker,action["request"],directory,ledger.terminal_results(),
+                            runtime_path=directory/"paper-runtime"/action["action_id"]/f"attempt-{attempts+1}.json",timeout=1200)
                     except Exception as exc:
                         resources.release("paper:"+action["action_id"])
                         paper_errors[action["action_id"]] = str(exc)
@@ -976,6 +1224,9 @@ def run_expansion_campaign(config):
                     if config.planner_mode == "openrouter" and spend["spend_unknown"]:
                         last_error = "Planner call cost is unknown; further paid calls are frozen"
                         last_plan = now
+                    elif config.planner_mode == "openrouter" and _unsent_failure_streak(directory)>=3:
+                        last_error = "Planner pre-dispatch retry circuit open after three unsent failures"
+                        last_plan = now
                     elif config.max_total_cost_usd is not None and spend["known_spend_usd"] >= config.max_total_cost_usd:
                         last_error = "Planner prior-spend admission threshold reached; not a provider-enforced billing cap"
                         last_plan = now
@@ -986,6 +1237,9 @@ def run_expansion_campaign(config):
                             references=references, hypothesis_memory=hypotheses.retrieve(limit=30),
                             paper_research=_paper_evidence(decisions,directory,terminal),
                             remaining_program_capacity=capacity, resources=resources.snapshot(),
+                            active_trials=active_runtime,invocation_history=history_snapshot["invocations"],
+                            oom_history=history_snapshot["oom_facts"],
+                            preparation_dependencies={"building":[item[0] for item in fold_preparing.values()],"errors":dict(fold_errors)},
                             pending_program_limit=config.max_pending_programs,
                             completed_trial_index=[{"attempt_id":r["attempt_id"]} for r in terminal if r["status"]=="completed"],
                             available_new_program_slots=max(0,config.max_pending_programs-programs_waiting),
@@ -1026,9 +1280,22 @@ def run_expansion_campaign(config):
                         for path in (directory/"planner-calls").glob(f"{evidence['decision_id']}-*.json")]
                     if physical_calls:
                         payload["planner_usage"] = _sum_planner_usage(physical_calls)
+                    from .openrouter_transport import classify_transport_attempts
+                    transport_attempts = [core._read_json(path) for path in sorted((directory/"planner-transport").glob(f"{evidence['decision_id']}-*.json"))]
+                    dispatch = classify_transport_attempts([item.get("events") for item in transport_attempts])
+                    payload.update(dispatch_status=dispatch,transport_attempts=transport_attempts,
+                        transport_phase=transport_attempts[-1]["events"][-1]["phase"] if transport_attempts and transport_attempts[-1].get("events") else None)
+                    if not physical_calls and dispatch["classification"]=="not_dispatched":
+                        payload["planner_usage"] = {"cost_status":"not_dispatched"}
                     core._write_json_atomic(directory/"decisions"/f"{evidence['decision_id']}.json",payload)
                     try:
-                        log_snapshot(directory,evidence_snapshot(ledger.terminal_results()) | payload,config,
+                        decision_snapshot = evidence_snapshot(ledger.terminal_results()) | payload
+                        decision_snapshot.update(code_revision=revision,planner_spend=_planner_spend(directory),
+                            campaign_id=directory.name,resources=resources.snapshot(),capacity_ramp=ramp_state,max_fits=jobs,
+                            invocation_id=history_snapshot["current_invocation_id"],invocation_history=history_snapshot["invocations"],
+                            oom_history=history_snapshot["oom_facts"],restart_count=history_snapshot["restart_count"],
+                            prior_champions_by_contract=reference_bests,active_trials=active_attempt_summary(directory,ledger.reserved_attempts()))
+                        log_snapshot(directory,decision_snapshot,config,
                             role="decision",number=int(evidence["decision_id"][1:]))
                     except Exception as exc:
                         tracking_errors.append(str(exc))
@@ -1052,7 +1319,8 @@ def run_expansion_campaign(config):
                         if _preparation_slot_available(config.max_active_preparations,search.programs,preparing.values(),len(building_datasets)) and resources.admits(estimate):
                             resources.reserve("dataset:"+request_id,estimate)
                             try:
-                                future = builders.submit(_build_dataset,str(registry.root),request_id,source,raw,str(registry.feature_registry))
+                                future = builders.submit(_build_dataset,str(registry.root),request_id,source,raw,str(registry.feature_registry),
+                                    runtime_path=directory/"dataset-runtime"/request_id/"runtime.json",timeout=3600)
                             except Exception:
                                 resources.release("dataset:"+request_id)
                                 raise
@@ -1095,11 +1363,48 @@ def run_expansion_campaign(config):
                         if _preparation_slot_available(config.max_active_preparations,search.programs,preparing.values(),len(building_datasets),search.programs[pid].recipe) and resources.admits(estimate):
                             resources.reserve(f"prepare:{pid}",estimate)
                             try:
-                                future = builders.submit(_prepare_program,context["dataset"],search.programs[pid].recipe,context["digest"],directory)
+                                future = builders.submit(_prepare_program,context["dataset"],search.programs[pid].recipe,context["digest"],directory,
+                                    runtime_path=directory/"preparation-runtime"/pid/"runtime.json",timeout=max(1200,search.programs[pid].max_wall_seconds))
                             except Exception:
                                 resources.release(f"prepare:{pid}")
                                 raise
                             preparing[future] = pid
+
+                    fold_candidates = []
+                    for row in pending:
+                        pid = row["payload"]["program_id"]
+                        if pid in ready:
+                            dependency,request = _pending_fold_request(row["payload"],contexts[pid],directory)
+                            fold_candidates.append((pid,dependency,request))
+                    for pid in ready:
+                        if pid not in authorized or pid in retired or preparation_capacity.get(pid,0)<=0:
+                            continue
+                        context = contexts[pid]
+                        dependency,request = _dependency_request(search.programs[pid].recipe,context,directory,revision,environment)
+                        fold_candidates.append((pid,dependency,request))
+                    for pid,dependency,request in fold_candidates:
+                        if dependency is None:
+                            continue
+                        if fold_state.blocked(dependency):
+                            retire_fold_program(pid,dependency)
+                            continue
+                        if fold_state.is_ready(dependency) or dependency in {item[0] for item in fold_preparing.values()}:
+                            continue
+                        if not fold_state.can_prepare(dependency):
+                            continue
+                        context = contexts[pid]
+                        workload = _workload(request.recipe,context["rows"],revision,environment,stage="preparation")
+                        estimate = preparation_estimator.estimate(workload)
+                        if resources.admits(estimate):
+                            resources.reserve("fold:"+dependency,estimate)
+                            try:
+                                future = builders.submit(_prepare_fold_dependency,request,workload,
+                                    runtime_path=request.output_dir/"runtime.json",
+                                    timeout=max(1200,search.programs[pid].max_wall_seconds))
+                            except Exception:
+                                resources.release("fold:"+dependency)
+                                raise
+                            fold_preparing[future] = (dependency,pid,workload,request)
 
                     _recover_orphan_asks(search,ledger,contexts,authorized,revision,environment)
                     pending = list(ledger.pending_attempts())
@@ -1110,12 +1415,24 @@ def run_expansion_campaign(config):
                         break
                     payload = row["payload"]
                     pid = payload["program_id"]
+                    dependency,_ = _pending_fold_request(payload,contexts.get(pid,base_context),directory)
+                    if fold_state.blocked(dependency):
+                        retire_fold_program(pid,dependency)
+                        if _fail_fold_allocation(row,dependency,fold_errors[dependency],ledger,hypotheses,directory):
+                            terminal_since_plan += 1
+                            try:
+                                core._reconcile_tells(ledger,search)
+                            except Exception as exc:
+                                tracking_errors.append(str(exc))
+                        continue
                     if pid not in ready:
                         continue
                     if config.max_trials is not None and core._success_count(ledger)+len(inflight)>=config.max_trials:
                         break
                     recipe = PipelineRecipe.model_validate(payload["recipe"])
                     context = contexts[pid]
+                    if not fold_state.is_ready(dependency):
+                        continue
                     bound_dataset = Path(payload.get("dataset_path",context["dataset"]))
                     if core._hash_file(bound_dataset) != payload["dataset_hash"] or payload["code_revision"] != revision or payload["environment_hash"] != environment:
                         raise ValueError("Reserved attempt immutable execution identity changed")
@@ -1130,8 +1447,10 @@ def run_expansion_campaign(config):
                     attempt = row["attempt_id"]
                     resources.reserve(attempt,estimate)
                     request = RecipeExecutionRequest(attempt,payload["proposal_id"],payload["trial_number"],recipe,bound_dataset,directory/"trials"/attempt,payload["protocol_parameters"],payload["dataset_hash"],payload["code_revision"],payload["environment_hash"],V6_PORTFOLIO_VERSION)
+                    core._write_json_atomic(request.output_dir/"workload.json",workload.model_dump(mode="json"))
                     try:
-                        future = fits.submit(_worker,request,workload,estimate.cpu_threads)
+                        future = fits.submit(_worker,request,workload,estimate.cpu_threads,
+                            runtime_path=request.output_dir/"runtime.json",timeout=search.programs[pid].max_wall_seconds)
                     except Exception:
                         resources.release(attempt)
                         raise
@@ -1145,7 +1464,7 @@ def run_expansion_campaign(config):
                     if config.max_trials is not None and core._success_count(ledger)+len(inflight)+len(ledger.pending_attempts())>=config.max_trials:
                         break
                     lane = _lane(len(ledger.reserved_attempts()))
-                    allowed = [pid for pid in capacity if capacity[pid]>0 and pid in ready and pid not in {row["payload"]["program_id"] for row in ledger.pending_attempts()} and
+                    allowed = [pid for pid in capacity if capacity[pid]>0 and pid in ready and fold_state.is_ready(_dependency_request(search.programs[pid].recipe,contexts[pid],directory,revision,environment)[0]) and pid not in {row["payload"]["program_id"] for row in ledger.pending_attempts()} and
                                core._portfolio_identity(search.programs[pid].recipe,"expansion_v6")["lane"]==lane]
                     order = fair_program_order(allowed,ledger.reserved_attempts())
                     estimates = {}
@@ -1187,8 +1506,10 @@ def run_expansion_campaign(config):
                     resources.reserve(attempt,estimate)
                     request = RecipeExecutionRequest(attempt,suggestion.proposal_id,suggestion.trial_number,suggestion.recipe,
                         context["dataset"],directory/"trials"/attempt,context["protocol"],context["digest"],revision,environment,V6_PORTFOLIO_VERSION)
+                    core._write_json_atomic(request.output_dir/"workload.json",workloads[pid].model_dump(mode="json"))
                     try:
-                        future = fits.submit(_worker,request,workloads[pid],estimate.cpu_threads)
+                        future = fits.submit(_worker,request,workloads[pid],estimate.cpu_threads,
+                            runtime_path=request.output_dir/"runtime.json",timeout=search.programs[pid].max_wall_seconds)
                     except Exception:
                         resources.release(attempt)
                         raise
@@ -1199,16 +1520,23 @@ def run_expansion_campaign(config):
                     capacity[pid] -= 1
 
                 counts = ledger.snapshot()
-                status = {"status":"draining" if stop_mode else "training" if inflight else "preparing" if preparing else "planning" if planning else "awaiting_decision",
+                spend = _planner_spend(directory)
+                status = {"campaign_id":directory.name,"status":"draining" if stop_mode else "training" if inflight else "preparing" if preparing or fold_preparing else "planning" if planning else "awaiting_decision",
                     "updated_at":utc_now(),"decision":decision_number-1,"ledger":counts,
                     "resources":resources.snapshot(),"preparing_programs":list(preparing.values()),
                     "capacity_ramp":ramp_state,
+                    "active_trials":active_attempt_summary(directory,ledger.reserved_attempts()),
+                    "invocation_id":history_snapshot["current_invocation_id"],"invocation_history":history_snapshot["invocations"],
+                    "oom_history":history_snapshot["oom_facts"],"restart_count":history_snapshot["restart_count"],
+                    "code_revision":revision,"max_fits":jobs,
+                    "prior_champions_by_contract":reference_bests,
+                    "preparation_dependencies":{"building":[item[0] for item in fold_preparing.values()],"ready":list(fold_ready),"errors":dict(fold_errors)},
                     "building_datasets":[item[0] for item in building_datasets.values()],"dataset_errors":dict(dataset_errors),
                     "pending_paper_actions":len(decisions.betting_actions(pending_only=True)),
                     "paper_action_inflight":paper_future is not None,"paper_errors":dict(paper_errors),
                     "ready_programs":list(ready),"pending_programs":programs_waiting,
                     "planner_inflight":planning is not None,"last_planner_error":last_error,
-                    "planner_spend_usd":_planner_cost(directory),"planner_spend_unknown":_planner_spend(directory)["spend_unknown"],"tracking_errors":tracking_errors[-10:],
+                    "planner_spend":spend,"planner_spend_usd":spend["total_cost_usd"],"planner_spend_unknown":spend["spend_unknown"],"tracking_errors":tracking_errors[-10:],
                     "planner_spend_limit_scope":"Prior reported spend admission threshold; not a provider-enforced billing cap",
                     "pending_trace_delivery":_pending_trace_count(directory),
                     "host_resources":{"cpu_busy_percent":psutil.cpu_percent(),
@@ -1220,13 +1548,26 @@ def run_expansion_campaign(config):
                         resources=status["resources"],pending_programs=programs_waiting,
                         preparing_programs=list(preparing.values()),planner_inflight=planning is not None,
                         latest_decision_id=f"D{decision_number-1:06d}")
-                    try:
-                        log_snapshot(directory,snapshot,config,role="execution",number=snapshot_number)
-                    except Exception as exc:
-                        tracking_errors.append(str(exc))
-                    snapshot_number += 1
+                    snapshot.update(status)
+                    from .research_summary import summary,summary_markdown
+                    current_summary = summary(snapshot)
+                    core._write_json_atomic(directory/"summary.json",current_summary)
+                    temporary = directory/"summary.md.tmp"
+                    temporary.write_text(summary_markdown(current_summary))
+                    temporary.replace(directory/"summary.md")
+                    signature = content_id({"counts":counts,"error":last_error,"ready":sorted(ready),
+                        "running":[(item["attempt_id"],item["status"],item["progress"].get("stage"),item["progress"].get("fold_id")) for item in status["active_trials"]],
+                        "cap":ramp.cap,"decision":decision_number,"oom":len(history_snapshot["oom_facts"])})
+                    if signature!=last_summary_signature or now-last_trace>=300:
+                        try:
+                            log_snapshot(directory,snapshot,config,role="execution",number=snapshot_number)
+                        except Exception as exc:
+                            tracking_errors.append(str(exc))
+                        snapshot_number += 1
+                        last_summary_signature = signature
+                        last_trace = now
                     last_snapshot = now
-                if stop_mode and not inflight and not preparing and not building_datasets and paper_future is None and planning is None and uploading is None and tracing is None:
+                if stop_mode and not inflight and not preparing and not fold_preparing and not building_datasets and paper_future is None and planning is None and uploading is None and tracing is None:
                     pending_paper = decisions.betting_actions(pending_only=True)
                     if pending_paper and not paper_drain_expired:
                         time.sleep(1)
@@ -1265,6 +1606,30 @@ def run_expansion_campaign(config):
                         pending_paper_actions=len(pending_paper),paper_research=_paper_evidence(decisions,directory,ledger.terminal_results()),
                         tracking_enabled=bool(config.mlflow_tracking_uri),requested_stop_mode=stop_mode)
                     core._write_json_atomic(directory/"status.json",status | finished | {"status":finish_mode})
+                    from .research_summary import summary, summary_markdown
+                    history_snapshot = history.observe(running_attempts=[],journal_entries=[])
+                    final_snapshot = evidence_snapshot(ledger.terminal_results(),counts=ledger.snapshot()) | status | finished | {
+                        "status":finish_mode,"campaign_id":directory.name,"active_trials":[],
+                        "latest_decision_id":f"D{decision_number-1:06d}",
+                        "invocation_history":history_snapshot["invocations"]}
+                    try:
+                        log_snapshot(directory,final_snapshot,config,role="execution",number=snapshot_number)
+                        if config.mlflow_tracking_uri and trace_failures<3:
+                            from .research_telemetry import drain_trace_outbox
+                            delivered = drain_trace_outbox(directory,config,limit=1)
+                            tracking_errors.extend(str(error) for error in delivered.get("errors",[]))
+                    except Exception as exc:
+                        tracking_errors.append(str(exc))
+                    final_snapshot["pending_trace_delivery"] = _pending_trace_count(directory)
+                    if config.mlflow_tracking_uri and final_snapshot["pending_trace_delivery"]:
+                        finished.update(mode="blocked_tracking",pending_trace_delivery=final_snapshot["pending_trace_delivery"])
+                        final_snapshot.update(finished,status="blocked_tracking")
+                    core._write_json_atomic(directory/"status.json",final_snapshot)
+                    final_summary = summary(final_snapshot)
+                    core._write_json_atomic(directory/"summary.json",final_summary)
+                    temporary = directory/"summary.md.tmp"
+                    temporary.write_text(summary_markdown(final_summary))
+                    temporary.replace(directory/"summary.md")
                     return finished
                 if inflight:
                     wait(inflight,timeout=1,return_when=FIRST_COMPLETED)
@@ -1336,32 +1701,104 @@ def _planner_cost(directory):
 
 
 def _planner_spend(directory):
-    """Physical receipts override aggregates; missing cost never means free."""
+    """Keep reported subtotals, but require coverage before exempting failures."""
     from .openrouter_orchestrator import normalize_openrouter_usage
+    from .openrouter_transport import classify_transport_attempt
     directory = Path(directory)
-    costs = {}
+    receipts = {}
     for path in (directory/"planner-calls").glob("D*-*.json"):
         decision_id = path.stem.rsplit("-",1)[0]
-        cost = normalize_openrouter_usage(core._read_json(path)["response"])["total_cost_usd"]
-        costs.setdefault(decision_id,[]).append(cost if cost is not None and math.isfinite(cost) else None)
+        payload = core._read_json(path)
+        cost = normalize_openrouter_usage(payload.get("response"))["total_cost_usd"]
+        receipts.setdefault(decision_id,{})[path.stem] = cost if cost is not None and math.isfinite(cost) else None
+    transport = {}
+    for path in (directory/"planner-transport").glob("D*-*.json"):
+        decision_id = path.stem.rsplit("-",1)[0]
+        transport.setdefault(decision_id,{})[path.stem] = classify_transport_attempt(core._read_json(path).get("events"))["classification"]
+    aggregates, failed, claimed_cost, expected_attempts = {},set(),set(),{}
     for folder,key in (("decisions","planner_usage"),("planner-responses","usage")):
         for path in (directory/folder).glob("D*.json"):
-            if path.stem in costs:
-                continue
             payload = core._read_json(path)
+            if folder == "decisions" and payload.get("planner_status") == "failed":
+                failed.add(path.stem)
+            if folder == "decisions" and isinstance(payload.get("transport_attempts"),list):
+                expected_attempts[path.stem] = len(payload["transport_attempts"])
             if folder == "planner-responses":
                 payload = payload.get("response",{})
-            usage = payload.get(key,{})
+            usage = payload.get(key,{}) if isinstance(payload,dict) else {}
+            usage = usage if isinstance(usage,dict) else {}
             cost = usage.get("total_cost_usd")
-            if usage.get("cost_status") == "fixture":
-                cost = 0
+            fixture = usage.get("cost_status") == "fixture"
+            if not fixture and (cost is not None or usage.get("cost_status") == "reported"):
+                claimed_cost.add(path.stem)
             if cost is not None and (isinstance(cost,bool) or not isinstance(cost,(float,int)) or not math.isfinite(cost) or cost < 0):
                 cost = None
-            costs[path.stem] = [cost]
+            aggregates.setdefault(path.stem,[]).append((cost,fixture,folder == "planner-responses"))
+
+    def complete_coverage(identifiers):
+        numbers = []
+        for identifier in identifiers:
+            suffix = identifier.rsplit("-",1)[-1]
+            if not suffix.isascii() or not suffix.isdecimal():
+                return False
+            numbers.append(int(suffix))
+        # Check gaps without allocating a range from an untrusted numeric suffix.
+        return bool(numbers) and min(numbers)>0 and len(set(numbers))==len(numbers) and max(numbers)==len(numbers)
+
+    costs, unsent = {},[]
+    for decision_id in sorted(set(receipts)|set(transport)|set(aggregates)):
+        calls = receipts.get(decision_id,{})
+        attempts = transport.get(decision_id,{})
+        records = aggregates.get(decision_id,[])
+        if not calls and records and all(fixture for _,fixture,_ in records):
+            costs[decision_id] = [0]
+            continue
+        reported = [cost for cost,fixture,_ in records if cost is not None and not fixture]
+        has_response = any(response and not fixture for _,fixture,response in records)
+        identifiers = set(calls)|set(attempts)
+        covered = complete_coverage(identifiers) and len(identifiers)>=expected_attempts.get(decision_id,0)
+        all_unsent = bool(attempts) and all(kind=="not_dispatched" for kind in attempts.values())
+        if all_unsent and covered and not calls and not has_response and decision_id not in claimed_cost:
+            costs[decision_id] = []
+            unsent.append(decision_id)
+            continue
+
+        # Aggregates describe the same calls, so never add them to physical
+        # receipts or each other. Retain the largest available aggregate subtotal.
+        values = list(calls.values()) if calls else [max(reported)] if reported else []
+        unknown = not values or any(value is None for value in values)
+        if (identifiers or expected_attempts.get(decision_id,0)) and not covered:
+            unknown = True
+        if any(kind!="not_dispatched" and identifier not in calls for identifier,kind in attempts.items()):
+            unknown = True
+        if decision_id in failed and not attempts:
+            unknown = True
+        if all_unsent and (calls or has_response or decision_id in claimed_cost):
+            unknown = True
+        if any(kind=="not_dispatched" and identifier in calls for identifier,kind in attempts.items()):
+            unknown = True
+        if not calls and len(set(reported))>1:
+            unknown = True
+        if unknown and None not in values:
+            values.append(None)
+        costs[decision_id] = values
+    unresolved = sorted(key for key,values in costs.items() if None in values)
     values = [value for row in costs.values() for value in row]
     unknown = any(value is None for value in values)
     known = sum(value for value in values if value is not None)
-    return {"total_cost_usd":None if unknown else known,"known_spend_usd":known,"spend_unknown":unknown}
+    return {"total_cost_usd":None if unknown else known,"known_spend_usd":known,"spend_unknown":unknown,
+            "unresolved_decision_ids":unresolved,"not_dispatched_decision_ids":sorted(unsent)}
+
+
+def _unsent_failure_streak(directory):
+    unsent = set(_planner_spend(directory)["not_dispatched_decision_ids"])
+    count = 0
+    for path in reversed(sorted((Path(directory)/"decisions").glob("D*.json"))):
+        payload = core._read_json(path)
+        if payload.get("planner_status")!="failed" or path.stem not in unsent:
+            break
+        count += 1
+    return count
 
 
 def _capabilities(config,dataset,*,dataset_digest=None,registry=None):

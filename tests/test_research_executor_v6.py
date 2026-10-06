@@ -2,13 +2,16 @@ import hashlib
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
-from ima.research_executor import RecipeExecutionRequest, execute_recipe
+from ima.research_executor import (
+    RecipeExecutionRequest, execute_recipe, preparation_dependency_id, prepare_recipe_folds,
+)
 from ima.research_model_package import load_research_package
 from ima.research_specs import FUNDAMENTAL_FIRST_PORTFOLIO_VERSION, PipelineRecipe
 
@@ -59,6 +62,169 @@ def graph():
 
 
 class ResearchExecutorV6Tests(unittest.TestCase):
+    def preparation_request(self, root, recipe, source, name="producer", **updates):
+        request = RecipeExecutionRequest(name, "v6-fixture", 0, recipe, source,
+            root/"trials"/name, {"min_train_races": 12, "calibration_races": 3, "score_races": 3, "max_folds": 1},
+            code_revision="v6-test", environment_hash="v6-fixture",
+            portfolio_version=FUNDAMENTAL_FIRST_PORTFOLIO_VERSION)
+        return replace(request, **updates)
+
+    def test_prewarm_selection_and_transforms_are_reused_by_sibling_fits(self):
+        from ima.feature_screening import DiscoverySelection
+        from ima.modeling import RaceProbabilityModel
+        from ima.research_transforms import FittedResearchTransforms
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, frame = dataset(root)
+            recipe = PipelineRecipe(schema_version=3, feature_discovery=DISCOVERY,
+                feature_definitions=[FORMULA], model={"kind": "benter_conditional_logit"},
+                transforms=[{"kind": "clip_numeric_quantiles", "parameters": {
+                    "columns": ["prior_win_rate"], "lower": .2, "upper": .8}}], blend={"kind": "none"})
+            request = self.preparation_request(root, recipe, source)
+            with patch.object(DiscoverySelection, "fit", wraps=DiscoverySelection.fit) as selection, \
+                 patch.object(FittedResearchTransforms, "fit", wraps=FittedResearchTransforms.fit) as transforms:
+                with patch.object(RaceProbabilityModel, "fit", side_effect=AssertionError("Prewarm fitted target estimator")):
+                    artifacts = prepare_recipe_folds(request)
+                self.assertEqual(["fold-001"], list(artifacts))
+                artifact = artifacts["fold-001"]
+                self.assertEqual("miss", artifact.cache_status)
+                self.assertIsInstance(artifact.load_arrays()["train_x"], np.memmap)
+                state = artifact.load_fitted_state()
+                keys = artifact.manifest()["row_keys"]
+                races = {json.loads(key)[0] for key in keys["train"]}
+                values = frame.loc[frame.race_id.isin(races), "prior_win_rate"]
+                np.testing.assert_allclose(state["transforms"].clip_bounds["prior_win_rate"], values.quantile([.2, .8]))
+                self.assertEqual(len(races), selection.call_args.args[0].race_id.nunique())
+                self.assertTrue(set(selection.call_args.args[0].race_id).isdisjoint(
+                    {json.loads(key)[0] for key in keys["calibration"]+keys["score"]}))
+                for index, l2 in enumerate((.1, .2)):
+                    sibling_recipe = recipe.model_copy(update={"model": recipe.model.model_copy(update={"parameters": {"l2": l2}})})
+                    sibling = replace(request, recipe=sibling_recipe, attempt_id=f"sibling-{index}",
+                                      output_dir=root/"trials"/f"sibling-{index}")
+                    original_fit = RaceProbabilityModel.fit
+                    def fitted(model, train):
+                        progress = json.loads((sibling.output_dir/"progress.json").read_text())
+                        self.assertEqual("training", progress["stage"])
+                        self.assertEqual("fold-001", progress["fold_id"])
+                        self.assertEqual(1, progress["fold_index"])
+                        self.assertEqual(1, progress["fold_count"])
+                        return original_fit(model, train)
+                    runtime = sibling.output_dir/"runtime.json"
+                    runtime.parent.mkdir(parents=True, exist_ok=True)
+                    runtime.write_text('{"supervisor":"owns_this"}')
+                    with patch.object(RaceProbabilityModel, "fit", fitted):
+                        result = execute_recipe(sibling)
+                    self.assert_reload(result, frame)
+                    self.assertEqual('{"supervisor":"owns_this"}', runtime.read_text())
+                    prepared = json.loads((sibling.output_dir/"preparation-fold-001.json").read_text())
+                    self.assertEqual("hit", prepared["cache_status"])
+                    self.assertEqual(artifact.artifact_id, prepared["artifact_id"])
+                    self.assertEqual(state["reports"]["selection"], json.loads(
+                        (sibling.output_dir/"discovery-selection-fold-001.json").read_text()))
+                self.assertEqual(1, selection.call_count)
+                self.assertEqual(1, transforms.call_count)
+
+    def test_dependency_grouping_keeps_all_preprocessing_contracts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, _ = dataset(root)
+            recipe = PipelineRecipe(schema_version=3, model={"kind": "benter_conditional_logit"}, blend={"kind": "none"})
+            request = self.preparation_request(root, recipe, source)
+            identity = preparation_dependency_id(request)
+            self.assertEqual(64, len(identity))
+            self.assertEqual(identity, preparation_dependency_id(recipe, hashlib.sha256(source.read_bytes()).hexdigest(),
+                request.protocol_parameters, code_revision=request.code_revision, environment_hash=request.environment_hash,
+                dataset_manifest_hash=hashlib.sha256((root/"manifest.json").read_bytes()).hexdigest()))
+            siblings = [recipe.model_copy(update={"model": recipe.model.model_copy(update={"parameters": {"l2": .2}})}),
+                PipelineRecipe(schema_version=3, model={"kind": "boosted", "parameters": {"max_iter": 8}}, blend={"kind": "none"})]
+            for sibling in siblings:
+                self.assertEqual(identity, preparation_dependency_id(replace(request, recipe=sibling)))
+            for changes in ({"seed": 17}, {"train_window": "trailing_3_years"},
+                {"feature_definitions": (FORMULA,)}, {"extra_numeric_features": ("custom_form",)},
+                {"feature_discovery": DISCOVERY}, {"transforms": [{"kind": "signed_log1p", "parameters": {"columns": ["horse_age"]}}]}):
+                with self.subTest(changes=changes):
+                    changed = PipelineRecipe.model_validate({**recipe.model_dump(mode="json"), **changes})
+                    self.assertNotEqual(identity, preparation_dependency_id(replace(request, recipe=changed)))
+            for changes in ({"protocol_parameters": {**request.protocol_parameters, "fold_selection": "latest"}},
+                            {"code_revision": "new"}, {"environment_hash": "new"}):
+                self.assertNotEqual(identity, preparation_dependency_id(replace(request, **changes)))
+            speed = PipelineRecipe(schema_version=3, target={"kind": "adjusted_finish_time_or_speed"},
+                model={"kind": "ridge_regressor"}, calibration={"kind": "none"}, blend={"kind": "none"})
+            self.assertNotEqual(identity, preparation_dependency_id(replace(request, recipe=speed)))
+            placing = PipelineRecipe(schema_version=3, target={"kind": "placing_top_k", "parameters": {"top_k": 1}},
+                model={"kind": "logit"}, calibration={"kind": "none"}, blend={"kind": "none"})
+            # Top-1 and win can have equal labels but differ in eligibility/target contracts.
+            self.assertNotEqual(identity, preparation_dependency_id(replace(request, recipe=placing)))
+            manifest = json.loads((root/"manifest.json").read_text())
+            manifest["availability_policy"] = "different_policy"
+            (root/"manifest.json").write_text(json.dumps(manifest))
+            self.assertNotEqual(identity, preparation_dependency_id(request))
+            with self.assertRaisesRegex(ValueError, "dataset hash"):
+                preparation_dependency_id(request, dataset_hash="wrong")
+
+    def test_prewarm_different_splits_and_labels_use_distinct_artifacts(self):
+        from ima.research_executor import _fold_preparation_key, _load_recipe_features, _recipe_fold_inputs
+        from ima.research_evaluation import select_fold
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, _ = dataset(root)
+            recipe = PipelineRecipe(schema_version=3, model={"kind": "benter_conditional_logit"}, blend={"kind": "none"})
+            request = self.preparation_request(root, recipe, source)
+            first = prepare_recipe_folds(request)["fold-001"]
+            shifted = replace(request, attempt_id="shifted", output_dir=root/"trials"/"shifted",
+                protocol_parameters={**request.protocol_parameters, "min_train_races": 13})
+            second = prepare_recipe_folds(shifted)["fold-001"]
+            self.assertNotEqual(first.artifact_id, second.artifact_id)
+            frame, _, _ = _load_recipe_features(request)
+            labelled, schema, protocol, _ = _recipe_fold_inputs(request, frame)
+            fold = protocol.folds[0]
+            frames = [select_fold(labelled, keys) for keys in (
+                fold.train_race_ids, fold.calibration_race_ids, fold.score_race_ids)]
+            original = _fold_preparation_key(request, *frames, schema, "target_win").cache_id()
+            self.assertEqual(first.artifact_id, original)
+            for population in range(3):
+                changed = [value.copy() for value in frames]
+                changed[population].loc[changed[population].index[0], "target_win"] += .25
+                self.assertNotEqual(original, _fold_preparation_key(request, *changed, schema, "target_win").cache_id())
+            self.assertNotEqual(original, _fold_preparation_key(request, *frames, schema, "target_probability").cache_id())
+
+    def test_secondary_prewarm_matches_execution_and_graphs_are_excluded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, frame = dataset(root)
+            recipe = PipelineRecipe(schema_version=3, target={"kind": "adjusted_finish_time_or_speed"},
+                model={"kind": "ridge_regressor"}, calibration={"kind": "none"}, blend={"kind": "none"})
+            request = self.preparation_request(root, recipe, source)
+            artifact = prepare_recipe_folds(request)["fold-001"]
+            fit_request = replace(request, attempt_id="speed-fit", output_dir=root/"trials"/"speed-fit")
+            self.assert_reload(execute_recipe(fit_request), frame)
+            prepared = json.loads((fit_request.output_dir/"preparation-fold-001.json").read_text())
+            self.assertEqual("hit", prepared["cache_status"])
+            self.assertEqual(artifact.artifact_id, prepared["artifact_id"])
+            for excluded in (PipelineRecipe(), PipelineRecipe(schema_version=3, pipeline_graph=graph(),
+                model={"kind": "benter_conditional_logit"})):
+                excluded_request = replace(request, recipe=excluded)
+                with patch("ima.research_executor._load_dataset", side_effect=AssertionError("Excluded path loaded data")):
+                    self.assertIsNone(preparation_dependency_id(excluded_request))
+                    self.assertEqual({}, prepare_recipe_folds(excluded_request))
+
+    def test_cache_wait_diagnostic_is_preserved_as_infrastructure_failure(self):
+        from ima.research_preparation import PreparationCache, PreparationCacheWaitTimeout
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, _ = dataset(root)
+            request = self.preparation_request(root, PipelineRecipe(schema_version=3), source)
+            diagnostic = {"cache_key": "a"*64, "owner": {"pid": 1, "attempt_id": "producer"},
+                "stage": "building", "failure_kind": "infrastructure_cache_wait", "retryable": True}
+            with patch.object(PreparationCache, "prepare_fold", side_effect=PreparationCacheWaitTimeout(diagnostic)):
+                with self.assertRaises(PreparationCacheWaitTimeout):
+                    prepare_recipe_folds(request)
+                self.assertEqual("preparation_wait_timeout", json.loads((request.output_dir/"progress.json").read_text())["stage"])
+                result = execute_recipe(request)
+            self.assertEqual("failed", result.status)
+            self.assertEqual(diagnostic, result.metrics["infrastructure_failure"])
+            self.assertIn("PreparationCacheWaitTimeout", result.error)
+
     def run_recipe(self, root, recipe, source, name="trial"):
         return execute_recipe(RecipeExecutionRequest(name, "v6-fixture", 0, recipe, source,
             root/"trials"/name, {"min_train_races": 12, "calibration_races": 3, "score_races": 3, "max_folds": 1},

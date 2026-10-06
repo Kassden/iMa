@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -13,11 +14,12 @@ from ima.research_expansion import (
     _recover_orphan_asks, _native_threads, _workload, _planner_cost, _planner_spend, apply_decision,
     plan_decision, run_expansion_campaign, _capabilities, _validate_raw_manifest, _needs_lane_refill,
     _preparation_program_order, _preparation_slot_available, _lane,
+    _unsent_failure_streak,
 )
 from ima.research_search import ProgramSearchController
 from ima.research_store import ResearchLedger
 from tests import test_research_controller as controller_fixtures
-from tests.test_research_expansion import proposal
+from tests.test_research_expansion import BoundedFitsThreadPool, proposal
 
 
 def executors(**kwargs):
@@ -266,6 +268,12 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
         self.assertEqual(4, _native_threads(recipe, 178000, 24, pending_trials=3))
 
     def setUp(self):
+        revision = patch.dict("os.environ", {"IMA_CODE_REVISION":core._code_revision()})
+        revision.start()
+        self.addCleanup(revision.stop)
+        fits = patch("ima.research_expansion.BoundedFitExecutor", BoundedFitsThreadPool)
+        fits.start()
+        self.addCleanup(fits.stop)
         # Controller fixtures use an intentionally nonexistent tracking server.
         startup = patch("ima.research_telemetry.initialize_required_tracing")
         self.tracing_startup = startup.start()
@@ -370,6 +378,204 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
         self.assertIsNone(_planner_cost(root))
         self.assertTrue(_planner_spend(root)["spend_unknown"])
         self.assertAlmostEqual(.55,_planner_spend(root)["known_spend_usd"])
+
+    def dns_failure_events(self):
+        return [
+            {"phase":"request_started"},
+            {"phase":"connection.connect_tcp.started"},
+            {"phase":"connection.connect_tcp.failed","exception_type":"ConnectError"},
+            {"phase":"request_failed","exception_type":"ConnectError"},
+        ]
+
+    def persist_proven_unsent_decision(self):
+        root = self.config.campaign_dir
+        core._write_json_atomic(root/"planner-calls"/"D000001-01.json",{"response":{"usage":{"cost":.125}}})
+        core._write_json_atomic(root/"decisions"/"D000002.json",{"planner_status":"failed","planner_usage":{},"error":"DNS failure"})
+        core._write_json_atomic(root/"evidence"/"D000002.json",{"evidence_id":"prior-dns-decision"})
+        core._write_json_atomic(root/"planner-transport"/"D000002-01.json",{"events":self.dns_failure_events()})
+        return root
+
+    def test_proven_presend_dns_keeps_prior_cost_without_freezing_spend(self):
+        root = self.persist_proven_unsent_decision()
+        receipt = root/"decisions"/"D000002.json"
+        original = receipt.read_bytes()
+        spend = _planner_spend(root)
+        self.assertFalse(spend["spend_unknown"], spend)
+        self.assertAlmostEqual(.125, spend["known_spend_usd"])
+        self.assertAlmostEqual(.125, spend["total_cost_usd"])
+        self.assertEqual([], spend["unresolved_decision_ids"])
+        self.assertEqual(["D000002"], spend["not_dispatched_decision_ids"])
+        self.assertEqual(original, receipt.read_bytes())
+        self.assertFalse((root/"planner-calls"/"D000002-01.json").exists())
+
+    def test_hidden_physical_attempt_freezes_even_with_earlier_reported_cost(self):
+        for events in ([], [{"phase":"request_started"}], [
+            {"phase":"request_started"},
+            {"phase":"http11.send_request_headers.started"},
+            {"phase":"request_failed","exception_type":"ReadTimeout"},
+        ]):
+            with self.subTest(events=events), tempfile.TemporaryDirectory(dir=self.root) as directory:
+                root = Path(directory)
+                core._write_json_atomic(root/"planner-calls"/"D000001-01.json",{"response":{"usage":{"cost":.125}}})
+                core._write_json_atomic(root/"decisions"/"D000001.json",{"planner_usage":{"total_cost_usd":.125}})
+                core._write_json_atomic(root/"planner-transport"/"D000001-02.json",{"events":events})
+                core._write_json_atomic(root/"planner-transport"/"D000001-03.json",{"events":self.dns_failure_events()})
+                spend = _planner_spend(root)
+                self.assertTrue(spend["spend_unknown"], spend)
+                self.assertIsNone(spend["total_cost_usd"])
+                self.assertAlmostEqual(.125, spend["known_spend_usd"])
+                self.assertEqual(["D000001"], spend["unresolved_decision_ids"])
+                self.assertNotIn("D000001", spend["not_dispatched_decision_ids"])
+
+    def test_proven_presend_dns_permits_paid_planner_continuation_on_restart(self):
+        from dataclasses import replace
+        self.persist_proven_unsent_decision()
+        config = replace(self.config,planner_mode="openrouter",model="test/model",
+                         max_total_cost_usd=1.,max_trials=None,timeout_minutes=.03)
+
+        def planned(evidence, config):
+            core._write_json_atomic(config.campaign_dir/"STOP",{})
+            item = proposal().model_copy(update={"evidence_ids":(evidence["evidence_id"],)})
+            return {"decision":{"decision_id":evidence["decision_id"],"evidence_id":evidence["evidence_id"],
+                                "trial_budget":1,"programs":[item.model_dump(mode="json")]},
+                    "usage":{"total_cost_usd":.025}}
+
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors), \
+                patch("ima.research_expansion.plan_decision",side_effect=planned) as planner, \
+                patch("ima.research_expansion.log_snapshot"):
+            result = run_expansion_campaign(config)
+        planner.assert_called_once()
+        self.assertEqual("stopped", result["mode"])
+        self.assertAlmostEqual(.15, _planner_cost(config.campaign_dir))
+
+    def test_hidden_physical_attempt_freezes_paid_planner_on_restart(self):
+        from dataclasses import replace
+        root = self.config.campaign_dir
+        core._write_json_atomic(root/"planner-calls"/"D000001-01.json",{"response":{"usage":{"cost":.125}}})
+        core._write_json_atomic(root/"planner-transport"/"D000001-02.json",{"events":[{"phase":"request_started"}]})
+        config = replace(self.config,planner_mode="openrouter",model="test/model",
+                         max_total_cost_usd=1.,max_trials=None,timeout_minutes=.03)
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors), \
+                patch("ima.research_expansion.plan_decision") as planner, \
+                patch("ima.research_expansion.log_snapshot"):
+            result = run_expansion_campaign(config)
+        planner.assert_not_called()
+        self.assertEqual("timeout", result["mode"])
+        status = core._read_json(root/"status.json")
+        self.assertTrue(status["planner_spend_unknown"])
+        self.assertIsNone(status["planner_spend_usd"])
+        self.assertAlmostEqual(.125, _planner_spend(root)["known_spend_usd"])
+
+    def test_three_proven_unsent_failures_open_paid_planning_circuit(self):
+        from dataclasses import replace
+        root = self.config.campaign_dir
+        for number in range(1,4):
+            identifier = f"D{number:06d}"
+            core._write_json_atomic(root/"decisions"/(identifier+".json"),
+                                   {"planner_status":"failed","planner_usage":{}})
+            core._write_json_atomic(root/"planner-transport"/(identifier+"-01.json"),
+                                   {"events":self.dns_failure_events()})
+        self.assertEqual(3, _unsent_failure_streak(root))
+        self.assertFalse(_planner_spend(root)["spend_unknown"])
+        config = replace(self.config,planner_mode="openrouter",model="test/model",
+                         max_total_cost_usd=1.,max_trials=None,timeout_minutes=.03)
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors), \
+                patch("ima.research_expansion.plan_decision") as planner, \
+                patch("ima.research_expansion.log_snapshot"):
+            result = run_expansion_campaign(config)
+        planner.assert_not_called()
+        self.assertEqual("timeout", result["mode"])
+        status = core._read_json(root/"status.json")
+        self.assertFalse(status["planner_spend_unknown"])
+        self.assertIn("circuit open after three unsent failures", status["last_planner_error"])
+
+    def test_unsent_streak_requires_consecutive_failed_all_unsent_decisions(self):
+        root = self.config.campaign_dir
+        for number in range(1,4):
+            identifier = f"D{number:06d}"
+            core._write_json_atomic(root/"decisions"/(identifier+".json"),
+                                   {"planner_status":"failed","planner_usage":{}})
+            core._write_json_atomic(root/"planner-transport"/(identifier+"-01.json"),
+                                   {"events":self.dns_failure_events()})
+        self.assertEqual(3, _unsent_failure_streak(root))
+        core._write_json_atomic(root/"planner-transport"/"D000002-02.json",
+                               {"events":[{"phase":"request_started"}]})
+        self.assertEqual(1, _unsent_failure_streak(root))
+        core._write_json_atomic(root/"decisions"/"D000004.json",{"planner_status":"accepted"})
+        self.assertEqual(0, _unsent_failure_streak(root))
+
+    def test_grouped_fold_prewarm_gates_followers_while_unrelated_work_completes(self):
+        from dataclasses import replace
+        from ima.research_executor import RecipeExecutionResult, preparation_dependency_id
+        from ima.research_expansion import _prepare_fold_dependency
+        config = replace(self.config,max_trials=4,proposal_batch_size=4,max_concurrent_trials=2,
+                         max_active_preparations=2,cpu_thread_budget=4,queue_low_watermark=0,
+                         replan_every_terminal_trials=10,timeout_minutes=.5)
+        base = proposal("shared-a")
+        second = proposal("shared-b").model_copy(update={"recipe":base.recipe.model_copy(update={
+            "model":base.recipe.model.model_copy(update={"parameters":{"l2":.2}})})})
+        experimental = proposal("shared-experimental").model_copy(update={"recipe":base.recipe.model_copy(update={
+            "model":base.recipe.model.model_copy(update={"kind":"boosted","parameters":{"max_iter":8}})})})
+        unrelated = proposal("unrelated-cheap").model_copy(update={"recipe":base.recipe.model_copy(update={
+            "seed":base.recipe.seed+1})})
+        programs = [base,second,experimental,unrelated]
+        group_started, release_group, group_ready = Event(), Event(), Event()
+        producers, completed = [], []
+
+        def planned(evidence, config):
+            items = [item.model_copy(update={"evidence_ids":(evidence["evidence_id"],)})
+                     for item in programs] if not producers else []
+            return {"decision":{"decision_id":evidence["decision_id"],"evidence_id":evidence["evidence_id"],
+                                "trial_budget":len(items),"programs":[item.model_dump(mode="json") for item in items],
+                                "review_reason":"Await the already authorized dependency builds and fits."},
+                    "usage":{"cost_status":"fixture"}}
+
+        def prewarm(request, workload):
+            producers.append(preparation_dependency_id(request))
+            if request.recipe.seed == base.recipe.seed:
+                group_started.set()
+                if not release_group.wait(15):
+                    raise AssertionError("Unrelated cheap fit never released shared prewarm")
+            outcome = _prepare_fold_dependency(request,workload)
+            self.assertTrue(outcome["artifacts"])
+            if request.recipe.seed == base.recipe.seed:
+                group_ready.set()
+            return outcome
+
+        def worker(request, *args):
+            if request.proposal_id == "unrelated-cheap":
+                try:
+                    self.assertTrue(group_started.wait(5))
+                    self.assertFalse(group_ready.is_set())
+                    allocations = ResearchLedger(config.campaign_dir/"ledger.sqlite").reserved_attempts()
+                    active = [row["attempt_id"] for row in allocations if row["status"] in {"reserved","running"}]
+                    self.assertEqual([request.attempt_id], active)
+                finally:
+                    release_group.set()
+            else:
+                self.assertTrue(group_ready.is_set(), "Dependent fit dispatched before shared folds became ready")
+            completed.append(request.proposal_id)
+            return RecipeExecutionResult(1,request.attempt_id,request.proposal_id,request.trial_number,
+                request.recipe.recipe_hash(),"win_probability","completed","fundamental_log_loss",2.,{},{},{},0.)
+
+        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors), \
+                patch("ima.research_expansion.plan_decision",side_effect=planned), \
+                patch("ima.research_expansion._prepare_fold_dependency",side_effect=prewarm), \
+                patch("ima.research_expansion._worker",side_effect=worker), \
+                patch("ima.research_expansion.log_snapshot"):
+            result = run_expansion_campaign(config)
+        self.assertEqual("complete", result["mode"], core._read_json(config.campaign_dir/"status.json"))
+        self.assertEqual(2, len(producers))
+        self.assertEqual(2, len(set(producers)))
+        self.assertEqual("unrelated-cheap", completed[0])
+        self.assertCountEqual([item.proposal_id for item in programs], completed)
+        terminal = ResearchLedger(config.campaign_dir/"ledger.sqlite").terminal_results()
+        self.assertEqual(3, sum(row["result"]["lane"] == "benter" for row in terminal))
+        self.assertEqual(1, sum(row["result"]["lane"] == "experimental" for row in terminal))
+        status = core._read_json(config.campaign_dir/"status.json")
+        self.assertEqual([], status["preparation_dependencies"]["building"])
+        self.assertEqual({}, status["preparation_dependencies"]["errors"])
+        self.assertCountEqual(producers, status["preparation_dependencies"]["ready"])
 
     def test_verified_dataset_reference_resolves_its_own_protocol_and_hash(self):
         registry = SimpleNamespace(verify=lambda identifier:{"features_path":str(self.dataset),"protocol_path":str(self.protocol),"rows":100})

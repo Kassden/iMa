@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .research_store import utc_now
+from .research_summary import reported_cost, summary, summary_markdown, summary_preview
 
 
 _TRACKING_OPERATION_LOCK = threading.RLock()
@@ -196,7 +197,7 @@ def log_snapshot(campaign: Path, payload: dict, config, *, role: str, number: in
             receipt = json.loads(published.read_text()) if published.exists() else None
             if receipt is not None:
                 usage = payload.get("planner_usage", {})
-                expected_cost = usage.get("total_cost_usd") if role == "decision" and usage.get("cost_status") != "fixture" else None
+                expected_cost = reported_cost(usage) if role == "decision" else None
                 if (receipt.get("role") != role or receipt.get("number") != number
                         or receipt.get("total_cost_usd") != expected_cost):
                     raise ValueError("Conflicting replay of historical trace linkage")
@@ -337,21 +338,28 @@ def _serialize_trace(span, experiment_id, tags, name, preview, campaign, usage):
               if usage.get(k) is not None}
     if tokens:
         metadata["mlflow.trace.tokenUsage"] = json.dumps(tokens)
-    if usage.get("total_cost_usd") is not None:
-        metadata["mlflow.trace.cost"] = json.dumps({"total_cost": float(usage["total_cost_usd"])})
+    cost = reported_cost(usage)
+    if cost is not None:
+        metadata["mlflow.trace.cost"] = json.dumps({"total_cost": float(cost)})
     end_time = span.end_time_ns or time.time_ns()
     serialized = span.to_dict()
     serialized["end_time_unix_nano"] = end_time
-    serialized["status"] = {"code": "STATUS_CODE_OK", "message": ""}
+    failed = summary({"operation_status": tags.get("ima.operation_status")})["operation"]["failed"]
+    failed = failed or serialized.get("status", {}).get("code") == "STATUS_CODE_ERROR"
+    if failed:
+        serialized["status"] = {"code": "STATUS_CODE_ERROR",
+                                "message": serialized.get("status", {}).get("message") or tags.get("ima.blocker", "")}
+    elif serialized.get("status", {}).get("code") in {None, "STATUS_CODE_UNSET"}:
+        serialized["status"] = {"code": "STATUS_CODE_OK", "message": ""}
     if tokens:
         serialized["attributes"]["mlflow.chat.tokenUsage"] = json.dumps(tokens)
-    if usage.get("total_cost_usd") is not None:
+    if cost is not None:
         serialized["attributes"]["mlflow.llm.cost"] = metadata["mlflow.trace.cost"]
     info = TraceInfo(trace_id=span.trace_id,
                      trace_location=TraceLocation.from_experiment_id(str(experiment_id)),
                      request_time=span.start_time_ns // 1_000_000,
                      execution_duration=(end_time - span.start_time_ns) // 1_000_000,
-                     state=TraceState.OK, tags=tags, trace_metadata=metadata,
+                     state=TraceState.ERROR if failed else TraceState.OK, tags=tags, trace_metadata=metadata,
                      request_preview=name, response_preview=preview)
     return Trace(info, TraceData(spans=[Span.from_dict(serialized)])).to_dict()
 
@@ -393,37 +401,47 @@ def _emit_trace(campaign: Path, payload: dict, config, *, role: str, number: int
 def _emit_trace_locked(campaign: Path, payload: dict, config, *, role: str, number: int, persist) -> tuple[dict, dict]:
     from .mlflow_tracking import _mlflow
     from .research_controller import _tracking_names
-    mlflow = _mlflow()
-    mlflow.set_tracking_uri(config.mlflow_tracking_uri)
-    experiment = mlflow.set_experiment(_tracking_names(config.research_policy)[0])
     short = campaign.name
-    label = {"decision":"plan D","execution":"execution S","dataset":"dataset B","betting":"paper P"}[role]
+    label = {"decision":"decision D","execution":"execution S","dataset":"dataset B","betting":"paper P"}[role]
     name = f"{short} | {label}{number:06d}"
     usage = payload.get("planner_usage", {}) if role == "decision" else {}
     fixture = usage.get("cost_status") == "fixture"
-    native_usage = {} if fixture else usage
-    cost = native_usage.get("total_cost_usd")
-    bests = payload.get("champions_by_contract", {})
-    best_text = "; ".join(f"{v['objective_name']}={v['objective_value']:.6f}" for v in bests.values())
-    counts = payload.get("counts", {})
-    counts_text = ", ".join(f"{key}={value}" for key, value in sorted(counts.items())) or "counts unavailable"
-    preview = f"{counts_text}; {best_text or 'no comparable completed result yet'}"
+    native_usage = {} if fixture else dict(usage)
+    cost = reported_cost(native_usage)
+    if cost is None:
+        native_usage.pop("total_cost_usd", None)
+    written = summary(dict(payload, campaign_id=short, trace_role=role, sequence=number,
+                           delivery_status="pending"))
+    markdown = summary_markdown(written)
+    from .mlflow_tracking import _write_json_atomic
+    artifact_dir = campaign / "traces" / f"{role}-{number:06d}"
+    _write_json_atomic(artifact_dir / "summary.json", written)
+    temporary = artifact_dir / "summary.md.tmp"
+    temporary.write_text(markdown)
+    temporary.replace(artifact_dir / "summary.md")
+    preview = summary_preview(written)
     if role == "betting":
         preview = _paper_preview(campaign,payload)
-    if role == "decision":
-        preview = (f"budget {payload.get('trial_budget', 0)}, allocated {payload.get('allocated_trials', 0)}, "
-                   f"unallocated {payload.get('unallocated_trials', 0)}; {preview}")
     tags = {"ima.campaign_id": short, "ima.trace_role": role,
             "ima.evidence_id": payload.get("evidence_id", "unknown"),
             "ima.decision_id": str(payload.get("decision_id", "none")),
             "ima.planner_cost_status": str(usage.get("cost_status", "not_a_planner_call")),
+            "ima.operation_status": written["operation"]["status"],
+            "ima.blocker": str(written["operation"]["blocker"] or "none")[:1000],
+            "ima.model_families": ",".join(written["model_families"]),
+            "ima.active_trial_count": str(written["execution"]["active_trial_count"]
+                                           if written["execution"]["active_trial_count"] is not None else "unknown"),
+            "ima.completed_count": str(written["execution"]["counts"].get("completed", "unknown")),
+            "ima.summary_schema_version": str(written["schema_version"]),
             "mlflow.traceName": name}
     tags["ima.summary_id"] = f"{campaign.resolve()}:{role}:{number}"
     if payload.get("output_evidence_id"):
         tags["ima.output_evidence_id"] = payload["output_evidence_id"]
     if cost is not None:
         tags["planner_cost_usd"] = str(cost)
-        preview = f"Planner ${cost:.9f} USD | {preview}"
+    mlflow = _mlflow()
+    mlflow.set_tracking_uri(config.mlflow_tracking_uri)
+    experiment = mlflow.set_experiment(_tracking_names(config.research_policy)[0])
     with mlflow.start_span(name=name, span_type="LLM" if role == "decision" and not fixture else "CHAIN") as span:
         _require_recording_span(span)
         trace_id = span.trace_id
@@ -431,7 +449,11 @@ def _emit_trace_locked(campaign: Path, payload: dict, config, *, role: str, numb
                                    request_preview=name, response_preview=preview)
         span.set_inputs(payload.get("planner_evidence") or {
             "evidence_id": payload.get("evidence_id"), "decision_id": payload.get("decision_id")})
-        span.set_outputs(payload)
+        span.set_outputs(dict(payload, summary=written, summary_markdown=markdown))
+        if written["operation"]["failed"]:
+            from mlflow.entities import SpanStatus, SpanStatusCode
+            span.set_status(SpanStatus(SpanStatusCode.ERROR, str(written["operation"]["error"] or
+                                                               written["operation"]["blocker"] or written["operation"]["status"])))
         linkage = {"trace_id": trace_id, "experiment_id": str(experiment.experiment_id),
                    "role": role, "number": number, "total_cost_usd": cost,
                    "evidence_id": payload.get("evidence_id"),

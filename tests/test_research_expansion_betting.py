@@ -260,8 +260,8 @@ class PaperControllerDrainTests(unittest.TestCase):
 
     def run_controller(self,trace=None,worker=None):
         from ima.research_expansion import run_expansion_campaign
-        from tests.test_research_expansion_resources import executors
-        with patch("ima.research_expansion.ProcessPoolExecutor",side_effect=executors), \
+        from tests.test_research_expansion import BoundedFitsThreadPool
+        with patch("ima.research_expansion.BoundedFitExecutor",BoundedFitsThreadPool), \
              patch("ima.research_expansion.log_snapshot",side_effect=trace,return_value=None), \
              patch("ima.research_expansion.plan_decision",side_effect=AssertionError("no paid planner")), \
              patch("ima.research_expansion._worker",side_effect=AssertionError("no model fits")), \

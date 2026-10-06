@@ -382,7 +382,7 @@ class ResearchProposal(StrictModel):
     expected_observation: str
     falsification_rule: str
     max_trials: int = 1
-    max_wall_seconds: int = 1200
+    max_wall_seconds: int = Field(default=1200,ge=1,strict=True)
 
     @model_validator(mode="after")
     def _validate_safe_text(self) -> "ResearchProposal":

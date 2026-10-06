@@ -80,6 +80,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--dry-run", action="store_true")
     status = sub.add_parser("status", help="Read durable campaign status")
     status.add_argument("--campaign", type=Path, required=True)
+    written = sub.add_parser("summary",help="Read the written campaign health and progress summary")
+    written.add_argument("--campaign",type=Path,required=True)
     stop = sub.add_parser("stop", help="Request graceful campaign stop")
     stop.add_argument("--campaign", type=Path, required=True)
     return root
@@ -167,6 +169,14 @@ def main() -> int:
         return 0
     if args.command == "status":
         print(json.dumps(campaign_status(args.campaign), indent=2, sort_keys=True))
+        return 0
+    if args.command == "summary":
+        path = args.campaign/"summary.md"
+        if path.is_file():
+            print(path.read_text())
+        else:
+            from ima.research_summary import summary,summary_markdown
+            print(summary_markdown(summary(campaign_status(args.campaign))))
         return 0
     if args.command == "stop":
         marker = request_campaign_stop(args.campaign)

@@ -39,6 +39,16 @@ def proposal(identifier="probe", trials=1, *, schema_version=3):
     )
 
 
+class BoundedFitsThreadPool(ThreadPoolExecutor):
+    """Run mocked fits in threads without enforcing runtime deadlines."""
+
+    def __init__(self, max_workers, *, max_tasks_per_child=1):
+        super().__init__(max_workers=max_workers)
+
+    def submit(self, function, *args, runtime_path, timeout, **kwargs):
+        return super().submit(function, *args, **kwargs)
+
+
 def decision(**changes):
     payload = {
         "decision_id": "decision-1",
@@ -624,6 +634,16 @@ class PackageIndexAlignmentTests(unittest.TestCase):
 
 
 class RuntimeFixtureTests(unittest.TestCase):
+    def setUp(self):
+        from ima import research_controller as core
+
+        revision = patch.dict("os.environ", {"IMA_CODE_REVISION": core._code_revision()})
+        revision.start()
+        self.addCleanup(revision.stop)
+        fits = patch("ima.research_expansion.BoundedFitExecutor", BoundedFitsThreadPool)
+        fits.start()
+        self.addCleanup(fits.stop)
+
     def test_restart_resumes_reserved_attempt_before_asking_replacement_work(self):
         from ima import research_controller as core
         from ima.optimizer import CampaignConfig
@@ -686,8 +706,17 @@ class RuntimeFixtureTests(unittest.TestCase):
     def test_missing_preparation_manifest_schedules_preparation_before_fit(self):
         from ima.optimizer import CampaignConfig
         from ima.research_executor import RecipeExecutionResult
-        from ima.research_expansion import run_expansion_campaign
+        from ima.research_expansion import _prepare_fold_dependency, run_expansion_campaign
         from tests.test_research_controller import ResearchControllerTests
+
+        stages = []
+
+        def prewarm(request, workload):
+            stages.append("prewarming")
+            outcome = _prepare_fold_dependency(request, workload)
+            self.assertTrue(outcome["artifacts"])
+            stages.append("folds_ready")
+            return outcome
 
         def executor(**kwargs):
             return ThreadPoolExecutor(max_workers=kwargs["max_workers"])
@@ -700,6 +729,8 @@ class RuntimeFixtureTests(unittest.TestCase):
             }, "usage": {}}
 
         def worker(request, workload, threads):
+            self.assertIn("folds_ready", stages)
+            stages.append("fit")
             return RecipeExecutionResult(
                 1, request.attempt_id, request.proposal_id, request.trial_number,
                 request.recipe.recipe_hash(), request.recipe.target.kind,
@@ -719,10 +750,13 @@ class RuntimeFixtureTests(unittest.TestCase):
             with patch("ima.research_expansion.ProcessPoolExecutor", side_effect=executor), \
                  patch("ima.research_expansion.plan_decision", side_effect=planned), \
                  patch("ima.research_expansion._worker", side_effect=worker), \
+                 patch("ima.research_expansion._prepare_fold_dependency", side_effect=prewarm) as fold_prepare, \
                  patch("ima.research_expansion._prepare_program", return_value={"matrix_id": "ready", "shared_bytes": 0}) as prepare:
                 output = run_expansion_campaign(config)
             self.assertEqual(output["mode"], "complete")
             prepare.assert_called_once()
+            fold_prepare.assert_called_once()
+            self.assertEqual(["prewarming", "folds_ready", "fit", "fit"], stages)
 
     def test_fixture_planner_respects_one_trial_operator_ceiling(self):
         from ima.research_expansion import plan_decision
@@ -737,6 +771,7 @@ class RuntimeFixtureTests(unittest.TestCase):
         self.assertLessEqual(len(item.programs), 1)
 
     def test_tiny_chronological_campaign_completes_through_real_cli(self):
+        from ima.research_store import ResearchLedger
         from tests.test_research_controller import ResearchControllerTests
 
         with tempfile.TemporaryDirectory() as directory:
@@ -760,7 +795,7 @@ class RuntimeFixtureTests(unittest.TestCase):
                 "dataset_path": str(dataset), "protocol_path": str(protocol),
                 "max_active_preparations": 1, "host_reserve_cpu_threads": 0,
                 "host_reserve_ram_gib": 0, "cpu_thread_budget": 1,
-                "planning_checkpoint_seconds": 300, "timeout_minutes": 1,
+                "planning_checkpoint_seconds": 300, "timeout_minutes": 2,
             }))
             command = [sys.executable, "-m", "scripts.optimize", "run",
                        "--campaign", str(campaign), "--config", str(config)]
@@ -770,8 +805,11 @@ class RuntimeFixtureTests(unittest.TestCase):
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 start_new_session=True,
             )
+            # One-task spawn workers and serial admission took ~23s for 8 builders + 5 fits.
+            # Keep a finite wall bound with startup headroom, not just a fit-time limit.
+            timeout_seconds = 120
             try:
-                stdout, stderr = process.communicate(timeout=30)
+                stdout, stderr = process.communicate(timeout=timeout_seconds)
             except subprocess.TimeoutExpired:
                 status = (campaign / "status.json").read_text() if (campaign / "status.json").exists() else "no status"
                 trial_path = campaign / "trials.jsonl"
@@ -786,7 +824,7 @@ class RuntimeFixtureTests(unittest.TestCase):
                 except subprocess.TimeoutExpired:
                     os.killpg(process.pid, signal.SIGKILL)
                     stdout, stderr = process.communicate()
-                self.fail(f"Fixture campaign did not complete within 30s: {status}\nTrial errors: {errors}\n{stderr[-1000:]}")
+                self.fail(f"Fixture campaign did not complete within {timeout_seconds}s: {status}\nTrial errors: {errors}\n{stderr[-1000:]}")
             self.assertEqual(process.returncode, 0, stderr[-5000:])
             payload = json.loads((campaign / "status.json").read_text())
             trials = [json.loads(line) for line in (campaign / "trials.jsonl").read_text().splitlines()]
@@ -795,6 +833,29 @@ class RuntimeFixtureTests(unittest.TestCase):
             self.assertEqual(payload["ledger"]["completed"], 5)
             self.assertEqual(sum(row["lane"] == "benter" for row in trials), 4)
             self.assertEqual(sum(row["lane"] == "experimental" for row in trials), 1)
+            final_summary = json.loads((campaign / "summary.json").read_text())
+            self.assertEqual(final_summary["identity"]["campaign_id"], campaign.name)
+            self.assertEqual(final_summary["operation"]["status"], "complete")
+            execution = final_summary["execution"]
+            self.assertEqual(execution["counts"]["completed"], 5)
+            self.assertEqual(execution["active_trial_count"], 0)
+            self.assertEqual(execution["active_trials"], [])
+            self.assertTrue(execution["active_details_complete"])
+            self.assertTrue(execution["invocation_history"])
+            for invocation in execution["invocation_history"]:
+                self.assertEqual(invocation["running_attempts"], [])
+            terminal = {row["attempt_id"]: row["result"]
+                        for row in ResearchLedger(campaign / "ledger.sqlite").terminal_results()}
+            self.assertTrue(final_summary["champions"], "Completed real fits must appear in the final summary")
+            for champion in final_summary["champions"]:
+                result = terminal[champion["current"]["attempt_id"]]
+                self.assertTrue(np.isfinite(champion["current_value"]))
+                self.assertEqual(champion["objective"], result["objective_name"])
+                self.assertAlmostEqual(champion["current_value"], result["objective_value"])
+                self.assertAlmostEqual(champion["current_value"], result["metrics"]["objective"])
+            self.assertAlmostEqual(min(row["current_value"] for row in final_summary["champions"]),
+                                   min(result["metrics"]["objective"] for result in terminal.values()))
+            self.assertNotIn("no comparable completed result yet", (campaign / "summary.md").read_text())
 
 
 if __name__ == "__main__":
