@@ -4,12 +4,12 @@
 Preserve Gaussian race-winner likelihoods while making real heteroscedastic trials practical, then deploy and verify a pinned V7 successor with corrected feature admission.
 
 ## Acceptance Criteria
-- [ ] Profile identifies objective and preparation costs.
-- [ ] Analytic objective/gradients match the independent scalar reference, including heterogeneous scales, tiny fields, shuffled runners and rare winners.
-- [ ] Same-shape measured objective throughput improves at least 3x with bounded scratch allocation.
-- [ ] Real three-fold heteroscedastic trial completes within the original 2,400-second limit, with diagnostics and MLflow linkage.
-- [ ] Source is pushed, CI is green, and pinned V7 successor accepts an actual OpenRouter decision and dispatches fits.
-- [ ] Old V6 fits untouched; prior V7 drains without hotpatching; 80/20 dispatch and frozen evaluation unchanged.
+- [x] Profile identifies objective and preparation costs.
+- [x] Analytic objective/gradients match the independent scalar reference, including heterogeneous scales, tiny fields, shuffled runners and rare winners.
+- [x] Same-shape measured objective throughput improves at least 3x with bounded scratch allocation.
+- [x] Real three-fold heteroscedastic trial completes within the original 2,400-second limit, with diagnostics and MLflow linkage.
+- [x] Source is pushed, CI is green, and pinned V7 successor accepts an actual OpenRouter decision and dispatches fits.
+- [x] Old V6 fits untouched; prior V7 drains without hotpatching; 80/20 dispatch and frozen evaluation unchanged.
 
 ## Research
 Use existing NumPy/SciPy compiled array kernels and SciPy L-BFGS-B; Joblib threading only if measurement justifies it. Retain the scalar mathematical oracle and adaptive QUADPACK prediction checks.
@@ -20,6 +20,7 @@ Use existing NumPy/SciPy compiled array kernels and SciPy L-BFGS-B; Joblib threa
 - Proven: baseline-only admission rejects properly declared registered speed extras. Prior-turn repair exists locally and must be verified/committed separately.
 - Likely: grouping scans and tiny quadrature calls dominate; establish their relative shares with cProfile before choosing optimizations.
 - Possible: post-fit convergence verification is expensive; expose stage timings rather than assuming optimizer nonconvergence.
+- Follow-on proven by saved-recipe replay: first accelerated candidate reaches its numerical guard after 529 seconds but order 32 is underresolved. Preserve the rejection receipt. Batch strict fine-probability verification and warm-start increasing integration order up to 512, within the original total iteration and worker time budgets. Record configured/effective orders and every refinement round; do not pretend this was a successful fit or lower tolerances.
 - Disproven as recorded failure: this attempt is not marked OOM. Its memory peak does not describe all host processes.
 - Missing evidence: interrupted trial has no completed optimizer diagnostics; do not claim exact CPU saturation or mathematical nonconvergence.
 - Mutation boundary: isolated benchmarks and dedicated branch first; no hotpatch, cancellation, database rewriting or other-user service changes.
@@ -68,7 +69,8 @@ Use existing NumPy/SciPy compiled array kernels and SciPy L-BFGS-B; Joblib threa
 
 ## Regression Guardrails
 - Branch strategy: dedicated fix/v7-probit-runtime; preserve all unrelated dirty files.
-- Planned edit surface: ima/performance_probit.py, ima/research_controller.py, ima/research_expansion.py, tests/test_probit_gradient.py, tests/test_research_controller.py, tests/test_research_expansion.py, scripts/benchmark_probit.py, docs/V7_PROBIT_RUNTIME_REPAIR_PLAN.md; own-user temporary ops/packaging receipts.
+- Planned edit surface: ima/performance_probit.py, ima/research_controller.py, ima/research_expansion.py, tests/test_probit_gradient.py, tests/test_research_controller.py, tests/test_research_expansion.py, scripts/benchmark_probit.py, docs/V7_PROBIT_RUNTIME_REPAIR_PLAN.md; own-user temporary ops/packaging receipts. Scope expansion: deploy/systemd/ima-research-expansion-supervisor and tests/test_research_expansion_deploy.py, only to admit correctly named agentic_v7_* campaign directories while preserving existing identity/own-root checks.
+- Numerical follow-on scope: tests/test_performance_probit.py and tests/test_probit_refinement.py, to verify bounded refinement and batched prediction/oracle parity after the real trial exposed underresolution.
 - Protected: scalar probability API, normalization, analytic derivatives, convergence checks, leakage gates, dataset identity, old fits, 80/20 allocation, costs and shared services.
 - Consumers: direct probit, composed models, executor/replay, planner admission and MLflow.
 - Damage radius: moderate numerical source plus tightly isolated deployment.
@@ -84,8 +86,8 @@ Use existing NumPy/SciPy compiled array kernels and SciPy L-BFGS-B; Joblib threa
   - `docs/V7_PROBIT_RUNTIME_REPAIR_PLAN.md`
   - `scripts/benchmark_probit.py`
 - Checklist:
-  - [ ] Collect profile and saved attempt identity.
-  - [ ] Validate plan and preserve old fits.
+  - [x] Collect profile and saved attempt identity.
+  - [x] Validate plan and preserve old fits.
 
 ## Phase 2: Implementation
 ### Subphase 2.1: Admission And Feedback
@@ -98,8 +100,8 @@ Use existing NumPy/SciPy compiled array kernels and SciPy L-BFGS-B; Joblib threa
   - `tests/test_research_controller.py`
   - `tests/test_research_expansion.py`
 - Checklist:
-  - [ ] Verify catalog/availability protection.
-  - [ ] Commit scoped admission repair.
+  - [x] Verify catalog/availability protection.
+  - [x] Commit scoped admission repair.
 
 ### Subphase 2.2: Numerical Acceleration
 - Commit: perf(research): batch Gaussian likelihood and linearize race reductions.
@@ -110,8 +112,8 @@ Use existing NumPy/SciPy compiled array kernels and SciPy L-BFGS-B; Joblib threa
   - `tests/test_probit_gradient.py`
   - `scripts/benchmark_probit.py`
 - Checklist:
-  - [ ] Replace repeated scans and batch integration.
-  - [ ] Preserve stable tails and convergence safeguards.
+  - [x] Replace repeated scans and batch integration.
+  - [x] Preserve stable tails and convergence safeguards.
 
 ## Phase 3: Verification
 ### Subphase 3.1: Scientific And Regression Proof
@@ -121,8 +123,8 @@ Use existing NumPy/SciPy compiled array kernels and SciPy L-BFGS-B; Joblib threa
 - Planned Touch Files:
   - `docs/V7_PROBIT_RUNTIME_REPAIR_PLAN.md`
 - Checklist:
-  - [ ] Complete regression and CI.
-  - [ ] Execute/read back real scientific canary.
+  - [x] Complete regression and CI.
+  - [x] Execute/read back real scientific canary.
 
 ## Phase 4: Rollout
 ### Subphase 4.1: Pinned V7 Successor
@@ -132,5 +134,16 @@ Use existing NumPy/SciPy compiled array kernels and SciPy L-BFGS-B; Joblib threa
 - Planned Touch Files:
   - `docs/V7_PROBIT_RUNTIME_REPAIR_PLAN.md`
 - Checklist:
-  - [ ] Push/merge and stage immutable release.
-  - [ ] Start successor and verify real research/tracking.
+  - [x] Push/merge and stage immutable release.
+  - [x] Start successor and verify real research/tracking.
+
+## Verification Evidence
+- Source `efe1f6bcca752c6b36047f3b6daa3cb93df558be`; PRs 19 and 20 merged. PR20 merge `17918ea7c3af6c1718a581ea89fee284cd3b5dac`; research CI `37417236494` passed.
+- Final local regression: 977 tests, 493 subtests passed. Independent tester added 11 oracle, tail, bounded-allocation and failure tests.
+- Unprofiled server objective benchmark: seed 42, 9,000 races, 14 runners, 150 predictors, one native thread, two measured repetitions after warm-up. Median 41.440810 seconds before versus 6.861340 seconds after: 6.039755x throughput. Loss difference below 1e-12; maximum gradient difference 1.665335e-16. Receipt: `/home/imaopt/research-v2/ops-parent/v7-probit-runtime-20261006/raw-benchmark.json`.
+- Full scientific replay is separate from the benchmark: immutable 171,782-runner dataset and saved failed recipe, three whole-meeting folds, unchanged 2,400-second deadline. Completed in 1,859.065627 seconds (31 minutes), fundamental development race log loss 2.1789541533645167. Fold fits: 565.662/606.105/618.330 seconds, 11,580/12,085/12,585 training races, 134 predictors, 46/47/46 total iterations. All three passed at effective integration order 128, maximum refinement errors 4.166479e-05/2.821682e-05/3.379968e-05. Private-memory peak 3,670,790,144 bytes; no recorded OOM. This proves runtime feasibility, not superiority to existing champions or market.
+- MLflow readback: FINISHED run `e9c33c376fbd4ae99a9f2764192e7e05` in experiment 7; READY version 285 of `ima-agentic-v6-research-candidates-win-probability`. Per-fold diagnostics logged as an artifact. Historical experiment/model names are retained; run and campaign identifiers explicitly identify V7.
+- Activated successor: `agentic_v7_probit_runtime_efe1f6b`, own-user unit `ima-v7-probit-runtime-efe1f6b.service`, enabled/active at 05:43 UTC. New fit ceiling 23 initially reserved three older fit slots; the old V7 graph finished naturally before activation, leaving two preserved legacy V6 fits and a combined ceiling of 25. 24 CPU-thread allocation and 100 GB decimal memory budget unchanged. Old V7 drained through its STOP marker, not cancellation; both legacy V6 fits are preserved.
+- Live decision D000001 accepted from `deepseek/deepseek-v4.1-flash`: five programs, chosen/allocated 12/12 trials (10 classical Benter, two experimental budgets), full research memo SHA256 acknowledged. Programs cover fixed Benter/boosted controls, Benter transforms, horse/jockey discovery and composed Benter+boosted pooling. Trial ceiling 260 is not a mandated spend, fit capacity remains independent. Deterministic cumulative 80/20 dispatch logic is unchanged.
+- Native decision trace `tr-c98c4ef14878ff00210491dae11c1b71`: 27,838 input + 9,975 output = 37,813 tokens; reported USD 0.0203214. SDK verified exact native metadata and written-summary derivation. Fresh Chromium readback verified populated Tokens/Cost columns and planner-only filtering in [V7 Planner View](http://100.95.24.121:5000/#/experiments/7/traces?traceViewShareKey=1791265534106manrjv3b).
+- Production readback: first completed attempt `attempt-21210ff5b4bc7ead9cd8a79cc127fa1965114a37835f28ebf7fab4c26a194017` has FINISHED run `ba538581432c4bccab8542ec557daf01`, READY model version 286, exact pinned-source lineage and objective 2.174290501294411. Four more fits running at observation; adaptive fit cap advanced 2 to 4 after measured headroom. No failed trial, planner/tracking error or pending tracking/trace delivery observed. The source revision also passed post-merge main CI `37417862873`.
