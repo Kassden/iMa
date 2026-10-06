@@ -191,19 +191,103 @@ def conditional_loss_gradient(
     return loss, gradient + l2 * coefficients
 
 
+def _probability_log_features(columns, race_ids):
+    """Arrays are positional: callers must align every column to the same runners."""
+    ids = np.asarray(race_ids)
+    if ids.ndim != 1 or not len(ids) or pd.isna(ids).any():
+        raise ValueError("Race IDs must be a nonempty one-dimensional array without missing IDs")
+    features = []
+    for column in columns:
+        values = np.asarray(column, dtype=float)
+        if values.shape != ids.shape or not np.isfinite(values).all() or (values < 0).any():
+            raise ValueError("Probabilities must be finite, nonnegative and aligned to race IDs")
+        features.append(np.log(np.clip(values, 1e-12, 1.0)))
+    codes, races = pd.factorize(ids, sort=False)
+    return np.column_stack(features), codes, len(races)
+
+
+def _group_log_softmax(scores, codes, race_count):
+    if not np.isfinite(scores).all():
+        raise ValueError("Log probability scores must be finite")
+    maxima = np.full(race_count, -np.inf)
+    np.maximum.at(maxima, codes, scores)
+    shifted = scores - maxima[codes]
+    totals = np.bincount(codes, weights=np.exp(shifted), minlength=race_count)
+    return shifted - np.log(totals[codes])
+
+
+def _calibration_target(frame, codes, race_count):
+    target = frame["target_probability"].to_numpy(dtype=float)
+    if (target.shape != codes.shape or not np.isfinite(target).all()
+            or (target < 0).any()
+            or not np.allclose(np.bincount(codes, weights=target, minlength=race_count),
+                               1.0, rtol=0, atol=1e-10)):
+        raise ValueError("Calibration targets must be finite, nonnegative and sum to one per race")
+    return target
+
+
+def _blend_loss_gradient(weights, features, target, codes, race_count):
+    log_probability = _group_log_softmax(features @ weights, codes, race_count)
+    loss = -float(target @ log_probability) / race_count
+    gradient = features.T @ (np.exp(log_probability) - target) / race_count
+    return loss, gradient
+
+
+def _fit_blend(columns, frame, initial):
+    features, codes, race_count = _probability_log_features(columns, frame["race_id"])
+    target = _calibration_target(frame, codes, race_count)
+
+    def objective(weights):
+        return _blend_loss_gradient(weights, features, target, codes, race_count)
+
+    result = minimize(objective, np.asarray(initial, dtype=float), jac=True,
+                      method="L-BFGS-B", bounds=[(0.0, 4.0)] * len(initial),
+                      options={"gtol": 1e-8, "ftol": 1e-12, "maxiter": 1000})
+    weights = np.asarray(result.x, dtype=float)
+    if (not result.success or weights.shape != (len(initial),)
+            or not np.isfinite(weights).all() or not np.isfinite(result.fun)
+            or (weights < 0).any() or (weights > 4).any()):
+        raise RuntimeError(f"Market blend fit failed: {result.message}")
+    loss, gradient = objective(weights)
+    # This residual is zero at a valid constrained optimum, including zero weights.
+    projected = weights - np.clip(weights - gradient, 0.0, 4.0)
+    if (not np.isfinite(loss) or not np.isfinite(gradient).all()
+            or not np.isclose(result.fun, loss, rtol=1e-8, atol=1e-10)
+            or np.max(np.abs(projected)) > 1e-5):
+        raise RuntimeError("Market blend fit failed finite/objective/projected-gradient checks")
+    return weights
+
+
+def _blend_transform(columns, race_ids, weights):
+    features, codes, race_count = _probability_log_features(columns, race_ids)
+    weights = np.asarray(weights, dtype=float)
+    if not np.isfinite(weights).all():
+        raise ValueError("Blend weights must be finite")
+    return np.exp(_group_log_softmax(features @ weights, codes, race_count))
+
+
 @dataclass(frozen=True)
 class TemperatureCalibrator:
     temperature: float
 
     @classmethod
     def fit(cls, probabilities: np.ndarray, frame: pd.DataFrame) -> "TemperatureCalibrator":
+        features, codes, race_count = _probability_log_features([probabilities], frame["race_id"])
+        target = _calibration_target(frame, codes, race_count)
+
+        def objective(log_t):
+            log_probability = _group_log_softmax(features[:, 0] * np.exp(-log_t), codes, race_count)
+            return -float(target @ log_probability) / race_count
+
         result = minimize_scalar(
-            lambda log_t: race_log_loss(
-                temperature_scale(probabilities, frame["race_id"], float(np.exp(log_t))), frame
-            ),
+            objective,
             bounds=(-2.5, 2.5),
             method="bounded",
         )
+        if (not result.success or not np.isfinite(result.x) or not np.isfinite(result.fun)
+                or not -2.5 <= result.x <= 2.5
+                or not np.isclose(result.fun, objective(result.x), rtol=1e-8, atol=1e-10)):
+            raise RuntimeError(f"Temperature calibration failed: {result.message}")
         return cls(float(np.exp(result.x)))
 
     def transform(self, probabilities: np.ndarray, race_ids: pd.Series | np.ndarray) -> np.ndarray:
@@ -215,10 +299,9 @@ def temperature_scale(
     race_ids: pd.Series | np.ndarray,
     temperature: float,
 ) -> np.ndarray:
-    if temperature <= 0:
-        raise ValueError("Temperature must be positive")
-    powered = np.power(np.clip(probabilities, 1e-12, 1.0), 1.0 / temperature)
-    return normalize_by_race(powered, race_ids)
+    if not np.isfinite(temperature) or temperature <= 0:
+        raise ValueError("Temperature must be finite and positive")
+    return _blend_transform([probabilities], race_ids, [1.0 / temperature])
 
 
 @dataclass(frozen=True)
@@ -233,12 +316,8 @@ class MarketBlend:
         market: np.ndarray,
         frame: pd.DataFrame,
     ) -> "MarketBlend":
-        def objective(weights: np.ndarray) -> float:
-            combined = blend_probabilities(fundamental, market, frame["race_id"], *weights)
-            return race_log_loss(combined, frame)
-
-        result = minimize(objective, x0=np.array([1.0, 1.0]), bounds=((0.0, 4.0), (0.0, 4.0)))
-        return cls(float(result.x[0]), float(result.x[1]))
+        weights = _fit_blend([fundamental, market], frame, [1.0, 1.0])
+        return cls(float(weights[0]), float(weights[1]))
 
     def transform(
         self,
@@ -265,18 +344,9 @@ class MultiMarketBlend:
         place_market: np.ndarray,
         frame: pd.DataFrame,
     ) -> "MultiMarketBlend":
-        def objective(weights: np.ndarray) -> float:
-            combined = blend_multi_market_probabilities(
-                fundamental, win_market, place_market, frame["race_id"], *weights,
-            )
-            return race_log_loss(combined, frame)
-
-        result = minimize(
-            objective,
-            x0=np.array([1.0, 1.0, 0.5]),
-            bounds=((0.0, 4.0), (0.0, 4.0), (0.0, 4.0)),
-        )
-        return cls(float(result.x[0]), float(result.x[1]), float(result.x[2]))
+        columns = _multi_market_columns(fundamental, win_market, place_market, frame["race_id"])
+        weights = _fit_blend(columns, frame, [1.0, 1.0, 0.5])
+        return cls(float(weights[0]), float(weights[1]), float(weights[2]))
 
     def transform(
         self,
@@ -304,9 +374,18 @@ def blend_probabilities(
     fundamental_weight: float,
     market_weight: float,
 ) -> np.ndarray:
-    score = np.power(np.clip(fundamental, 1e-12, 1.0), fundamental_weight)
-    score *= np.power(np.clip(market, 1e-12, 1.0), market_weight)
-    return normalize_by_race(score, race_ids)
+    return _blend_transform([fundamental, market], race_ids, [fundamental_weight, market_weight])
+
+
+def _multi_market_columns(fundamental, win_market, place_market, race_ids):
+    _probability_log_features([fundamental, win_market], race_ids)
+    win = normalize_by_race(np.asarray(win_market, dtype=float), race_ids)
+    place = np.asarray(place_market, dtype=float)
+    if place.shape != win.shape:
+        raise ValueError("Place probabilities must be aligned to race IDs")
+    valid_place = np.isfinite(place) & (place > 0)
+    place = normalize_by_race(np.where(valid_place, place, win), race_ids)
+    return [fundamental, win, place]
 
 
 def blend_multi_market_probabilities(
@@ -318,15 +397,8 @@ def blend_multi_market_probabilities(
     win_market_weight: float,
     place_market_weight: float,
 ) -> np.ndarray:
-    win = normalize_by_race(np.asarray(win_market, dtype=float), race_ids)
-    place = np.asarray(place_market, dtype=float)
-    valid_place = np.isfinite(place) & (place > 0)
-    place = np.where(valid_place, place, win)
-    place = normalize_by_race(place, race_ids)
-    score = np.power(np.clip(fundamental, 1e-12, 1.0), fundamental_weight)
-    score *= np.power(np.clip(win, 1e-12, 1.0), win_market_weight)
-    score *= np.power(np.clip(place, 1e-12, 1.0), place_market_weight)
-    return normalize_by_race(score, race_ids)
+    columns = _multi_market_columns(fundamental, win_market, place_market, race_ids)
+    return _blend_transform(columns, race_ids, [fundamental_weight, win_market_weight, place_market_weight])
 
 
 def race_log_loss(probabilities: np.ndarray, frame: pd.DataFrame) -> float:
