@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
+from time import perf_counter
 import warnings
 
 import numpy as np
@@ -16,6 +17,71 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from .performance_distributions import PerformanceDistribution, _row_keys
+
+
+def _race_groups(codes):
+    order = np.argsort(codes, kind="stable")
+    return np.split(order, np.flatnonzero(np.diff(codes[order]))+1)
+
+
+def _race_center(values, codes):
+    counts = np.bincount(codes)
+    if values.ndim == 1:
+        return values - (np.bincount(codes, weights=values)/counts)[codes]
+    centered = values.copy()
+    for column in range(values.shape[1]):
+        centered[:, column] -= (np.bincount(codes, weights=values[:, column])/counts)[codes]
+    return centered
+
+
+def _race_batches(groups, winners, order):
+    by_size = {}
+    for group, winner in zip(groups, winners):
+        by_size.setdefault(len(group), []).append((group, winner))
+    batches = []
+    for size, items in sorted(by_size.items()):
+        # Bound each square quadrature tensor, independent of corpus size.
+        chunk = max(1, 262144//(size*size*order))
+        for start in range(0, len(items), chunk):
+            part = items[start:start+chunk]
+            batches.append((np.stack([item[0] for item in part]),
+                            np.array([item[1] for item in part])))
+    return batches
+
+
+def _batch_winner_loss_gradient(mu, sigma, winners, order):
+    count, size = mu.shape
+    if size <= 2 or size*size*order > 262144:
+        losses, mean_grad, scale_grad = [], np.empty_like(mu), np.empty_like(mu)
+        for row in range(count):
+            logs, mean_jac, scale_jac = _gaussian_log_win_probabilities(
+                mu[row], sigma[row], order=order, with_gradient=True)
+            normalizer = logsumexp(logs)
+            losses.append(normalizer-logs[winners[row]])
+            weights = np.exp(logs-normalizer)
+            weights[winners[row]] -= 1
+            mean_grad[row], scale_grad[row] = weights@mean_jac, weights@scale_jac
+        return np.asarray(losses), mean_grad, scale_grad
+    z, log_weights = _quadrature(order)
+    thresholds = (mu[:, :, None, None]+sigma[:, :, None, None]*z[None, None, :, None]
+                  - mu[:, None, None, :])/sigma[:, None, None, :]
+    diagonal = np.arange(size)
+    cdf_logs = log_ndtr(thresholds)
+    cdf_logs[:, diagonal, :, diagonal] = 0
+    terms = log_weights[None, None, :]+cdf_logs.sum(axis=-1)
+    logs = logsumexp(terms, axis=-1)
+    normalizers = logsumexp(logs, axis=-1)
+    weights = np.exp(logs-normalizers[:, None])
+    weights[np.arange(count), winners] -= 1
+    ratios = np.exp(terms-logs[:, :, None])[..., None]*_inverse_mills_ratio(thresholds)
+    ratios[:, diagonal, :, diagonal] = 0
+    locations = ratios/sigma[:, None, None, :]
+    mean_grad = -(weights[:, :, None]*locations.sum(axis=2)).sum(axis=1)
+    mean_grad += weights*locations.sum(axis=(2, 3))
+    scale_grad = -(weights[:, :, None]*(ratios*thresholds).sum(axis=2)).sum(axis=1)
+    scale_grad += weights*sigma*(locations*z[None, None, :, None]).sum(axis=(2, 3))
+    losses = normalizers-logs[np.arange(count), winners]
+    return losses, mean_grad, scale_grad
 
 
 @lru_cache(maxsize=16)
@@ -198,17 +264,15 @@ class GaussianRaceProbit:
         else:
             matrix = self.preprocessor.transform(raw)
         codes = pd.factorize(frame["race_id"], sort=False)[0]
-        for code in np.unique(codes):
-            selected = codes == code
-            matrix[selected] -= matrix[selected].mean(axis=0)
-        return matrix, codes
+        return _race_center(matrix, codes), codes
 
     def fit(self, frame):
         if self.l2 <= 0 or self.scale_l2 <= 0 or self.max_iter < 1:
             raise ValueError("Probit requires positive identification regularization")
+        started = perf_counter()
         x, codes = self._matrix(frame, fit=True)
         y = frame["target_win"].to_numpy(float)
-        groups = [np.flatnonzero(codes == code) for code in np.unique(codes)]
+        groups = _race_groups(codes)
         if not groups or any(len(g) < 2 or not np.isin(y[g], [0, 1]).all() or y[g].sum() != 1 for g in groups):
             raise ValueError("Probit needs complete races and exactly one winner")
         if "field_size" in frame:
@@ -218,18 +282,29 @@ class GaussianRaceProbit:
         dimension = x.shape[1]
 
         winners = [int(np.argmax(y[group])) for group in groups]
+        batches = _race_batches(groups, winners, self.quadrature_order)
+        preparation_seconds = perf_counter()-started
+        objective_seconds, evaluations = 0.0, 0
 
         def objective(parameters):
-            return self._objective_and_gradient(parameters, x, codes, groups, winners)
+            nonlocal objective_seconds, evaluations
+            tick = perf_counter()
+            result = self._objective_and_gradient(parameters, x, codes, groups, winners, batches=batches)
+            objective_seconds += perf_counter()-tick
+            evaluations += 1
+            return result
 
+        optimizer_started = perf_counter()
         result = minimize(objective, np.zeros(dimension*(2 if self.heteroscedastic else 1)),
                           jac=True, method="L-BFGS-B", options={"maxiter": self.max_iter, "ftol": 1e-9})
+        optimizer_seconds = perf_counter()-optimizer_started
         if not result.success:
             raise RuntimeError(f"Probit likelihood fit did not converge: {result.message}")
         self.coefficients = result.x[:dimension]
         self.scale_coefficients = result.x[dimension:] if self.heteroscedastic else None
         means = x @ self.coefficients
         scales = self._scales(x, self.scale_coefficients, codes) if self.heteroscedastic else np.ones(len(x))
+        verification_started = perf_counter()
         errors = []
         for group in groups:
             coarse = gaussian_log_win_probabilities(means[group], scales[group], order=self.quadrature_order)
@@ -242,28 +317,28 @@ class GaussianRaceProbit:
             "iterations": int(result.nit), "converged": True, "lane": "experimental",
             "identification": "race-centered mean; race geometric-mean sigma=1; bounded log-scale link; no intercept",
             "quadrature_order": self.quadrature_order,
+            "objective_evaluations": evaluations, "objective_seconds": objective_seconds,
+            "preparation_seconds": preparation_seconds, "optimizer_seconds": optimizer_seconds,
+            "quadrature_verification_seconds": perf_counter()-verification_started,
+            "fit_seconds": perf_counter()-started, "objective_engine": "bounded_numpy_batches_v1",
             "training_quadrature_max_refinement_error": max(errors)}
         return self
 
-    def _objective_and_gradient(self, parameters, x, codes, groups, winners):
+    def _objective_and_gradient(self, parameters, x, codes, groups, winners, *, batches=None):
         dimension = x.shape[1]
         means = x @ parameters[:dimension]
         scales = self._scales(x, parameters[dimension:], codes) if self.heteroscedastic else np.ones(len(x))
         mean_gradient = np.zeros(len(x))
         scale_gradient = np.zeros(len(x)) if self.heteroscedastic else None
         losses = []
-        for group, winner in zip(groups, winners):
-            logs, location_jacobian, log_scale_jacobian = _gaussian_log_win_probabilities(
-                means[group], scales[group], order=self.quadrature_order, with_gradient=True)
-            normalizer = logsumexp(logs)
-            losses.append(-(logs-normalizer)[winner])
-            log_gradient = np.exp(logs-normalizer)
-            log_gradient[winner] -= 1
-            mean_gradient[group] = log_gradient @ location_jacobian
+        for indices, selected_winners in (batches if batches is not None else _race_batches(groups,winners,self.quadrature_order)):
+            batch_loss, batch_mean, batch_scale = _batch_winner_loss_gradient(
+                means[indices], scales[indices], selected_winners, self.quadrature_order)
+            losses.extend(batch_loss)
+            mean_gradient[indices] = batch_mean
             if self.heteroscedastic:
-                logged_gradient = log_gradient @ log_scale_jacobian
                 # Race centering's adjoint precedes the bounded tanh link's derivative.
-                scale_gradient[group] = logged_gradient-logged_gradient.mean()
+                scale_gradient[indices] = batch_scale-batch_scale.mean(axis=1, keepdims=True)
         gradient = np.empty_like(parameters)
         gradient[:dimension] = x.T @ mean_gradient / len(groups) + self.l2*parameters[:dimension]
         if self.heteroscedastic:
@@ -276,10 +351,7 @@ class GaussianRaceProbit:
     @staticmethod
     def _scales(x, coefficients, codes):
         logged = 3*np.tanh((x @ coefficients)/3)
-        for code in np.unique(codes):
-            rows = codes == code
-            logged[rows] -= logged[rows].mean()
-        return np.exp(logged)
+        return np.exp(_race_center(logged, codes))
 
     def predict_distribution(self, frame):
         if self.coefficients is None:

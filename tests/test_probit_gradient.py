@@ -10,6 +10,9 @@ from scipy.special import log_ndtr, logsumexp, roots_hermitenorm
 from ima.performance_probit import (
     GaussianRaceProbit,
     _gaussian_log_win_probabilities,
+    _race_batches,
+    _race_center,
+    _race_groups,
     gaussian_log_win_probabilities,
 )
 from tests.test_pipeline_graph import race_frame
@@ -64,6 +67,43 @@ def finite_difference(function, point, step=1e-5):
 
 
 class ProbitGradientTests(unittest.TestCase):
+    def test_group_reductions_preserve_shuffled_rows_and_singletons(self):
+        codes = np.array([2, 0, 1, 2, 0, 2])
+        values = np.arange(18, dtype=float).reshape(6, 3)
+        expected = values.copy()
+        for group in _race_groups(codes):
+            expected[group] -= expected[group].mean(axis=0)
+        np.testing.assert_allclose(_race_center(values, codes), expected, atol=1e-14)
+        np.testing.assert_allclose(_race_center(values[:, 0], codes), expected[:, 0], atol=1e-14)
+
+    def test_mixed_size_batched_objective_matches_independent_scalar_oracle(self):
+        rng = np.random.default_rng(91)
+        sizes = [1, 2, 3, 4, 7, 14]*3
+        codes = np.repeat(np.arange(len(sizes)), sizes)
+        rng.shuffle(codes)
+        x = _race_center(rng.normal(size=(len(codes), 4)), codes)
+        groups = _race_groups(codes)
+        winners = [int(rng.integers(len(group))) for group in groups]
+        for heterogeneous in (False, True):
+            for order in (8, 32, 96):
+                with self.subTest(heterogeneous=heterogeneous, order=order):
+                    model = GaussianRaceProbit(tuple('abcd'), heteroscedastic=heterogeneous,
+                                               l2=.7, scale_l2=.9, quadrature_order=order)
+                    parameters = rng.normal(scale=.3, size=8 if heterogeneous else 4)
+                    actual, gradient = model._objective_and_gradient(parameters,x,codes,groups,winners)
+                    reference = lambda p: reference_objective(model,p,x,groups,winners)
+                    self.assertAlmostEqual(actual,reference(parameters),places=12)
+                    np.testing.assert_allclose(gradient,finite_difference(reference,parameters),
+                                               rtol=2e-6,atol=2e-7)
+
+    def test_quadrature_chunks_are_bounded_independently_of_corpus_size(self):
+        groups = np.arange(14000).reshape(1000,14)
+        batches = _race_batches(groups,np.zeros(1000,dtype=int),512)
+        self.assertEqual(sum(len(indices) for indices,_ in batches),1000)
+        for indices,winners in batches:
+            self.assertLessEqual(indices.shape[0]*14*14*512,262144)
+            self.assertEqual(len(indices),len(winners))
+
     def test_log_jacobians_equal_and_heterogeneous_scales(self):
         for count in (1, 2, 4, 7):
             for heterogeneous in (False, True):
@@ -203,6 +243,9 @@ class ProbitGradientTests(unittest.TestCase):
             np.testing.assert_allclose(results[1].fun, results[0].fun, atol=1e-9, rtol=0)
             np.testing.assert_allclose(results[1].x, results[0].x, atol=2e-5, rtol=2e-4)
             np.testing.assert_allclose(model.predict_proba(score), reference_model.predict_proba(score), atol=2e-5, rtol=2e-4)
+            self.assertEqual(model.fit_diagnostics['objective_engine'],'bounded_numpy_batches_v1')
+            self.assertGreater(model.fit_diagnostics['objective_evaluations'],0)
+            self.assertGreater(model.fit_diagnostics['optimizer_seconds'],0)
             self.assertLess(results[1].nfev*4, results[0].nfev)
             print(f'probit benchmark heteroscedastic={heterogeneous}: '
                   f'finite_difference={numerical_seconds:.4f}s/{results[0].nfev} evaluations; '

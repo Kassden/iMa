@@ -525,6 +525,71 @@ class ResearchControllerTests(unittest.TestCase):
         self.assertNotEqual(first.recipe.recipe_hash(), second.recipe.recipe_hash())
         self.assertNotEqual(first.changed_axes, second.changed_axes)
 
+    def test_v6_registered_extra_transform_is_admitted_after_catalog_preflight(self):
+        from ima.research_expansion import _preflight_recipe
+        from ima.research_executor import _hash_file
+        from types import SimpleNamespace
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol_path = self.fixture(root)
+            column = "past_race_speed_mean_3_mps"
+            frame = pd.read_csv(dataset)
+            frame[column] = 15.0
+            frame.to_csv(dataset, index=False)
+            manifest = {"dataset_hash": _hash_file(dataset), "predictor_catalog": {
+                column: {"unit": "m/s", "temporal_scope": "pre_race", "eligible": True},
+            }}
+            manifest_path = root / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest))
+            recipe = PipelineRecipe(
+                schema_version=3, extra_numeric_features=(column,),
+                transforms=({"kind": "race_relative_rank", "parameters": {"columns": [column]}},),
+                blend={"kind": "none"},
+            )
+            context = {"dataset": dataset, "digest": _hash_file(dataset),
+                       "protocol": json.loads(protocol_path.read_text())}
+            config = SimpleNamespace(campaign_dir=root / "campaign")
+            self.assertIs(_preflight_recipe(recipe, context, config), context)
+
+            available = column + "_available_at"
+            frame[available] = pd.to_datetime(frame["date"]) + pd.Timedelta(days=1)
+            frame.to_csv(dataset, index=False)
+            manifest["dataset_hash"] = _hash_file(dataset)
+            manifest["predictor_catalog"][column]["available_at_column"] = available
+            manifest_path.write_text(json.dumps(manifest))
+            context["digest"] = _hash_file(dataset)
+            with self.assertRaisesRegex(ValueError, "no numeric observations"):
+                _preflight_recipe(recipe, context, config)
+
+            manifest["predictor_catalog"] = {}
+            manifest_path.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "verified dataset predictor catalog"):
+                _preflight_recipe(recipe, context, config)
+
+    def test_v6_extra_transform_without_training_observations_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset, protocol_path = self.fixture(root)
+            column = "past_race_speed_support"
+            frame = pd.read_csv(dataset)
+            frame[column] = float("nan")
+            recipe = PipelineRecipe(
+                schema_version=3, extra_numeric_features=(column,),
+                transforms=({"kind": "signed_log1p", "parameters": {"columns": [column]}},),
+            )
+            profile = DatasetFeatureProfile(
+                dataset, json.loads(protocol_path.read_text()),
+                extra_numeric_features=(column,), prepared_frame=frame,
+            )
+            self.assertIn("no numeric observations", profile.admission_error(recipe))
+            frame = frame.drop(columns=[column])
+            profile = DatasetFeatureProfile(
+                dataset, json.loads(protocol_path.read_text()),
+                extra_numeric_features=(column,), prepared_frame=frame,
+            )
+            self.assertIn("no numeric observations", profile.admission_error(recipe))
+
     def test_missing_transform_column_is_rejected_before_training(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

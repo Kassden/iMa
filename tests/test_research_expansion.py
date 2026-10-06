@@ -94,6 +94,22 @@ class CampaignResourceContractTests(unittest.TestCase):
 
 
 class PlannerAPITests(unittest.TestCase):
+    def test_recent_failed_decisions_are_bounded_feedback_not_successes(self):
+        from ima.research_expansion import _recent_planner_failures
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "decisions").mkdir()
+            for number, status in enumerate(("failed", "accepted", "failed"), 1):
+                identifier = f"D{number:06d}"
+                (root / "decisions" / f"{identifier}.json").write_text(json.dumps({
+                    "decision_id": identifier, "planner_status": status,
+                    "error": "Unknown parent trial", "raw_response": "do not expose",
+                }))
+            feedback = _recent_planner_failures(root, limit=1)
+            self.assertEqual(feedback, [{"decision_id": "D000003", "error": "Unknown parent trial"}])
+            self.assertEqual(len(_recent_planner_failures(root)), 2)
+
     def test_one_valid_call_returns_all_independent_allocations_and_reported_usage(self):
         from ima.openrouter_orchestrator import OpenRouterConfig, choose_research_decision
 
