@@ -26,7 +26,8 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text())
 
 
-def validate_forecast_provenance(path: Path, outputs: tuple[Path, ...], input_hash: str) -> None:
+def validate_forecast_provenance(path: Path, outputs: tuple[Path, ...], input_hash: str,
+                                 source_files: tuple[Path, ...] = ()) -> None:
     proof = read_json(path)
     query_hashes = [digest for name, digest in proof.get("source_sha256", {}).items()
                     if Path(name).name == "query-features.parquet"]
@@ -35,6 +36,11 @@ def validate_forecast_provenance(path: Path, outputs: tuple[Path, ...], input_ha
             query_hashes.append(proof[key])
     if not query_hashes or any(digest != input_hash for digest in query_hashes):
         raise ValueError(f"Forecast provenance query hash mismatch or missing: {path}")
+    for source in source_files:
+        expected = [digest for name, digest in proof.get("source_sha256", {}).items()
+                    if Path(name).name == source.name]
+        if len(expected) != 1 or expected[0] != sha256(source):
+            raise ValueError(f"Forecast provenance source hash mismatch or missing: {source}")
     hashes = proof.get("output_sha256", {})
     for output in outputs:
         expected = [digest for name, digest in hashes.items() if Path(name).name == output.name]
@@ -64,7 +70,8 @@ def prepare_logging(root: Path, evaluation: Path, predictions: Path, manifest: P
                     report: Path, evaluation_code: Path, *, generation: str = "fresh",
                     include_query: bool = False, package_root: Path | None = None,
                     forecast_artifacts: tuple[Path, ...] = (),
-                    forecast_provenance: Path | None = None) -> dict:
+                    forecast_provenance: Path | None = None,
+                    report_artifacts: tuple[Path, ...] = ()) -> dict:
     """Validate everything before any tracking writes; allow relocation by content hash."""
     provenance = read_json(evaluation / "provenance.json")
     receipt = read_json(predictions / "readback.json")
@@ -105,7 +112,11 @@ def prepare_logging(root: Path, evaluation: Path, predictions: Path, manifest: P
     if any(path.is_file() for path in (*blend_outputs, blend_provenance)):
         if not all(path.is_file() for path in (*blend_outputs, blend_provenance)):
             raise ValueError("Incomplete optional market-blend forecast bundle")
-        validate_forecast_provenance(blend_provenance, blend_outputs, input_hash)
+        if read_json(blend_provenance).get("ready_for_report") is not True:
+            raise ValueError("Market-blend forecast is not ready_for_report")
+        blend_sources = (evaluation / "summary.json", evaluation / "calibration.json",
+                         evaluation / "provenance.json", evaluation_code, predictions / "readback.json")
+        validate_forecast_provenance(blend_provenance, blend_outputs, input_hash, blend_sources)
         artifacts.extend((path, "forecast") for path in (*blend_outputs, blend_provenance))
     for path in forecast_artifacts:
         if path.suffix not in {".json", ".csv"} or not path.is_file() or path.stat().st_size > 10 * 1024 * 1024:
@@ -116,6 +127,10 @@ def prepare_logging(root: Path, evaluation: Path, predictions: Path, manifest: P
             raise ValueError("Optional combined/ranked forecasts require --forecast-provenance")
         validate_forecast_provenance(forecast_provenance, forecast_artifacts, input_hash)
         artifacts.append((forecast_provenance, "forecast"))
+    for path in report_artifacts:
+        if path.suffix not in {".json", ".csv", ".md"} or not path.is_file() or path.stat().st_size > 10 * 1024 * 1024:
+            raise ValueError(f"Expected a compact report companion: {path}")
+        artifacts.append((path, "report"))
     destinations = [f"{dest}/{path.name}" for path, dest in artifacts]
     if len(destinations) != len(set(destinations)):
         raise ValueError("Duplicate artifact destination")
@@ -278,13 +293,16 @@ def main() -> int:
                         help="Repeat for compact market-blend/combo provenance and ranked forecast files")
     parser.add_argument("--forecast-provenance", type=Path,
                         help="Combined forecast proof: query hash and output_sha256 for each optional file")
+    parser.add_argument("--report-artifact", type=Path, action="append", default=[],
+                        help="Repeat for final report companions, hash-bound but not claimed in forecast provenance")
     parser.add_argument("--log", action="store_true", help="Explicitly authorize writes after final parent approval")
     args = parser.parse_args()
     plan = prepare_logging(args.root, args.evaluation_dir, args.predictions_dir, args.manifest,
                            args.report, args.evaluation_code, generation=args.generation,
                            include_query=args.include_query, package_root=args.package_root,
                            forecast_artifacts=tuple(args.forecast_artifact),
-                           forecast_provenance=args.forecast_provenance)
+                           forecast_provenance=args.forecast_provenance,
+                           report_artifacts=tuple(args.report_artifact))
     if args.log:
         from mlflow.tracking import MlflowClient
         result = log_evaluation(plan, MlflowClient(tracking_uri=args.tracking_uri),

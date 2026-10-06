@@ -88,7 +88,10 @@ class SeasonTrackingTests(unittest.TestCase):
         (self.evaluation / "tomorrow-market-blends.csv").write_text("synthetic blend\n")
         (self.evaluation / "tomorrow-market-blend-combinations.csv").write_text("synthetic combos\n")
         self.write(self.evaluation / "tomorrow-market-blend-provenance.json", {
-            "source_sha256": {"query-features.parquet": sha256(self.root / "query-features.parquet")},
+            "ready_for_report": True,
+            "source_sha256": {str(p): sha256(p) for p in (self.root / "query-features.parquet",
+                self.evaluation / "summary.json", self.evaluation / "calibration.json",
+                self.evaluation / "provenance.json", self.code, self.predictions / "readback.json")},
             "output_sha256": {name: sha256(self.evaluation / name) for name in
                               ("tomorrow-market-blends.csv", "tomorrow-market-blend-combinations.csv")}})
         forecast = self.root / "ranked-forecast.csv"
@@ -107,6 +110,16 @@ class SeasonTrackingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "compact"):
             prepare_logging(self.root, self.evaluation, self.predictions, self.manifest,
                             self.report, self.code, forecast_artifacts=(self.root / "official",))
+
+    def test_ranked_report_companion_is_hash_bound_without_claiming_forecast_proof(self):
+        ranked = self.root / "ranked.csv"
+        ranked.write_text("report companion\n")
+        plan = prepare_logging(self.root, self.evaluation, self.predictions, self.manifest,
+                               self.report, self.code, report_artifacts=(ranked,))
+        self.assertIn("report/ranked.csv", plan["inventory"])
+        ranked.write_text("changed")
+        with self.assertRaisesRegex(ValueError, "changed"):
+            log_evaluation(plan, None)
 
     def test_query_readback_prediction_and_code_tampering_rejected(self):
         for path in (self.root / "query-features.parquet", self.predictions / "readback.json",
