@@ -5,11 +5,11 @@ Recover authoritative OpenRouter charges after interrupted requests automaticall
 
 ## Acceptance Criteria
 - [x] D9 charge retrieved by its recorded generation ID, never guessed or zeroed.
-- [ ] Missing billing receipts are reconciled idempotently by a bounded periodic job.
+- [x] Missing billing receipts are reconciled idempotently by a bounded periodic job.
 - [x] Wrong identities, missing IDs, nonfinite charges, existing receipts and transient provider errors fail closed.
 - [x] V7 accepts a new planner decision and completes additional model work after recovery.
 - [x] Active-campaign MLflow view excludes legacy V6 heartbeat traces without deleting history or stopping preserved fits.
-- [ ] Code/tests pushed and merged, pinned own-user timer deployed and read back.
+- [x] Code/tests pushed and merged, pinned own-user timer deployed and read back.
 
 ## Root-Cause Baseline
 - Proven: V7 D9 received HTTP 200 and generation ID `gen-1791269393-76ySmlR9x6UIxpUXhgri`; its response body was cancelled at the 300-second absolute deadline.
@@ -86,8 +86,8 @@ Existing mechanism: physical receipt accounting for every campaign. Recurrence: 
 - Tests: wrapper/unit syntax, own-root/revision checks, no-secret preflight and timer/service readback.
 - Success Criteria: minute-scale recovery runs independently of live training source; no existing campaign restart.
 - Checklist:
-  - [ ] Push/merge green source and stage immutable recovery release.
-  - [ ] Enable own-user timer and verify its receipt/result.
+  - [x] Push/merge green source and stage immutable recovery release.
+  - [x] Enable own-user timer and verify its receipt/result.
 
 ## Phase 3: Scientific Continuation And Visibility
 ### Subphase 3.1: Real Recovery Proof
@@ -102,6 +102,9 @@ Existing mechanism: physical receipt accounting for every campaign. Recurrence: 
 - Local full regression: 975 tests passed in 269.490s; the final expanded nine-test billing suite additionally passed after adversarial corrections.
 - Independent verifier reproduced and then checked fixes for active-generation charges, lookup starvation, malformed records, duplicate generation IDs, malformed finalization and oversized charges.
 - Final recovery revision: `c5f629324ccbfe126624d1b808ad2e5d50595cb8`; committed archive SHA256 `3704f83a545981384bd207eb682071be50ca3349e0ff597d4557abbc3d072077`.
+- PR22 merged after green CI: all 978 tests passed in 295.416s, dependency checks, CLI checks and committed-package integrity passed. Pinned recovery release remains the tested source revision; the training source remains `efe1f6b`.
+- Own-user timer enabled and active. First invocation at 10:37:22 UTC succeeded with exit0, zero metadata requests, no unresolved charges and all original receipts skipped. Service is GET-only, CPUQuota25%, MemoryMax768M, TimeoutStartSec65; timer interval60s.
+- Training unit stayed on MainPID1243852 / InvocationIDfdd779d8fb884abdaa384f40867a72f8 / NRestarts0 throughout recovery.
 - Real server qualification recovered the recorded D9 charge using GET generation metadata; a second invocation made zero requests and preserved receipt bytes. No inference replay.
 - D10 accepted five programs / 14 trials; D11 accepted another 15 allocated trials. V7 advanced beyond 67 completed to 84 by the 10:32:29 UTC snapshot.
 - Post-D10 model versions 351 and 352 verified READY, their runs FINISHED, objective values matching the ledger and training source identity unchanged.
