@@ -98,14 +98,21 @@ class CampaignConfig:
     queue_low_watermark: int = 8
     host_reserve_cpu_threads: int = 4
     host_reserve_ram_gib: float = 8
+    max_new_programs_per_decision: int = 12
+    max_pending_programs: int = 64
+    max_active_preparations: int = 2
+    memory_budget_gb_decimal: float = 100.0
+    worker_max_tasks: int = 1
+    dataset_registry_path: Path | None = None
+    official_snapshot_path: Path | None = None
     gates: MetricGates = field(default_factory=MetricGates)
 
     def validate(self) -> None:
         if self.policy not in {"local", "openrouter", "agentic"}:
             raise ValueError("policy must be local, openrouter, or agentic")
-        if self.research_policy not in {"legacy", "benter_v3", "feature_v4", "discovery_v5"}:
+        if self.research_policy not in {"legacy", "benter_v3", "feature_v4", "discovery_v5", "expansion_v6"}:
             raise ValueError("research_policy must be legacy, benter_v3, or feature_v4")
-        if self.research_policy in {"benter_v3", "feature_v4", "discovery_v5"} and self.policy != "agentic":
+        if self.research_policy in {"benter_v3", "feature_v4", "discovery_v5", "expansion_v6"} and self.policy != "agentic":
             raise ValueError(f"{self.research_policy} requires agentic policy")
         if self.max_trials is not None and self.max_trials <= 0:
             raise ValueError("max_trials must be positive or None for unlimited")
@@ -140,8 +147,10 @@ class CampaignConfig:
             raise ValueError("openrouter batch mode requires a remote OpenRouter policy")
         if self.spec_profile not in SPEC_PROFILES:
             raise ValueError(f"Unknown experiment spec profile: {self.spec_profile}")
-        if self.planner_mode not in {"local", "fixture", "openrouter"}:
-            raise ValueError("planner_mode must be local, fixture, or openrouter")
+        if self.planner_mode not in {"local", "fixture", "openrouter", "external"}:
+            raise ValueError("planner_mode must be local, fixture, openrouter, or external")
+        if self.planner_mode == "external" and (self.research_policy != "expansion_v6" or self.model == "openrouter/local-policy"):
+            raise ValueError("External planning requires V6 and an explicit orchestrator model")
         if self.max_total_cost_usd is not None and self.max_total_cost_usd <= 0:
             raise ValueError("max_total_cost_usd must be positive when configured")
         if self.max_output_tokens <= 0:
@@ -157,12 +166,25 @@ class CampaignConfig:
                 raise ValueError("agentic OpenRouter planning requires an explicit model")
             if self.max_total_cost_usd is None:
                 raise ValueError("agentic OpenRouter planning requires max_total_cost_usd")
+        if self.research_policy == "expansion_v6":
+            if min(self.max_new_programs_per_decision, self.max_pending_programs,
+                   self.max_active_preparations, self.worker_max_tasks) < 1:
+                raise ValueError("Expansion queue and worker budgets must be positive")
+            if not 0 < self.memory_budget_gb_decimal <= 100:
+                raise ValueError("V6 process-group memory ceiling must be in (0,100] GB decimal")
+            effective_ram_gib = min(self.ram_budget_gib, self.memory_budget_gb_decimal * 1e9 / 1024**3)
+            if not 0 <= self.host_reserve_ram_gib < effective_ram_gib:
+                raise ValueError("V6 emergency RAM reserve must be smaller than the memory budget")
+            if self.host_reserve_cpu_threads < 0 or self.cpu_thread_budget < 1:
+                raise ValueError("V6 CPU budgets must be positive with a nonnegative host reserve")
 
     def serializable(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["campaign_dir"] = str(self.campaign_dir)
         payload["dataset_path"] = str(self.dataset_path) if self.dataset_path else None
         payload["protocol_path"] = str(self.protocol_path) if self.protocol_path else None
+        payload["dataset_registry_path"] = str(self.dataset_registry_path) if self.dataset_registry_path else None
+        payload["official_snapshot_path"] = str(self.official_snapshot_path) if self.official_snapshot_path else None
         payload["reference_campaign_dir"] = str(self.reference_campaign_dir) if self.reference_campaign_dir else None
         return payload
 

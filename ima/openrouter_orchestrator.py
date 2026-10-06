@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ class OpenRouterConfig:
     reasoning_effort: str | None = None
     absolute_deadline_seconds: int | None = None
     response_observer: Callable[[dict[str, Any]], None] | None = None
+    transport_observer: Callable[[dict[str, Any]], None] | None = None
 
     @classmethod
     def from_env(
@@ -100,19 +102,10 @@ def _reasoning_options(config: OpenRouterConfig) -> dict[str, Any]:
 
 def _post_json(url: str, payload: dict[str, Any], config: OpenRouterConfig) -> dict[str, Any]:
     if config.absolute_deadline_seconds:
-        import asyncio
         import httpx
-        async def send():
-            async with asyncio.timeout(config.absolute_deadline_seconds):
-                async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
-                    response = await client.post(url,json=payload,headers={"Authorization":f"Bearer {config.api_key}","Content-Type":"application/json"})
-                    response.raise_for_status()
-                    result=response.json()
-                    if config.response_observer:
-                        config.response_observer(result)
-                    return result
+        from .openrouter_transport import post_json_bounded
         try:
-            return asyncio.run(send())
+            return post_json_bounded(url,payload,config)
         except (TimeoutError,httpx.HTTPError,ValueError) as exc:
             raise OpenRouterError(f"OpenRouter bounded request failed: {type(exc).__name__}: {exc}") from exc
     request = urllib.request.Request(
@@ -593,6 +586,132 @@ def choose_research_proposals(
                 ),
             })
     raise OpenRouterError(f"OpenRouter planner returned no valid research proposals: {detail}")
+
+
+def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, int],
+                             config: OpenRouterConfig) -> dict[str, Any]:
+    """V6 structural decisions and trial allocations in one costed API call."""
+    from .research_expansion import PlannerDecision
+    from .dataset_specs import DatasetRequest
+    from .feature_definitions import FeatureDefinition
+    from .research_specs import PerformanceDistributionSpec
+    from .research_planner_context import compact_planner_evidence
+    memo = evidence_bundle.get("capabilities", {}).get("research_memo")
+    messages = [{"role": "system", "content": (
+        "You direct horse-racing ML research. Return one strict JSON decision matching the schema. "
+        "Read the entire capabilities.research_memo when supplied; acknowledge its SHA256 in "
+        "research_memo_sha256 and use its relevant findings in hypotheses or review_reason. "
+        "Select hypotheses, feature formulas, dataset requests, transforms, primary models, typed "
+        "pipeline graphs, calibration and trial allocations. Optuna only tunes your frozen model "
+        "search spaces. fixed_parameters=true requires max_trials=1 and no search_space. "
+        "Numeric search bounds with log=true must be strictly positive: low>0 and high>0. "
+        "For kind=int, low and high must be actual integers, not floats or booleans. "
+        "Logarithmic integer search is supported natively; keep kind=int with log=true rather "
+        "than converting integer parameters to float searches. "
+        "Choose a budget from 0 through trial_ceiling, not necessarily the ceiling "
+        "or a multiple of worker count. New program budgets plus extensions plus explicitly "
+        "unallocated trials MUST equal trial_budget: sum(programs[].max_trials) + "
+        "sum(extensions.values()) + unallocated_trials = trial_budget. "
+        "Include reasons for unallocated work or review. "
+        "Full worker queues do not forbid proposing future programs or reviewing/retiring work. "
+        "Pending backlog limits are distinct from workers. Do not request unavailable source data. "
+        "Use actual registered predictor metadata and generated feature IDs, not guessed columns. "
+        "Registered columns outside the chosen baseline schema must be declared in "
+        "recipe.extra_numeric_features before transforms reference them. "
+        "Feature definitions are typed numeric ASTs, never executable Python. All learned processing "
+        "and stacking is chronological, training-only or forward OOF. Do not use current-race "
+        "outcomes, final odds, market probabilities or targets as fundamental input features. "
+        "It is fine to say result in explanatory text. Fundamental win log loss is primary; market "
+        "blend is a separately calibrated reported endpoint. Classical Benter-only ancestry is "
+        "80% of dispatched outer trials; 20% experiments may include boosted, ranking, place, "
+        "recorded odds, speed/time, conditional-variance probit or composed models. You decide which "
+        "experimental programs; there is no forced E1/E2/E3/E4 rotation. Ensure both lanes have "
+        "available programs if their evidence queue is empty. One complex graph trial is valid. "
+        "On a fresh campaign with no completed trials, include an inexpensive reference program "
+        "in each lane using existing features without discovery, formulas or composed graphs. "
+        "These establish matched controls and lane readiness; other programs remain free to explore. "
+        "Use schema_version=3 recipes. Use exactly the provided evidence_id in decision and proposal "
+        "evidence_ids. The sole valid parent_trial_ids are attempt_id values in the current "
+        "campaign's completed_trial_index. references are historical context only, not valid "
+        "parents unless their IDs also appear in that completed_trial_index. If the index is "
+        "empty, every proposal must use empty parent_trial_ids. Examine latest compatible champions and "
+        "negative outcomes. Prior dataset scores are historical context, not comparable champions. "
+        "You may select betting_requests independently of trial_budget, including a zero-trial paper-only "
+        "decision. Use only paper_research.eligible_attempts from current completed win-probability trials "
+        "with identical comparison populations; references are never paper inputs. Paper actions may mix "
+        "normalized win probabilities and research Plackett-Luce exotic fair prices or explicitly hypothetical "
+        "scenario payouts/Kelly sizing. They do not submit wagers, read arbitrary paths, or make extra paid "
+        "planner calls. Choose up to four actions per decision, within eight pending and one active action; "
+        "choose fewer when useful. Do not fabricate market quotes, realized profits or independent validation. "
+        "No live code mutation, money wagering, credentials or arbitrary sources. Future data or "
+        "confirmation races are inaccessible. A failed proposal is not a successful empty decision."
+    )}, {"role": "user", "content": json.dumps(compact_planner_evidence({
+        "task": "research_decision_v6", "limits": limits,
+        "required_identity": {"decision_id": evidence_bundle["decision_id"],
+                              "evidence_id": evidence_bundle["evidence_id"],
+                              "research_memo_sha256": memo["sha256"] if memo else None},
+        "output_budget": {"max_completion_tokens": config.max_output_tokens,
+                          "reasoning_shares_budget": True,
+                          "format": "Concise JSON; omit optional default/null fields; keep explanations short. Copy required_identity exactly."},
+        "decision_schema": PlannerDecision.model_json_schema(),
+        "feature_definition_schema": FeatureDefinition.model_json_schema(),
+        "dataset_request_schema": DatasetRequest.model_json_schema(),
+        "performance_distribution_schema": PerformanceDistributionSpec.model_json_schema(),
+        "graph_example": {
+            "graph_id": "benter-boosted-pool", "primary_node_id": "benter",
+            "fundamental_node_id": "pool", "output_node_id": "pool",
+            "date_column": "date", "n_splits": 3, "min_train_dates": 2,
+            "nodes": [
+                {"node_id": "benter", "kind": "estimator", "parameters": {
+                    "model_kind": "benter_conditional_logit"}},
+                {"node_id": "boosted", "kind": "estimator", "parameters": {
+                    "model_kind": "boosted", "model_parameters": {"max_iter": 100}}},
+                {"node_id": "pool", "kind": "weighted_probability_pool",
+                 "inputs": ["benter", "boosted"], "parameters": {"weights": [0.6, 0.4]}},
+            ],
+        },
+        "graph_contract": {
+            "stages": ["feature_view", "estimator", "race_normalize", "calibrate",
+                       "weighted_probability_pool", "log_probability_pool", "meta_estimator",
+                       "market_blend", "probabilistic_adapter", "forward_oof_predict", "rank_distribution"],
+            "learned_downstream_fit_scope": "forward_oof",
+            "unsupported": ["arbitrary Python", "external fitted model references",
+                            "learned covariance", "arbitrary transform nodes"],
+            "outer_model": "Must match primary_node_id estimator model_kind; tuning binds that node",
+            "outer_adapters": "Set recipe.calibration.kind=none and recipe.blend.kind=none; compose these stages explicitly inside the graph",
+            "market_output": "Output contracts belong to nodes[].output, never the graph root. Set nodes[].output.market=true only for actual market ancestry; fundamental_node_id must have no market ancestor",
+        },
+        "model_parameter_contracts": MODEL_PARAMETER_CONTRACTS,
+        "evidence": evidence_bundle,
+    }), default=str, separators=(",", ":"))}]
+    payload = {"model": config.model, "messages": messages, "temperature": .2,
+               "max_tokens": config.max_output_tokens, "response_format": {"type": "json_object"}}
+    payload |= _service_tier_option(config) | _provider_route(config) | _reasoning_options(config)
+    usage_rows = []
+    started = time.monotonic()
+    for attempt in range(2):
+        response = _post_json(f"{config.base_url}/v1/chat/completions", payload, config)
+        usage_rows.append(normalize_openrouter_usage(response))
+        try:
+            raw = _json_message_from_response(response)
+            decision = PlannerDecision.model_validate(raw)
+            if memo and decision.research_memo_sha256 != memo["sha256"]:
+                raise ValueError("Research memo checksum acknowledgement missing or mismatched")
+            if decision.decision_id != evidence_bundle["decision_id"] or decision.evidence_id != evidence_bundle["evidence_id"]:
+                raise ValueError("Decision identity or evidence watermark mismatch")
+            if decision.trial_budget > limits["trial_ceiling"] or len(decision.programs) > limits["max_new_programs"]:
+                raise ValueError("Decision exceeds independent operator limits")
+            return {"decision": decision.model_dump(mode="json"),
+                    "usage": _sum_planner_usage(usage_rows), "raw_response": response,
+                    "planning_wall_seconds": time.monotonic()-started,
+                    "repair_count": attempt}
+        except Exception as exc:
+            if attempt == 1:
+                raise OpenRouterError(f"Invalid V6 decision: {exc}") from exc
+            payload["messages"].append({"role": "user", "content":
+                                        f"Decision validation failed: {str(exc)[:2000]}. Correct the JSON. "
+                                        "Preserve evidence/decision IDs and exact budget reconciliation."})
+    raise AssertionError("Decision retry loop did not return")
 
 
 def normalize_openrouter_usage(response: dict[str, Any]) -> dict[str, Any]:

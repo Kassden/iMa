@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +21,19 @@ from .feature_sets import FeatureSchema
 from .modeling import normalize_by_race, race_log_loss
 from .research_evaluation import placing_metrics, ranking_metrics, regression_metrics
 from .research_targets import TargetContract, apply_target_contract, target_contract
+
+
+def _thread_override(parameter: str) -> dict[str, int]:
+    value = os.environ.get("IMA_RESEARCH_THREADS")
+    if value is None:
+        return {}
+    try:
+        threads = int(value)
+    except ValueError as exc:
+        raise ValueError("IMA_RESEARCH_THREADS must be a positive integer") from exc
+    if threads < 1 or threads > (os.cpu_count() or 1):
+        raise ValueError("IMA_RESEARCH_THREADS exceeds the host CPU count")
+    return {parameter: threads}
 
 
 @dataclass(frozen=True)
@@ -105,7 +120,7 @@ class ResearchRegressor:
             self.native_model = CatBoostRegressor(
                 **({"iterations": 160, "depth": 5, "learning_rate": 0.05,
                     "thread_count": 1, "verbose": False, "random_seed": 42,
-                    "allow_writing_files": False} | dict(self.parameters or {}))
+                    "allow_writing_files": False} | dict(self.parameters or {}) | _thread_override("thread_count"))
             )
             self.native_model.fit(
                 prepared, frame[label_column], cat_features=list(feature_schema.categorical)
@@ -125,7 +140,7 @@ class ResearchRegressor:
             self.native_model = LGBMRanker(
                 **({"objective": "lambdarank", "n_estimators": 160, "learning_rate": 0.05,
                     "num_leaves": 15, "min_child_samples": 20, "n_jobs": 1,
-                    "verbosity": -1, "random_state": 42} | dict(self.parameters or {}))
+                    "verbosity": -1, "random_state": 42} | dict(self.parameters or {}) | _thread_override("n_jobs"))
             )
             self.native_model.fit(x, relevance, group=groups)
             return self
@@ -194,7 +209,7 @@ class ResearchClassifier:
             self.native_model = CatBoostClassifier(
                 **({"iterations": 160, "depth": 5, "learning_rate": 0.05,
                     "thread_count": 1, "verbose": False, "random_seed": 42,
-                    "allow_writing_files": False} | dict(self.parameters or {}))
+                    "allow_writing_files": False} | dict(self.parameters or {}) | _thread_override("thread_count"))
             )
             self.native_model.fit(
                 prepared, frame[label_column], cat_features=list(feature_schema.categorical)

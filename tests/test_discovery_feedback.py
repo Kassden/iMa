@@ -30,11 +30,14 @@ def history():
 class DiscoveryFeedbackTests(unittest.TestCase):
     def test_absolute_api_deadline(self):
         import asyncio
+        class SlowResponse:
+            async def __aenter__(self): await asyncio.sleep(5)
+            async def __aexit__(self,*args): pass
         class SlowClient:
             def __init__(self,**kwargs): pass
             async def __aenter__(self): return self
             async def __aexit__(self,*args): pass
-            async def post(self,*args,**kwargs): await asyncio.sleep(5)
+            def stream(self,*args,**kwargs): return SlowResponse()
         config=OpenRouterConfig("test","test",absolute_deadline_seconds=1)
         with patch("httpx.AsyncClient",SlowClient),self.assertRaisesRegex(OpenRouterError,"TimeoutError"):
             _post_json("https://example.invalid",{},config)

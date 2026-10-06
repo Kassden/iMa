@@ -50,6 +50,23 @@ class ResearchTargetTests(unittest.TestCase):
                 target_contract("adjusted_finish_time_or_speed", {"min_coverage": 0.9}),
             )
 
+    def test_known_nonfinisher_is_not_placed_and_ranking_excludes_whole_race(self):
+        frame = self.frame.copy()
+        row = frame.index[frame.result.gt(1)][0]
+        race_id = frame.loc[row, "race_id"]
+        frame["finishing_status"] = "FINISHED"
+        frame.loc[row, ["result", "finishing_status"]] = [float("nan"), "DNF"]
+        placing = apply_target_contract(frame, target_contract("placing_top_k", {"top_k": 2}))
+        self.assertEqual(0, placing.loc[row, "target_top_2"])
+        self.assertEqual(len(frame), len(placing))
+        ranked = apply_target_contract(frame, target_contract("ranking_strength"))
+        self.assertNotIn(race_id, set(ranked.race_id))
+        self.assertEqual(len(frame.loc[frame.race_id.ne(race_id)]), len(ranked))
+        frame.loc[row, "finishing_status"] = "UNKNOWN"
+        for kind in ("ranking_strength", "placing_top_k"):
+            with self.assertRaises(TargetContractError):
+                apply_target_contract(frame, target_contract(kind))
+
     def test_market_odds_forecast_requires_timestamped_future_snapshot(self):
         with self.assertRaisesRegex(TargetContractError, "odds_snapshot_at"):
             apply_target_contract(self.frame, target_contract("market_odds_forecast"))

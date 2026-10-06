@@ -155,6 +155,9 @@ class DatasetFeatureProfile:
 
 
 def run_research_campaign(config: Any) -> dict[str, Any]:
+    if config.research_policy == "expansion_v6":
+        from .research_expansion import run_expansion_campaign
+        return run_expansion_campaign(config)
     config.validate()
     if config.research_policy == "discovery_v5":
         from .research_v5 import run_v5_campaign
@@ -427,10 +430,13 @@ V4_CONTRACTS = {
 
 
 def _is_portfolio_policy(policy: str) -> bool:
-    return policy in {"benter_v3", "feature_v4", "discovery_v5"}
+    return policy in {"benter_v3", "feature_v4", "discovery_v5", "expansion_v6"}
 
 
 def _portfolio_version(policy: str) -> str | None:
+    if policy == "expansion_v6":
+        from .research_specs import V6_PORTFOLIO_VERSION
+        return V6_PORTFOLIO_VERSION
     return {
         "benter_v3": V3_PORTFOLIO_VERSION,
         "feature_v4": V4_PORTFOLIO_VERSION,
@@ -439,6 +445,30 @@ def _portfolio_version(policy: str) -> str | None:
 
 
 def _portfolio_identity(recipe: PipelineRecipe, policy: str) -> dict[str, str]:
+    if policy == "expansion_v6":
+        benter = (recipe.target.kind == "win_probability"
+                  and recipe.model.kind == "benter_conditional_logit"
+                  and recipe.performance_distribution is None)
+        if recipe.pipeline_graph is not None:
+            from .pipeline_graph import PipelineGraph
+            graph = PipelineGraph.from_dict(recipe.pipeline_graph).validate()
+            nodes = {node.node_id: node for node in graph.nodes}
+            reachable = set()
+            def visit(node_id):
+                if node_id is None or node_id in reachable:
+                    return
+                reachable.add(node_id)
+                for parent in nodes[node_id].inputs:
+                    visit(parent)
+            for root in (graph.output_node_id, graph.fundamental_node_id, graph.joint_node_id):
+                visit(root)
+            predictive = [nodes[key] for key in reachable if nodes[key].kind == "estimator"]
+            benter = benter and bool(predictive) and all(
+                node.kind == "estimator" and node.parameters.get("model_kind", recipe.model.kind) == "benter_conditional_logit"
+                for node in predictive)
+        return {"lane": "benter" if benter else "experimental",
+                "experiment_id": "B" if benter else f"E:{recipe.target.kind}:{recipe.model.kind}",
+                "portfolio_version": _portfolio_version(policy)}
     if policy == "benter_v3":
         return _v3_identity(recipe)
     pair = (recipe.target.kind, recipe.model.kind)
@@ -453,6 +483,8 @@ def _portfolio_identity(recipe: PipelineRecipe, policy: str) -> dict[str, str]:
 
 
 def _portfolio_slot(index: int, policy: str) -> str:
+    if policy == "expansion_v6":
+        return "B" if round(4*(index+1)/5)>round(4*index/5) else "E"
     if policy == "benter_v3":
         return _v3_slot(index)
     if round(4 * (index + 1) / 5) > round(4 * index / 5):
@@ -466,6 +498,8 @@ def _portfolio_contracts(policy: str) -> dict[str, tuple[str, str]]:
 
 
 def _tracking_names(policy: str) -> tuple[str, str]:
+    if policy == "expansion_v6":
+        return "ima-agentic-v6-research", "ima-agentic-v6-research-candidates"
     if policy == "discovery_v5":
         return "ima-agentic-v5-discovery", "ima-agentic-v5-discovery-candidates"
     if policy == "feature_v4":
@@ -1301,11 +1335,22 @@ def _protocol_parameters(config: Any) -> dict[str, Any]:
     if config.protocol_path is None:
         return {}
     payload = json.loads(Path(config.protocol_path).read_text(encoding="utf-8"))
-    allowed = {"min_train_races", "calibration_races", "score_races", "max_folds"}
-    unknown = sorted(set(payload) - allowed)
+    return protocol_spec_parameters(payload)
+
+
+def protocol_spec_parameters(payload: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError("Protocol must be an object")
+    registered = "spec" in payload
+    payload = payload.get("spec", payload)
+    if not isinstance(payload, dict):
+        raise ValueError("Protocol specification must be an object")
+    allowed = {"min_train_races", "calibration_races", "score_races", "max_folds", "whole_meeting_boundaries", "fold_selection"}
+    registry_fields = {"final_confirmation_races", "final_confirmation_race_ids", "final_confirmation_start"} if registered else set()
+    unknown = sorted(set(payload) - allowed - registry_fields)
     if unknown:
         raise ValueError(f"unknown protocol parameters: {unknown}")
-    return payload
+    return {key: value for key, value in payload.items() if key in allowed}
 
 
 def _execution_signature(

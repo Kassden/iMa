@@ -8,6 +8,41 @@ from ima.research_specs import PipelineRecipe, ResearchProposal
 
 
 class ResearchSearchTests(unittest.TestCase):
+    def test_integer_log_dimensions_survive_ask_tell_and_reopen(self):
+        from optuna.distributions import IntDistribution
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            search = ProgramSearchController(root)
+            program_id = search.register(ResearchProposal(
+                proposal_id="integer-log",hypothesis="Tune integer parameters on log scales.",
+                changed_axes=("hyperparameters",),recipe=PipelineRecipe(model={"kind":"boosted"}),
+                search_space={
+                    "max_iter":{"kind":"int","low":100,"high":2000,"log":True},
+                    "min_samples_leaf":{"kind":"int","low":10,"high":200,"log":True},
+                },expected_observation="Lower development loss.",
+                falsification_rule="No improvement.",max_trials=2,
+            ))
+            suggestion = search.ask(1,allowed_program_ids=[program_id])[0]
+            search.tell(program_id,suggestion.trial_number,2.0)
+            reopened = ProgramSearchController(root)
+            trial = reopened.studies[program_id].trials[suggestion.trial_number]
+            self.assertEqual("COMPLETE",trial.state.name)
+            self.assertEqual(2.0,trial.value)
+            self.assertEqual(2,reopened.programs[program_id].max_trials)
+            for name,low,high in (("max_iter",100,2000),("min_samples_leaf",10,200)):
+                distribution = trial.distributions[name]
+                self.assertIsInstance(distribution,IntDistribution)
+                self.assertTrue(distribution.log)
+                self.assertEqual((low,high),(distribution.low,distribution.high))
+                self.assertIs(type(trial.params[name]),int)
+                self.assertGreaterEqual(trial.params[name],low)
+                self.assertLessEqual(trial.params[name],high)
+                self.assertEqual(trial.params[name],suggestion.recipe.model.parameters[name])
+            following = reopened.ask(1,allowed_program_ids=[program_id])[0]
+            reopened.tell(program_id,following.trial_number,1.9)
+            self.assertEqual(2,ProgramSearchController(root).snapshot()["completed"])
+
     def test_planner_budget_is_dispatched_across_bounded_batches(self):
         with tempfile.TemporaryDirectory() as directory:
             search = ProgramSearchController(Path(directory))

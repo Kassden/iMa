@@ -1,0 +1,25 @@
+[Unit]
+Description=iMa isolated official HKJC corpus acquisition
+StartLimitIntervalSec=3600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=/home/imaopt/acquisition/hkjc-20261002/release-r16
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/imaopt/acquisition/hkjc-20261002/venv-r16/bin/python -m scripts.collect_official_corpus --seed-file config/hkjc_official_seeds.json --additional-seed-file config/rendered-seeds-001.json --additional-seed-file config/archive-seeds-001.json --additional-seed-file config/result-index-seeds-001.json --additional-seed-file config/trial-index-seeds-001.json --additional-seed-file config/movement-seeds-001.json --horse-seed-file config/horse_seeds.json --retry-scope-errors --output /home/imaopt/acquisition/hkjc-20261002/corpus --limit 1500 --seconds 3600 --continuous
+Restart=on-failure
+RestartPreventExitStatus=2
+RestartSec=300
+KillSignal=SIGINT
+KillMode=mixed
+TimeoutStopSec=180
+CPUQuota=100%
+MemoryHigh=1536M
+MemoryMax=2G
+TasksMax=64
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

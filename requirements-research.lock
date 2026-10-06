@@ -1,3 +1,4 @@
 optuna==4.5.0
 psutil==7.2.2
 pydantic==2.13.4
+Pebble==5.2.2

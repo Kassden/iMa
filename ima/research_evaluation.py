@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Iterable
 
 import numpy as np
@@ -61,9 +61,13 @@ def build_expanding_folds(
     calibration_races: int,
     score_races: int,
     max_folds: int | None = None,
+    whole_meeting_boundaries: bool = False,
+    fold_selection: str = "earliest",
 ) -> tuple[ResearchFold, ...]:
     if min_train_races < 1 or calibration_races < 1 or score_races < 1:
         raise ResearchEvaluationError("Fold race counts must be positive")
+    if fold_selection not in {"earliest", "latest"} or (max_folds is not None and max_folds < 1):
+        raise ResearchEvaluationError("Invalid fold selection or maximum fold count")
     order = race_order(frame)
     required = min_train_races + calibration_races + score_races
     if len(order) < required:
@@ -72,10 +76,21 @@ def build_expanding_folds(
         )
     folds: list[ResearchFold] = []
     start = min_train_races
+    def boundary(position):
+        if not whole_meeting_boundaries:
+            return position
+        while position < len(order) and position > 0 and order.iloc[position]["date"] == order.iloc[position-1]["date"]:
+            position += 1
+        return position
     while start + calibration_races + score_races <= len(order):
+        start = boundary(start)
+        calibration_end = boundary(start + calibration_races)
+        score_end = boundary(calibration_end + score_races)
+        if score_end > len(order) or calibration_end >= len(order) or start >= len(order):
+            break
         train = order.iloc[:start]
-        calibration = order.iloc[start:start + calibration_races]
-        score = order.iloc[start + calibration_races:start + calibration_races + score_races]
+        calibration = order.iloc[start:calibration_end]
+        score = order.iloc[calibration_end:score_end]
         fold = ResearchFold(
             fold_id=f"fold-{len(folds) + 1:03d}",
             train_race_ids=tuple(train["race_id"].astype(str)),
@@ -87,9 +102,14 @@ def build_expanding_folds(
         )
         validate_fold(frame, fold)
         folds.append(fold)
-        if max_folds is not None and len(folds) >= max_folds:
+        if fold_selection == "earliest" and max_folds is not None and len(folds) >= max_folds:
             break
-        start += score_races
+        start = boundary(score_end-calibration_races) if whole_meeting_boundaries else start+score_races
+    if not folds:
+        raise ResearchEvaluationError("No complete chronological folds after meeting-boundary alignment")
+    if fold_selection == "latest" and max_folds is not None:
+        folds = [replace(fold, fold_id=f"fold-{i + 1:03d}")
+                 for i, fold in enumerate(folds[-max_folds:])]
     return tuple(folds)
 
 
@@ -100,7 +120,7 @@ def validate_fold(frame: pd.DataFrame, fold: ResearchFold) -> None:
     if groups[0] & groups[1] or groups[0] & groups[2] or groups[1] & groups[2]:
         raise ResearchEvaluationError(f"Fold {fold.fold_id} has overlapping race IDs")
     order = race_order(frame)
-    position = {str(row.race_id): index for index, row in order.iterrows()}
+    position = {str(race_id): index for index, race_id in enumerate(order["race_id"])}
     missing = sorted(set().union(*groups) - set(position))
     if missing:
         raise ResearchEvaluationError(f"Fold {fold.fold_id} references unknown races: {missing}")
@@ -122,6 +142,8 @@ def make_protocol_manifest(
     calibration_races: int = 6,
     score_races: int = 6,
     max_folds: int | None = None,
+    whole_meeting_boundaries: bool = False,
+    fold_selection: str = "earliest",
 ) -> ProtocolManifest:
     contract = target_contract(target) if isinstance(target, str) else target
     work = apply_target_contract(frame, contract)
@@ -131,6 +153,8 @@ def make_protocol_manifest(
         calibration_races=calibration_races,
         score_races=score_races,
         max_folds=max_folds,
+        whole_meeting_boundaries=whole_meeting_boundaries,
+        fold_selection=fold_selection,
     )
     order = race_order(work)
     fingerprint = {
@@ -138,6 +162,11 @@ def make_protocol_manifest(
         "races": order["race_id"].astype(str).tolist(),
         "folds": [asdict(fold) for fold in folds],
     }
+    if whole_meeting_boundaries:
+        fingerprint.update(target_parameters=contract.parameters,
+                           whole_meeting_boundaries=True)
+    if fold_selection != "earliest":
+        fingerprint["fold_selection"] = fold_selection
     protocol_id = hashlib.sha256(
         json.dumps(fingerprint, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()[:16]

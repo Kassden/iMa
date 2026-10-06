@@ -22,6 +22,8 @@ _CONFIG_KEYS = {
     "max_trials_per_decision",
     "reference_campaign_dir",
     "max_inflight_programs", "queue_low_watermark", "host_reserve_cpu_threads", "host_reserve_ram_gib",
+    "max_new_programs_per_decision", "max_pending_programs", "max_active_preparations",
+    "memory_budget_gb_decimal", "worker_max_tasks", "dataset_registry_path", "official_snapshot_path",
 }
 
 
@@ -42,7 +44,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--campaign", type=Path, required=True)
     run.add_argument("--config", type=Path)
     run.add_argument("--policy", choices=("local", "openrouter", "agentic"))
-    run.add_argument("--research-policy", choices=("legacy", "benter_v3", "feature_v4", "discovery_v5"))
+    run.add_argument("--research-policy", choices=("legacy", "benter_v3", "feature_v4", "discovery_v5", "expansion_v6"))
     run.add_argument(
         "--max-trials",
         type=_parse_max_trials,
@@ -66,7 +68,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--openrouter-batch", action="store_true", default=None)
     run.add_argument("--model", help="Remote planner model, e.g. openai/gpt-5.6-luna")
     run.add_argument("--spec-profile", choices=("default", "long", "adaptive"))
-    run.add_argument("--planner-mode", choices=("local", "fixture", "openrouter"))
+    run.add_argument("--planner-mode", choices=("local", "fixture", "openrouter", "external"))
     run.add_argument("--max-total-cost-usd", type=float)
     run.add_argument("--max-output-tokens", type=int)
     run.add_argument("--planner-timeout-seconds", type=int)
@@ -78,6 +80,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--dry-run", action="store_true")
     status = sub.add_parser("status", help="Read durable campaign status")
     status.add_argument("--campaign", type=Path, required=True)
+    written = sub.add_parser("summary",help="Read the written campaign health and progress summary")
+    written.add_argument("--campaign",type=Path,required=True)
     stop = sub.add_parser("stop", help="Request graceful campaign stop")
     stop.add_argument("--campaign", type=Path, required=True)
     return root
@@ -152,12 +156,27 @@ def main() -> int:
             queue_low_watermark=int(values.get("queue_low_watermark",8)),
             host_reserve_cpu_threads=int(values.get("host_reserve_cpu_threads",4)),
             host_reserve_ram_gib=float(values.get("host_reserve_ram_gib",8)),
+            max_new_programs_per_decision=int(values.get("max_new_programs_per_decision",12)),
+            max_pending_programs=int(values.get("max_pending_programs",64)),
+            max_active_preparations=int(values.get("max_active_preparations",2)),
+            memory_budget_gb_decimal=float(values.get("memory_budget_gb_decimal",100)),
+            worker_max_tasks=int(values.get("worker_max_tasks",1)),
+            dataset_registry_path=Path(values["dataset_registry_path"]) if values.get("dataset_registry_path") else None,
+            official_snapshot_path=Path(values["official_snapshot_path"]) if values.get("official_snapshot_path") else None,
         )
         payload = run_campaign(config, dry=args.dry_run)
         print(_render(payload))
         return 0
     if args.command == "status":
         print(json.dumps(campaign_status(args.campaign), indent=2, sort_keys=True))
+        return 0
+    if args.command == "summary":
+        path = args.campaign/"summary.md"
+        if path.is_file():
+            print(path.read_text())
+        else:
+            from ima.research_summary import summary,summary_markdown
+            print(summary_markdown(summary(campaign_status(args.campaign))))
         return 0
     if args.command == "stop":
         marker = request_campaign_stop(args.campaign)

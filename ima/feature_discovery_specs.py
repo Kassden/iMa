@@ -51,3 +51,31 @@ class DiscoverySpec(BaseModel):
 
     def discovery_id(self) -> str:
         return content_id(self.model_dump(mode="json"))
+
+
+class DiscoverySpecV2(DiscoverySpec):
+    """Explicit V6 budgets. None means all eligible, never an implicit ceiling."""
+
+    schema_version: Literal[2] = 2
+    measurements: tuple[str, ...] = ("speed_mps",)
+    max_depth: int = Field(default=1, ge=1)
+    max_definitions: int = Field(default=500, ge=1)
+    max_selected: int | None = Field(default=None, ge=1)
+    selection_shortlist: int | None = Field(default=None, ge=1)
+    selection_fit_budget: int | None = Field(default=None, ge=1)
+    formula_definition_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def valid_selection_budget(self):
+        if self.selection_shortlist is not None and (
+            self.max_selected is None or self.max_selected > self.selection_shortlist
+        ):
+            raise ValueError("Explicit shortlist cannot truncate requested selection budget")
+        if any(not value.isidentifier() for value in self.measurements):
+            raise ValueError("Measurements must be explicit numeric symbol bindings")
+        return self
+
+
+def parse_discovery_spec(value: dict) -> DiscoverySpec | DiscoverySpecV2:
+    cls = DiscoverySpecV2 if value.get("schema_version", 1) == 2 else DiscoverySpec
+    return cls.model_validate(value)

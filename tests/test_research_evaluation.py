@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -23,6 +24,31 @@ FIXTURE = Path(__file__).parent / "fixtures" / "research_races.csv"
 
 
 class ResearchEvaluationTests(unittest.TestCase):
+    def test_metadata_bearing_folds_preserve_identity_without_row_objects(self):
+        parameters = dict(min_train_races=2, calibration_races=1, score_races=1,
+                          max_folds=2, fold_selection="latest")
+        expected = build_expanding_folds(self.frame, **parameters)
+        self.frame.attrs["dataset_manifest"] = {"predictors": ["feature"] * 20000}
+        with patch.object(pd.DataFrame, "iterrows", side_effect=AssertionError("row metadata copies")):
+            actual = build_expanding_folds(self.frame, **parameters)
+        self.assertEqual(expected, actual)
+        self.assertEqual(20000, len(self.frame.attrs["dataset_manifest"]["predictors"]))
+
+    def test_latest_fold_selection_is_explicit_and_legacy_default_is_unchanged(self):
+        parameters = dict(min_train_races=2, calibration_races=1, score_races=1, max_folds=1)
+        default = build_expanding_folds(self.frame, **parameters)
+        earliest = build_expanding_folds(self.frame, **parameters, fold_selection="earliest")
+        latest = build_expanding_folds(self.frame, **parameters, fold_selection="latest")
+        self.assertEqual(default, earliest)
+        self.assertEqual(("R4",), earliest[0].score_race_ids)
+        self.assertEqual(("R6",), latest[0].score_race_ids)
+        self.assertEqual("fold-001", latest[0].fold_id)
+        self.assertEqual(("R1", "R2", "R3", "R4"), latest[0].train_race_ids)
+        self.assertNotEqual(make_protocol_manifest(self.frame, **parameters).protocol_id,
+                            make_protocol_manifest(self.frame, **parameters, fold_selection="latest").protocol_id)
+        with self.assertRaises(ResearchEvaluationError):
+            build_expanding_folds(self.frame, **parameters, fold_selection="random")
+
     def setUp(self):
         self.frame = pd.read_csv(FIXTURE, parse_dates=["date"])
 

@@ -66,7 +66,7 @@ def _surface(course, surface) -> str:
     return "UNKNOWN"
 
 
-def _race_safe_history(frame: pd.DataFrame, keys: list[str], prefix: str) -> pd.DataFrame:
+def _race_safe_history(frame: pd.DataFrame, keys: list[str], prefix: str, *, strict_before_meeting: bool = False) -> pd.DataFrame:
     race = frame[[*keys, "race_id", "date", "race_no", "target_win", "target_top3"]].groupby(
         [*keys, "race_id"], dropna=False, as_index=False
     ).agg(
@@ -83,11 +83,14 @@ def _race_safe_history(frame: pd.DataFrame, keys: list[str], prefix: str) -> pd.
     denominator = race[starts_name].replace(0, np.nan)
     race[f"{prefix}_win_rate"] = prior_wins / denominator
     race[f"{prefix}_top3_rate"] = prior_top3 / denominator
+    if strict_before_meeting:
+        columns = [starts_name, f"{prefix}_win_rate", f"{prefix}_top3_rate"]
+        race[columns] = race.groupby([*keys, "date"], dropna=False, sort=False)[columns].transform(lambda values: values.iloc[0])
     return race[[*keys, "race_id", starts_name, f"{prefix}_win_rate", f"{prefix}_top3_rate"]]
 
 
-def _merge_history(frame: pd.DataFrame, keys: list[str], prefix: str) -> pd.DataFrame:
-    history = _race_safe_history(frame, keys, prefix)
+def _merge_history(frame: pd.DataFrame, keys: list[str], prefix: str, *, strict_before_meeting: bool = False) -> pd.DataFrame:
+    history = _race_safe_history(frame, keys, prefix, strict_before_meeting=strict_before_meeting)
     return frame.merge(history, on=[*keys, "race_id"], how="left", validate="many_to_one")
 
 
@@ -211,13 +214,15 @@ def prepare_rich_runner_dataset(
     profiles: pd.DataFrame | None = None,
     veterinary: pd.DataFrame | None = None,
     movements: pd.DataFrame | None = None,
+    *, strict_before_meeting: bool = False,
 ) -> pd.DataFrame:
     frame = source.copy()
     frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
     frame["result"] = pd.to_numeric(frame["result"], errors="coerce")
     frame["win_odds"] = pd.to_numeric(frame["win_odds"], errors="coerce")
     frame["place_odds"] = pd.to_numeric(_series(frame, "place_odds"), errors="coerce")
-    frame = frame[frame["result"].notna()].copy()
+    known_nonfinisher = _series(frame, "finishing_status", "").isin({"PU", "UR", "FE", "DNF", "DISQ", "TNP"})
+    frame = frame[frame["result"].notna() | known_nonfinisher].copy()
     frame["target_win"] = frame["result"].eq(1).astype(int)
     frame["target_top3"] = frame["result"].le(3).astype(int)
     frame["target_second"] = frame["result"].eq(2).astype(int)
@@ -351,6 +356,12 @@ def prepare_rich_runner_dataset(
     frame["trainer_avg_result_90d"] = _time_rolling_shift(
         frame, "result", 90, keys=("trainer_key",)
     )
+    if strict_before_meeting:
+        for entity, columns in (
+            ("jockey_key", ["jockey_last_result", "jockey_last_speed_ratio", "jockey_avg_result_90d"]),
+            ("trainer_key", ["trainer_last_result", "trainer_avg_result_90d"]),
+        ):
+            frame[columns] = frame.groupby([entity, "date"], sort=False, dropna=False)[columns].transform(lambda values: values.iloc[0])
 
     histories = (
         (["horse_id", "distance_band"], "distance_band"), (["horse_id", "venue"], "venue"),
@@ -361,7 +372,7 @@ def prepare_rich_runner_dataset(
         (["venue", "surface", "distance_band", "draw"], "draw_bias"),
     )
     for keys, prefix in histories:
-        frame = _merge_history(frame, keys, prefix)
+        frame = _merge_history(frame, keys, prefix, strict_before_meeting=strict_before_meeting)
 
     track = _event_windows(
         frame, trackwork if trackwork is not None else pd.DataFrame(),

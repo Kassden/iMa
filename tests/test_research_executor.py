@@ -57,6 +57,14 @@ class ResearchExecutorTests(unittest.TestCase):
             totals = predictions.groupby("race_id")["selected_probability"].sum()
             self.assertTrue(np.allclose(totals.to_numpy(), 1.0))
 
+    def test_v6_freezes_persisted_prediction_checksum(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            result = self._run(Path(directory), PipelineRecipe(schema_version=3))
+            self.assertEqual("completed", result.status, result.error)
+            self.assertEqual(result.lineage["prediction_sha256"], hashlib.sha256(
+                Path(result.artifacts["predictions"]).read_bytes()).hexdigest())
+
     def test_fundamental_portfolio_optimizes_and_packages_standalone_probabilities(self):
         with tempfile.TemporaryDirectory() as directory:
             result = self._run(

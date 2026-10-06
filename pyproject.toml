@@ -33,6 +33,10 @@ ima-train = "scripts.train:main"
 ima-optimize = "scripts.optimize:main"
 
 [project.optional-dependencies]
+acquisition = [
+  "scrapy>=2.13,<3",
+  "pypdf>=6,<7",
+]
 features = [
   "featuretools==1.31.0",
   "feature-engine==1.9.4",
@@ -42,6 +46,7 @@ dev = [
   "playwright>=1.54,<2",
 ]
 research = [
+  "Pebble==5.2.2",
   "httpx>=0.28,<1",
   "catboost>=1.2,<2",
   "lightgbm>=4.5,<5",

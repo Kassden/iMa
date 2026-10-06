@@ -16,6 +16,26 @@ from ima.openrouter_orchestrator import (
 
 
 class OpenRouterOrchestratorTests(unittest.TestCase):
+    def test_v6_decision_has_one_budget_and_structural_capability_schemas(self):
+        import json
+        from ima.openrouter_orchestrator import choose_research_decision
+        response = {"choices": [{"message": {"content": json.dumps({
+            "decision_id": "D000001", "evidence_id": "e1", "trial_budget": 0,
+            "review_reason": "Review the latest results before extending programs",
+        })}}], "usage": {"prompt_tokens": 100, "completion_tokens": 50, "cost": .002}}
+        with mock.patch("ima.openrouter_orchestrator._post_json", return_value=response) as post:
+            chosen = choose_research_decision(
+                {"decision_id": "D000001", "evidence_id": "e1"},
+                {"trial_ceiling": 260, "max_new_programs": 12},
+                OpenRouterConfig("key", "test/model"),
+            )
+        self.assertEqual(1, post.call_count)
+        prompt = json.loads(post.call_args.args[1]["messages"][1]["content"])
+        self.assertIn("expression_ast", prompt["feature_definition_schema"]["properties"])
+        self.assertIn("protocol", prompt["dataset_request_schema"]["properties"])
+        self.assertEqual(0, chosen["decision"]["trial_budget"])
+        self.assertEqual(.002, chosen["usage"]["total_cost_usd"])
+
     def test_submit_batch_uses_current_v1_endpoint(self):
         captured = {}
 
