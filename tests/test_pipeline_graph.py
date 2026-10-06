@@ -271,13 +271,14 @@ class PipelineGraphTests(unittest.TestCase):
             frame = pd.read_csv("tests/fixtures/research_races.csv")
             frame["distance"] = 1200
             frame["finish_seconds"] = 70 + frame["horse_no"]
+            frame["field_size"] = frame.groupby("race_id")["horse_no"].transform("size")
             dataset = root / "timed.csv"
             frame.to_csv(dataset, index=False)
             for example in adapter_recipe_examples():
                 kind = example["model"]["kind"]
                 with self.subTest(model=kind):
                     if kind == "catboost_regressor":
-                        example["model"]["parameters"] = {"iterations": 40, "depth": 3, "thread_count": 1}
+                        example["model"]["parameters"] = {"iterations": 40, "depth": 3}
                     recipe = PipelineRecipe.model_validate(example)
                     result = execute_recipe(RecipeExecutionRequest(
                         attempt_id=f"attempt-{kind}", proposal_id="adapter-canary", trial_number=0,
