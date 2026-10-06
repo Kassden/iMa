@@ -38,11 +38,14 @@ class BillingRecoveryTests(unittest.TestCase):
                 self.assertNotIn("secret", json.dumps(report))
 
     def test_invalid_provider_cost_and_identity(self):
-        for cost in (None, True, -1, float("nan"), float("inf"), "0.01"):
+        for cost in (None, True, -1, float("nan"), float("inf"), "0.01", 10**400):
             with self.subTest(cost=cost), self.assertRaises(ValueError):
                 billing_receipt({"data": {"id": "gen-ok", "total_cost": cost}}, "gen-ok", {}, "rev")
         with self.assertRaises(ValueError):
             billing_receipt({"data": {"id": "gen-other", "total_cost": 0.1}}, "gen-ok", {}, "rev")
+        for finish_reason in (None, True, 1, ["stop"], {"state": "running"}, " "):
+            with self.subTest(finish_reason=finish_reason), self.assertRaises(ValueError):
+                billing_receipt({"data": {"id": "gen-ok", "total_cost": 0.1, "cancelled": False, "finish_reason": finish_reason}}, "gen-ok", {}, "rev")
 
     def test_get_only_idempotent_accounting(self):
         from ima.research_expansion import _planner_spend

@@ -22,9 +22,14 @@ def billing_receipt(payload, generation_id, transport, revision):
     if not isinstance(data, dict) or data.get("id") != generation_id:
         raise ValueError("Generation identity mismatch")
     cost = data.get("total_cost")
-    if isinstance(cost, bool) or not isinstance(cost, (int, float)) or not math.isfinite(cost) or cost < 0:
+    try:
+        valid_cost = not isinstance(cost, bool) and isinstance(cost, (int, float)) and math.isfinite(cost) and cost >= 0
+    except OverflowError:
+        valid_cost = False
+    if not valid_cost:
         raise ValueError("Authoritative charge is unavailable or invalid")
-    if data.get("cancelled") is not True and not data.get("finish_reason"):
+    finish_reason = data.get("finish_reason")
+    if data.get("cancelled") is not True and not (isinstance(finish_reason, str) and finish_reason.strip()):
         raise ValueError("Provider generation is not finalized")
     usage = {"cost": cost}
     for name in ("prompt", "completion"):
