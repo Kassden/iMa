@@ -1,0 +1,18 @@
+[Unit]
+Description=iMa bounded GET-only planner billing recovery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/home/imaopt/.config/imaopt/planner-billing.env
+EnvironmentFile=/home/imaopt/.config/imaopt/openrouter.env
+ExecStart=/bin/bash ${IMA_BILLING_RELEASE}/deploy/systemd/ima-planner-billing-reconcile
+TimeoutStartSec=65
+UMask=0077
+Nice=10
+CPUQuota=25%
+MemoryMax=768M
+TasksMax=16
+StandardOutput=journal
+StandardError=journal

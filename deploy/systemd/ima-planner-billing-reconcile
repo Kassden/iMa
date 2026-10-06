@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+: "${IMA_BILLING_RELEASE:?Set immutable recovery release}"
+: "${IMA_BILLING_REVISION:?Set committed recovery revision}"
+: "${IMA_BILLING_CAMPAIGN:?Set own-user campaign}"
+: "${IMA_BILLING_PYTHON:?Set own-user interpreter}"
+
+[[ $(id -un) == imaopt && $HOME == /home/imaopt ]]
+[[ $IMA_BILLING_REVISION =~ ^[0-9a-f]{40}$ ]]
+[[ $IMA_BILLING_RELEASE == /home/imaopt/research-v2/live-releases/ima-billing-$IMA_BILLING_REVISION ]]
+[[ $(realpath "$IMA_BILLING_RELEASE") == "$IMA_BILLING_RELEASE" ]]
+[[ $(< "$IMA_BILLING_RELEASE/REVISION") == "$IMA_BILLING_REVISION" ]]
+[[ $IMA_BILLING_CAMPAIGN =~ ^/home/imaopt/research-v2/campaigns/agentic_v[67]_[a-zA-Z0-9_]+$ ]]
+[[ $(realpath "$IMA_BILLING_CAMPAIGN") == "$IMA_BILLING_CAMPAIGN" ]]
+[[ $IMA_BILLING_PYTHON == /home/imaopt/research-v2/v6-dependencies/venv/bin/python ]]
+
+export PYTHONNOUSERSITE=1
+export PYTHONPATH="$IMA_BILLING_RELEASE:/home/imaopt/research-v2/v6-dependencies/site-packages"
+cd "$IMA_BILLING_RELEASE"
+exec "$IMA_BILLING_PYTHON" -m scripts.reconcile_planner_billing \
+    --campaign "$IMA_BILLING_CAMPAIGN" --revision "$IMA_BILLING_REVISION"
