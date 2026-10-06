@@ -159,6 +159,7 @@ def validate_forecasts(inputs):
 def render_inputs(inputs):
     search = read_json(inputs.data['search.json'])
     summary = read_json(inputs.data['evaluation/summary.json'])
+    calibration = read_json(inputs.data['evaluation/calibration.json'])
     if set(summary) != set(LABELS):
         raise ValueError('Summary must contain exactly six variants')
     if search['grid_count'] != 588:
@@ -186,13 +187,17 @@ def render_inputs(inputs):
              f"Selected recipe: {recipe(search['selected_recipe'])}. Baseline: {recipe(search['baseline_recipe'])}.", '',
              f"Best search loss: {number(search['search_best_loss']):.9f}. Confirmation candidate loss: {candidate:.9f}; "
              f"baseline: {baseline:.9f}; candidate minus baseline: {candidate - baseline:+.9f}. "
-             f"Adopted: {adopted}. Forecast family: **{LABELS[selected]}**.", '',
+             f"Protocol adoption decision: {'candidate selected' if adopted else 'baseline retained'}. "
+             f"Forecast family: **{LABELS[selected]}**. This is a **provisional experiment only**; "
+             'the original deployment was not changed.', '',
              '## Three Disjoint Preseason Windows', '',
              table(['Window', 'Races', 'Meetings', 'First date', 'Last date'], rows), '',
              'Search chooses the pool recipe; confirmation compares it with the fixed baseline; '
              'the final calibration window fits the downstream market blend and finish-order exponents. '
              'These date windows do not overlap. The September/October season was already viewed in the earlier report, '
              'so this is **exploratory, not a new untouched holdout or independent proof of improvement**.', '',
+             f"The confirmation cohort has only **{search['splits']['confirmation']['races']} races**; "
+             'this small comparison is not strong evidence of generalization or a betting edge.', '',
              f"Search policy: {search['policy']}. Calibration policy: {search['downstream_calibration_policy']}.", '',
              '## Season Comparison', '']
     rows = []
@@ -212,6 +217,27 @@ def render_inputs(inputs):
         rows = [[pool, value['nsettled'], money(value['stake_hkd']), money(value['gross_hkd']),
                  money(value['profit_hkd']), percent(value['roi'])] for pool, value in summary[name]['by_pool'].items()]
         lines += [f'### {LABELS[name]}', '', table(['Pool', 'Settled', 'Stake HKD', 'Gross HKD', 'Net HKD', 'ROI'], rows), '']
+    rows, zero_fundamental = [], []
+    for family in ('baseline_pool', 'candidate_pool'):
+        blend = calibration[family]['blend']
+        a, b = number(blend['fundamental_weight']), number(blend['market_weight'])
+        rows.append([LABELS[family], f'{a:.9f}', f'{b:.9f}', calibration[family]['calibration_races']])
+        if a == 0:
+            zero_fundamental.append(LABELS[family])
+    lines += ['## Market Blend Calibration', '',
+              'Combined WIN probability is proportional to fundamental probability raised to a, '
+              'times market probability raised to b, normalized within each race.', '',
+              table(['Pool', 'Fundamental exponent a', 'Market exponent b', 'Calibration races'], rows), '']
+    if zero_fundamental:
+        lines += [f"Zero fundamental weight for {', '.join(zero_fundamental)} means a **pure calibrated-market forecast, "
+                  'not a model edge**: those blends discard the fundamental prediction. '
+                  'A zero exponent is a calibration result, not evidence that the selected pool adds signal beyond the market.', '']
+    calibration_sizes = ', '.join(str(n) for n in sorted({calibration[family]['calibration_races']
+                                                         for family in ('baseline_pool', 'candidate_pool')}))
+    lines += [f"**Not a like-for-like coefficient comparison:** this study fits the market blends on {calibration_sizes} races "
+              'in the final disjoint calibration window. The earlier season report fitted the original pool blend on 220 races '
+              'and reported fundamental weight approximately 0.0721. The fitting populations differ; comparing those weights '
+              'does not isolate a recipe improvement or prove that a previously established model edge disappeared.', '']
     forecasts, raw_frames = validate_forecasts(inputs)
     live = forecasts[forecasts.family.eq(selected)]
     raw = raw_frames[selected]
@@ -225,7 +251,16 @@ def render_inputs(inputs):
                      money(ev) if pd.notna(ev) else 'unknown',
                      f"#{int(fundamental.horse_no)} {fundamental.horse_name}", percent(fundamental.model_probability)])
     known = pd.to_numeric(live.quoted_ev_hkd, errors='raise').dropna()
-    lines += ['## Selected October 7 Snapshot Forecast', '',
+    lines += ['## Selected October 7 Snapshot Forecast', '']
+    if 'quote_retrieved_at_utc' in live:
+        timestamps = pd.to_datetime(live.quote_retrieved_at_utc.dropna(), utc=True, errors='raise').dropna()
+        if len(timestamps):
+            first = timestamps.min().tz_convert('Asia/Hong_Kong')
+            last = timestamps.max().tz_convert('Asia/Hong_Kong')
+            lines += [f"WIN quote snapshot captured **{first.strftime('%Y-%m-%d %H:%M:%S')} to "
+                      f"{last.strftime('%Y-%m-%d %H:%M:%S')} HKT**, from the selected family's quote retrieval rows. "
+                      'These are capture times, not a claim that prices remained unchanged until race time.', '']
+    lines += [
               table(['Race', 'Combined WIN pick', 'Combined WIN p', 'Paid PLACE p', 'WIN EV HKD/10',
                      'Fundamental WIN pick', 'Fundamental WIN p'], rows), '',
               f"{len(known)} known snapshot WIN EVs for the selected family: {int(known.lt(0).sum())} negative, "

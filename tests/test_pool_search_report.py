@@ -40,8 +40,10 @@ def fixture(root):
                       'stake_hkd': 6240, 'gross_hkd': 3120, 'profit_hkd': -3120, 'roi': -.5,
                       'by_pool': pools} for name in LABELS}
     (root / 'evaluation/summary.json').write_text(json.dumps(summary))
-    for name in ('provenance.json', 'calibration.json'):
-        (root / 'evaluation' / name).write_text('{}')
+    (root / 'evaluation/provenance.json').write_text('{}')
+    calibration = {family: {'blend': {'fundamental_weight': 0.0, 'market_weight': 1.0317689234},
+                            'calibration_races': 97} for family in ('baseline_pool', 'candidate_pool')}
+    (root / 'evaluation/calibration.json').write_text(json.dumps(calibration))
     rows = []
     for family in ('baseline_pool', 'candidate_pool'):
         raw = []
@@ -74,6 +76,17 @@ class PoolSearchReportTests(unittest.TestCase):
         self.assertIn('108 known snapshot WIN EVs', report)
         self.assertIn('108 negative', report)
         self.assertEqual(report.count('| WIN |'), 2)
+        self.assertIn('pure calibrated-market forecast', report)
+        self.assertIn('not a model edge', report)
+        self.assertIn('0.000000000 | 1.031768923 | 97', report)
+        self.assertIn('only **34 races**', report)
+        self.assertIn('provisional experiment only', report)
+        self.assertIn('original deployment was not changed', report)
+        self.assertIn('fits the market blends on 97 races', report)
+        self.assertIn('original pool blend on 220 races', report)
+        self.assertIn('fundamental weight approximately 0.0721', report)
+        self.assertIn('Not a like-for-like coefficient comparison', report)
+        self.assertNotIn('quote snapshot captured', report)
         output = self.root / 'report.md'
         write_report(self.root, output)
         self.assertEqual(output.read_text(), report)
@@ -162,6 +175,18 @@ class PoolSearchReportTests(unittest.TestCase):
         self.assertIn('9 positive', report)
         self.assertIn('9 unknown', report)
         self.assertIn('does not guarantee an edge', report)
+
+    def test_quote_capture_window_is_hong_kong_time(self):
+        path = self.root / 'evaluation/tomorrow-market-blends.csv'
+        frame = pd.read_csv(path)
+        frame['quote_retrieved_at_utc'] = '2026-10-06T13:23:25.797981+00:00'
+        frame.loc[(frame.family == 'candidate_pool') & (frame.horse_no == 12),
+                  'quote_retrieved_at_utc'] = '2026-10-06T13:23:34.894742+00:00'
+        frame.to_csv(path, index=False)
+        seal(self.root)
+        report = render(self.root)
+        self.assertIn('2026-10-06 21:23:25', report)
+        self.assertIn('2026-10-06 21:23:34 HKT', report)
 
     def test_overlapping_windows_rejected(self):
         path = self.root / 'search.json'
