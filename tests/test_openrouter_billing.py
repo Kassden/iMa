@@ -9,6 +9,66 @@ from ima.openrouter_billing import _publish, billing_receipt, reconcile
 
 
 class BillingRecoveryTests(unittest.TestCase):
+    def terminal_error(self):
+        return {"id": "gen-ok", "total_cost": 0.00932526, "cancelled": False,
+                "finish_reason": None, "native_finish_reason": None,
+                "generation_time": 298295, "native_tokens_prompt": 76866,
+                "native_tokens_completion": 13374, "upstream_id": "chatcmpl-aborted",
+                "provider_responses": [{"id": "chatcmpl-aborted", "status": 499}]}
+
+    def test_aborted_provider_stream_charge_without_finish_reason(self):
+        data = self.terminal_error()
+        receipt = billing_receipt({"data": data}, "gen-ok", {}, "rev")
+        self.assertEqual(receipt["billing_finalization_basis"], "provider_terminal_error")
+        self.assertTrue(receipt["billing_only"])
+        self.assertEqual(receipt["response"]["usage"]["cost"], 0.00932526)
+        self.assertEqual(receipt["response"]["usage"]["total_tokens"], 90240)
+        self.assertNotIn("choices", receipt["response"])
+
+    def test_provider_error_finalization_rejects_ambiguous_or_inflight_metadata(self):
+        variants = [
+            {"provider_responses": [{"id": "chatcmpl-other", "status": 499}]},
+            {"provider_responses": [{"id": "chatcmpl-aborted", "status": 200}]},
+            {"provider_responses": [{"id": "chatcmpl-aborted", "status": 102}]},
+            {"provider_responses": [{"id": "chatcmpl-aborted", "status": "499"}]},
+            {"provider_responses": [{"id": "chatcmpl-aborted", "status": 499}, None]},
+            {"provider_responses": [{"id": "chatcmpl-aborted", "status": 499},
+                                    {"id": "chatcmpl-active", "status": 200}]},
+            {"generation_time": None}, {"generation_time": float("nan")},
+            {"generation_time": -1}, {"generation_time": True},
+            {"generation_time": 10**400},
+            {"native_tokens_completion": None}, {"native_tokens_prompt": True},
+            {"upstream_id": None}, {"total_cost": None},
+        ]
+        for changes in variants:
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                billing_receipt({"data": dict(self.terminal_error(), **changes)}, "gen-ok", {}, "rev")
+
+    def test_terminal_error_get_only_recovery_unblocks_spend_idempotently(self):
+        from ima.research_expansion import _planner_spend
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            (root / "planner-transport").mkdir()
+            (root / "decisions").mkdir()
+            path = root / "planner-transport/D000198-01.json"
+            path.write_text(json.dumps({"evidence_id": "e1", "events": [
+                {"phase": "response_headers", "status_code": 200, "generation_id": "gen-ok"},
+                {"phase": "request_failed", "exception_type": "TimeoutError"}]}))
+            decision = root / "decisions/D000198.json"
+            decision.write_text(json.dumps({"planner_status": "failed", "planner_usage": {}}))
+            original = (path.read_bytes(), decision.read_bytes())
+            def handler(request):
+                self.assertEqual(request.method, "GET")
+                return httpx.Response(200, json={"data": self.terminal_error()})
+            with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+                self.assertTrue(_planner_spend(root)["spend_unknown"])
+                report = reconcile(root, "secret", revision="rev", client=client)
+                self.assertEqual(report["recovered"], ["D000198-01.json"])
+                self.assertFalse(_planner_spend(root)["spend_unknown"])
+                self.assertEqual(_planner_spend(root)["total_cost_usd"], 0.00932526)
+                self.assertEqual(reconcile(root, "secret", revision="rev", client=client)["requests"], 0)
+                self.assertEqual(original, (path.read_bytes(), decision.read_bytes()))
+
     def test_atomic_publication_never_overwrites(self):
         with TemporaryDirectory() as temporary:
             path = Path(temporary) / "receipt.json"

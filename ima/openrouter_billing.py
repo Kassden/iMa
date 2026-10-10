@@ -15,6 +15,36 @@ ATTEMPT = re.compile(r"D[0-9]{6}-[0-9]{2,}\.json\Z")
 GENERATION = re.compile(r"gen-[A-Za-z0-9_-]+\Z")
 
 
+def _finalization_basis(data):
+    if data.get("cancelled") is True:
+        return "cancelled"
+    reason = data.get("finish_reason")
+    if isinstance(reason, str) and reason.strip():
+        return "finish_reason"
+    # Aborted upstream streams can be billed without a completion finish reason.
+    # Require the final provider response to identify this exact upstream request.
+    responses = data.get("provider_responses")
+    upstream_id = data.get("upstream_id")
+    if not isinstance(responses, list) or not responses or not isinstance(upstream_id, str) or not upstream_id:
+        return None
+    last = responses[-1]
+    if not isinstance(last, dict) or last.get("id") != upstream_id:
+        return None
+    status = last.get("status")
+    duration = data.get("generation_time")
+    tokens = [data.get("native_tokens_" + name) for name in ("prompt", "completion")]
+    try:
+        valid_duration = (isinstance(duration, (int, float)) and not isinstance(duration, bool)
+                          and math.isfinite(duration) and duration >= 0)
+    except OverflowError:
+        valid_duration = False
+    if (isinstance(status, int) and not isinstance(status, bool) and 400 <= status <= 599
+            and valid_duration
+            and all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in tokens)):
+        return "provider_terminal_error"
+    return None
+
+
 def billing_receipt(payload, generation_id, transport, revision):
     if not isinstance(payload, dict):
         raise ValueError("Malformed provider payload")
@@ -28,8 +58,8 @@ def billing_receipt(payload, generation_id, transport, revision):
         valid_cost = False
     if not valid_cost:
         raise ValueError("Authoritative charge is unavailable or invalid")
-    finish_reason = data.get("finish_reason")
-    if data.get("cancelled") is not True and not (isinstance(finish_reason, str) and finish_reason.strip()):
+    finalization = _finalization_basis(data)
+    if finalization is None:
         raise ValueError("Provider generation is not finalized")
     usage = {"cost": cost}
     for name in ("prompt", "completion"):
@@ -44,6 +74,7 @@ def billing_receipt(payload, generation_id, transport, revision):
         "received_at": datetime.now(timezone.utc).isoformat(),
         "billing_only": True,
         "billing_source": "openrouter_generation_api",
+        "billing_finalization_basis": finalization,
         "recovery_revision": revision,
         "provider_generation": payload,
     }
