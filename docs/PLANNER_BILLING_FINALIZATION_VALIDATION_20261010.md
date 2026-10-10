@@ -69,3 +69,11 @@ Readback **2026-10-10 02:56:15 UTC / 11:56:15 JST / 10:56:15 HKT**:
 Verified outcome is new accepted planning and actual training, not just active service.
 No new predictive gain is claimed. Future independent planner timeout/validation/model
 failures remain possible; this repair specifically removes the observed billing deadlock.
+
+Final refresh at **02:59:40 UTC / 11:59:40 JST**: completed advanced to677, failed34,
+one further Benter attempt running on fold3/3. Spend USD9.912816503 remains fully
+accounted with zero unresolved IDs. D000200 was rejected with `Proposal has stale
+evidence` (cost USD0.05413212); this is a separate proposal-validation problem already
+covered by the broader reliability plan, not recurrence of the billing freeze or a
+training failure. Do not claim the entire campaign is error-free. Repair branch pushed
+to origin; not merged. Controller/model code and the original D198 history still unchanged.
