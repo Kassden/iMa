@@ -183,6 +183,8 @@ class PlannerRequestGuardTests(unittest.TestCase):
         evidence, response = self.fixture()
         recipe = response["decision"]["programs"][0]["recipe"]
         recipe["transforms"] = [{"kind":"signed_log1p","parameters":{"columns":["prior_win_rate"]}}]
+        recipe["calibration"] = {"kind":"none"}
+        recipe["blend"] = {"kind":"none"}
         recipe["pipeline_graph"] = {"graph_id":"unsupported", "primary_node_id":"benter",
             "fundamental_node_id":"pool", "output_node_id":"pool", "nodes":[
                 {"node_id":"benter","kind":"estimator","parameters":{"model_kind":"benter_conditional_logit"}},
