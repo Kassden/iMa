@@ -1,4 +1,6 @@
 import copy
+import ast
+import inspect
 import json
 from pathlib import Path
 import tempfile
@@ -156,6 +158,39 @@ class PlannerRequestGuardTests(unittest.TestCase):
             self.assertEqual(result["proposal_identity_binding"]["bound_proposal_ids"], ["p"])
             repair = json.loads(post.call_args.args[1]["messages"][-1]["content"])
             self.assertIn("transforms", repair["errors"][0]["message"])
+
+    def test_sealed_source_preserves_runtime_allocation_override_and_rejects_other_changes(self):
+        from ima.openrouter_orchestrator import choose_research_decision
+        from ima.planner_request_guard import _planner_with_preflight
+        source = inspect.getsource(choose_research_decision)
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                node.value = node.value.replace("80% of dispatched outer trials", "No fixed model allocation")
+        namespace = {}
+        exec(compile(tree, "<sealed-allocation-policy>", "exec"),
+             dict(choose_research_decision.__globals__), namespace)
+        installed = namespace[choose_research_decision.__name__]
+        guarded, _ = _planner_with_preflight(installed, source)
+        self.assertTrue(any(isinstance(value, str) and "No fixed model allocation" in value
+                            for value in guarded.__code__.co_consts))
+        with self.assertRaisesRegex(ValueError, "differs from installed"):
+            _planner_with_preflight(installed, source.replace('"temperature": .2', '"temperature": .9'))
+
+    def test_unsupported_learned_feature_graph_fails_before_dispatch(self):
+        from ima.research_expansion import PlannerDecision
+        from ima.planner_request_guard import semantic_preflight
+        evidence, response = self.fixture()
+        recipe = response["decision"]["programs"][0]["recipe"]
+        recipe["transforms"] = [{"kind":"signed_log1p","parameters":{"columns":["prior_win_rate"]}}]
+        recipe["pipeline_graph"] = {"graph_id":"unsupported", "primary_node_id":"benter",
+            "fundamental_node_id":"pool", "output_node_id":"pool", "nodes":[
+                {"node_id":"benter","kind":"estimator","parameters":{"model_kind":"benter_conditional_logit"}},
+                {"node_id":"catboost","kind":"estimator","parameters":{"model_kind":"catboost_classifier"}},
+                {"node_id":"pool","kind":"weighted_probability_pool","inputs":["benter","catboost"],
+                 "parameters":{"weights":[.5,.5]}}]}
+        with self.assertRaisesRegex(ValueError, "does not implement catboost_classifier"):
+            semantic_preflight(PlannerDecision.model_validate(response["decision"]), evidence)
 
 
 if __name__ == "__main__":
