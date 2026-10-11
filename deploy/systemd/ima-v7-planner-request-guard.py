@@ -77,6 +77,15 @@ def main():
         e205 = json.loads((CAMPAIGN/'evidence/D000205.json').read_text())
         receipt['effective_dataset_replay'] = discipline.validate_decision(
             PlannerDecision.model_validate(d205), e205, {'programs': []})
+        d207 = json.loads((CAMPAIGN/'planner-responses/D000207.json').read_text())['response']['decision']
+        e207 = json.loads((CAMPAIGN/'evidence/D000207.json').read_text())
+        try:
+            guard.semantic_preflight(PlannerDecision.model_validate(d207), e207)
+        except ValueError as error:
+            assert 'transforms' in str(error)
+            receipt['undeclared_transform_preflight'] = 'rejected inside bounded repair boundary'
+        else:
+            raise AssertionError('Undeclared transform change escaped preflight')
         print(json.dumps(receipt, sort_keys=True))
         return 0
     return predecessor.main()
