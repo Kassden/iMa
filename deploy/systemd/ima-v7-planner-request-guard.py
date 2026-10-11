@@ -37,9 +37,22 @@ def main():
     predecessor = load('ima_guard_predecessor', OLD)
     install = predecessor.install_policy
 
+    def dataset_equivalence():
+        from ima.dataset_registry import DatasetRegistry, file_sha256
+        from ima.research_controller import protocol_spec_parameters
+        config = json.loads((CAMPAIGN/'config.json').read_text())
+        path = Path(config['dataset_path'])
+        identity = json.loads((path.parent/'manifest.json').read_text())['dataset_id']
+        manifest = DatasetRegistry(Path(config['dataset_registry_path'])).verify(identity)
+        assert file_sha256(path) == file_sha256(Path(manifest['features_path']))
+        configured = protocol_spec_parameters(json.loads(Path(config['protocol_path']).read_text()))
+        registered = protocol_spec_parameters(json.loads(Path(manifest['protocol_path']).read_text()))
+        assert configured == registered
+        return identity
+
     def install_combined():
         receipt = install()
-        receipt.update(guard.install_guard(CAMPAIGN), guard_manifest=manifest,
+        receipt.update(guard.install_guard(CAMPAIGN, default_dataset_id=dataset_equivalence()), guard_manifest=manifest,
                        predecessor_policy_sha256=OLD_SHA)
         print('Planner request guard installed: '+json.dumps(receipt, sort_keys=True), flush=True)
         return receipt
@@ -48,7 +61,7 @@ def main():
     if '--guard-self-test' in sys.argv:
         receipt = install()
         receipt.update(predecessor.canary())
-        receipt.update(guard.install_guard(CAMPAIGN), guard_manifest=manifest)
+        receipt.update(guard.install_guard(CAMPAIGN, default_dataset_id=dataset_equivalence()), guard_manifest=manifest)
         from ima import research_planner_context as context
         evidence = json.loads((CAMPAIGN/'evidence/D000203.json').read_text())
         response = json.loads((CAMPAIGN/'planner-responses/D000203.json').read_text())['response']
@@ -58,6 +71,12 @@ def main():
                        replay_context_bytes=len(guard.encoded(view)))
         for key in ('completed_trial_index',):
             assert view['evidence'][key] == evidence[key]
+        from ima.research_expansion import PlannerDecision
+        from ima import experiment_discipline as discipline
+        d205 = json.loads((CAMPAIGN/'planner-responses/D000205.json').read_text())['response']['decision']
+        e205 = json.loads((CAMPAIGN/'evidence/D000205.json').read_text())
+        receipt['effective_dataset_replay'] = discipline.validate_decision(
+            PlannerDecision.model_validate(d205), e205, {'programs': []})
         print(json.dumps(receipt, sort_keys=True))
         return 0
     return predecessor.main()
