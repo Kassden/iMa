@@ -13,7 +13,7 @@ import re
 import tempfile
 
 
-VERSION = 1
+VERSION = 2
 CONTEXT_BYTES = 300_000
 REQUEST_BYTES = 380_000
 
@@ -103,6 +103,26 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
     return view
 
 
+def effective_dataset_audit(original, decisions, evidence, default_dataset_id):
+    """Compare effective data identities without changing executable recipes."""
+    def normalize(value):
+        if isinstance(value, list):
+            return [normalize(row) for row in value]
+        if isinstance(value, dict):
+            result = {key: normalize(row) for key, row in value.items()}
+            recipe = result.get("recipe")
+            if isinstance(recipe, dict) and recipe.get("dataset_ref") is None:
+                recipe["dataset_ref"] = default_dataset_id
+            return result
+        return value
+    result = original(normalize(decisions), normalize(evidence))
+    result["dataset_identity_normalization"] = {
+        "default_dataset_id": default_dataset_id,
+        "scope": "Comparison copies only; execution recipes and provider responses unchanged",
+    }
+    return result
+
+
 class PaidCallCircuit:
     def __init__(self, campaign):
         self.campaign = Path(campaign)
@@ -146,7 +166,8 @@ class PaidCallCircuit:
         temporary.replace(destination)
 
 
-def install_guard(campaign, context_bytes=CONTEXT_BYTES, request_bytes=REQUEST_BYTES):
+def install_guard(campaign, context_bytes=CONTEXT_BYTES, request_bytes=REQUEST_BYTES,
+                  default_dataset_id=None):
     from . import openrouter_orchestrator as orchestrator
     from . import research_planner_context as context
     if getattr(orchestrator.choose_research_decision, "request_guard_version", None):
@@ -176,5 +197,15 @@ def install_guard(campaign, context_bytes=CONTEXT_BYTES, request_bytes=REQUEST_B
     # The deployed policy compiles the planner with an isolated globals mapping.
     original_choose.__globals__["_post_json"] = post
     orchestrator.choose_research_decision = choose
+    if default_dataset_id is not None:
+        from . import proposal_audit, experiment_discipline
+        original_audit = proposal_audit.audit_decisions
+
+        def audit(decisions, evidence):
+            return effective_dataset_audit(original_audit, decisions, evidence, default_dataset_id)
+
+        proposal_audit.audit_decisions = audit
+        experiment_discipline.audit_decisions = audit
     return {"request_guard_version": VERSION, "context_bytes": context_bytes,
-            "request_bytes": request_bytes, "scientific_source_changed": False}
+            "request_bytes": request_bytes, "default_dataset_id": default_dataset_id,
+            "scientific_source_changed": False}

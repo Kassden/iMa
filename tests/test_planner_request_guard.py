@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 from types import FunctionType
 
-from ima.planner_request_guard import bind_response, bounded_context, encoded, PaidCallCircuit
+from ima.planner_request_guard import bind_response, bounded_context, encoded, PaidCallCircuit, effective_dataset_audit
 
 
 class PlannerRequestGuardTests(unittest.TestCase):
@@ -108,6 +108,23 @@ class PlannerRequestGuardTests(unittest.TestCase):
                     self.assertEqual(post.call_count, 1)
                     self.assertEqual(result["decision"]["programs"][0]["evidence_ids"], ["e"])
                     self.assertEqual(result["raw_response"], raw)
+
+    def test_effective_default_dataset_is_comparison_only(self):
+        from ima.proposal_audit import audit_decisions
+        evidence, response = self.fixture()
+        proposal = response["decision"]["programs"][0]
+        proposal.update(parent_trial_ids=["parent"], fixed_parameters=True)
+        parent = copy.deepcopy(proposal["recipe"])
+        parent["dataset_ref"] = "dataset-current"
+        parent["model"]["parameters"] = {"l2": 1.0}
+        evidence["champions_by_contract"] = {"c": {"attempt_id":"parent","recipe":parent}}
+        before = copy.deepcopy(response)
+        result = effective_dataset_audit(audit_decisions, [response["decision"]], evidence, "dataset-current")
+        self.assertFalse(any(f["code"] == "undeclared_recipe_changes" for f in result["findings"]))
+        self.assertEqual(response, before)
+        proposal["recipe"]["dataset_ref"] = "dataset-other"
+        result = effective_dataset_audit(audit_decisions, [response["decision"]], evidence, "dataset-current")
+        self.assertTrue(any(f["code"] == "undeclared_recipe_changes" for f in result["findings"]))
 
 
 if __name__ == "__main__":
