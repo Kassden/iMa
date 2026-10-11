@@ -6,14 +6,17 @@ rewritten when an omitted request envelope is supplied here.
 """
 
 from copy import deepcopy
+import ast
 import hashlib
+import inspect
 import json
 from pathlib import Path
 import re
 import tempfile
+import textwrap
 
 
-VERSION = 2
+VERSION = 3
 CONTEXT_BYTES = 300_000
 REQUEST_BYTES = 380_000
 
@@ -41,6 +44,14 @@ def bind_response(response, evidence):
             raise ValueError("Unknown parent trial")
     from .research_expansion import PlannerDecision
     result["decision"] = PlannerDecision.model_validate(decision).model_dump(mode="json")
+    raw = response.get("raw_response", {})
+    if isinstance(raw, dict) and raw.get("choices"):
+        from .openrouter_orchestrator import _json_message_from_response
+        provider_decision = _json_message_from_response(raw)
+        if isinstance(provider_decision, dict):
+            for proposal in provider_decision.get("programs", []):
+                if proposal.get("evidence_ids", []) == [] and proposal["proposal_id"] not in bound:
+                    bound.append(proposal["proposal_id"])
     result["proposal_identity_binding"] = {
         "version": VERSION, "decision_id": evidence["decision_id"],
         "evidence_id": evidence["evidence_id"], "bound_proposal_ids": bound,
@@ -90,6 +101,14 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
         if isinstance(outcome, dict):
             outcome.pop("artifacts", None)
             outcome.pop("runtime", None)
+    evidence["request_validation_contract"] = {
+        "fixed_controls": "Copy every unchanged parent recipe field exactly, including transforms. "
+                          "If changing transforms as well as a model/feature, declare transform among changed_axes "
+                          "and describe a joint test, not a single-axis ablation.",
+        "fold_local_graph_limit": "With recipe.transforms or feature_discovery, win-probability graph "
+                                 "estimator nodes support logit, boosted, benter_conditional_logit and gaussian_probit; "
+                                 "catboost_classifier and performance_distribution ancestors are unsupported on that path.",
+    }
     receipt.update(request_guard_version=VERSION, context_byte_limit=max_bytes,
                    bytes_before_request_guard=before,
                    request_guard_omissions={
@@ -123,6 +142,59 @@ def effective_dataset_audit(original, decisions, evidence, default_dataset_id):
     return result
 
 
+def semantic_preflight(decision, evidence):
+    from .research_expansion import PlannerDecision
+    from .proposal_audit import audit_decisions
+    bound = bind_response({"decision": decision.model_dump(mode="json")}, evidence)["decision"]
+    candidate = PlannerDecision.model_validate(bound)
+    fixed = {p.proposal_id for p in candidate.programs if p.fixed_parameters and p.parent_trial_ids}
+    audit = audit_decisions([bound], evidence)
+    errors = [finding["message"] for finding in audit["findings"]
+              if finding["proposal_id"] in fixed and finding["code"] == "undeclared_recipe_changes"]
+    for proposal in candidate.programs:
+        recipe = proposal.recipe
+        if recipe.pipeline_graph and (recipe.transforms or recipe.feature_discovery):
+            from .pipeline_graph import PipelineGraph
+            graph = PipelineGraph.from_dict(recipe.pipeline_graph).validate()
+            for node in graph.nodes:
+                if node.kind != "estimator":
+                    continue
+                kind = node.parameters.get("model_kind", recipe.model.kind if node.node_id == graph.primary_node_id
+                                           else "benter_conditional_logit")
+                if node.output.kind == "performance_distribution":
+                    errors.append(f"{proposal.proposal_id}: fold-local learned-feature graph cannot use performance_distribution ancestors")
+                elif node.output.kind == "win_probability" and kind not in {
+                        "logit", "boosted", "benter_conditional_logit", "gaussian_probit"}:
+                    errors.append(f"{proposal.proposal_id}: fold-local learned-feature win node does not implement {kind}")
+    if errors:
+        raise ValueError("Decision admission preflight: " + "; ".join(errors[:8]))
+    return candidate
+
+
+def _planner_with_preflight(original):
+    source = textwrap.dedent(inspect.getsource(original))
+    tree = ast.parse(source)
+    matches = 0
+
+    class Insert(ast.NodeTransformer):
+        def visit_Assign(self, node):
+            nonlocal matches
+            if any(isinstance(target, ast.Name) and target.id == "audit_evidence" for target in node.targets):
+                matches += 1
+                check = ast.parse("decision = _request_guard_semantic_preflight(decision, evidence_bundle)").body[0]
+                return [ast.copy_location(check, node), node]
+            return node
+
+    tree = Insert().visit(tree)
+    if matches != 1:
+        raise ValueError("Planner semantic repair integration point changed")
+    ast.fix_missing_locations(tree)
+    namespace = dict(original.__globals__) | {"_request_guard_semantic_preflight": semantic_preflight}
+    compiled = {}
+    exec(compile(tree, __file__+":semantic-preflight", "exec"), namespace, compiled)
+    return compiled[original.__name__], hashlib.sha256(source.encode()).hexdigest()
+
+
 class PaidCallCircuit:
     def __init__(self, campaign):
         self.campaign = Path(campaign)
@@ -152,7 +224,7 @@ class PaidCallCircuit:
             error = result.get("error", "")
             if not error or "Timeout" in error or "transport" in error.lower():
                 break
-            failures.append(error)
+            failures.append(error.partition(":")[0])
             if len(failures) == 2:
                 if failures[0] == failures[1]:
                     raise ValueError("Paid-call circuit open: repeated rejection without new terminal evidence: " + error[:250])
@@ -172,7 +244,7 @@ def install_guard(campaign, context_bytes=CONTEXT_BYTES, request_bytes=REQUEST_B
     from . import research_planner_context as context
     if getattr(orchestrator.choose_research_decision, "request_guard_version", None):
         raise ValueError("Planner request guard already installed")
-    original_choose = orchestrator.choose_research_decision
+    original_choose, planner_source_sha256 = _planner_with_preflight(orchestrator.choose_research_decision)
     original_context = context.decision_planner_evidence
     original_post = orchestrator._post_json
     circuit = PaidCallCircuit(campaign)
@@ -208,4 +280,5 @@ def install_guard(campaign, context_bytes=CONTEXT_BYTES, request_bytes=REQUEST_B
         experiment_discipline.audit_decisions = audit
     return {"request_guard_version": VERSION, "context_bytes": context_bytes,
             "request_bytes": request_bytes, "default_dataset_id": default_dataset_id,
+            "original_planner_source_sha256": planner_source_sha256,
             "scientific_source_changed": False}

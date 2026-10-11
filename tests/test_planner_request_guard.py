@@ -126,6 +126,37 @@ class PlannerRequestGuardTests(unittest.TestCase):
         result = effective_dataset_audit(audit_decisions, [response["decision"]], evidence, "dataset-current")
         self.assertTrue(any(f["code"] == "undeclared_recipe_changes" for f in result["findings"]))
 
+    def test_semantic_error_uses_existing_two_call_correction_loop(self):
+        from ima import openrouter_orchestrator as planner, research_planner_context as context
+        from ima.planner_request_guard import install_guard
+        evidence, response = self.fixture()
+        evidence["completed_trial_index"] = [{"attempt_id":"parent"}]
+        evidence["champions_by_contract"] = {"c":{"attempt_id":"parent", "recipe":copy.deepcopy(
+            response["decision"]["programs"][0]["recipe"])}}
+        proposal = response["decision"]["programs"][0]
+        proposal.update(parent_trial_ids=["parent"], fixed_parameters=True)
+        proposal["recipe"]["transforms"] = [{"kind":"signed_log1p","parameters":{"columns":["prior_win_rate"]}}]
+        corrected = copy.deepcopy(response["decision"])
+        corrected["programs"][0]["changed_axes"] = ["transform"]
+        raw = [{"choices":[{"message":{"content":json.dumps(decision)}}], "usage":{"cost":.001}}
+               for decision in (response["decision"], corrected)]
+        original = planner.choose_research_decision
+        clone = FunctionType(original.__code__, dict(original.__globals__), original.__name__,
+                             original.__defaults__, original.__closure__)
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(planner, "choose_research_decision", clone), \
+                patch.object(context, "decision_planner_evidence", context.decision_planner_evidence), \
+                patch.object(planner, "_post_json", side_effect=raw) as post:
+            install_guard(directory)
+            result = planner.choose_research_decision(evidence, {"trial_ceiling":260,"max_new_programs":12},
+                                                     planner.OpenRouterConfig("unused","fixture/model"))
+            self.assertEqual(post.call_count, 2)
+            self.assertEqual(result["repair_count"], 1)
+            self.assertEqual(result["usage"]["total_cost_usd"], .002)
+            self.assertEqual(result["proposal_identity_binding"]["bound_proposal_ids"], ["p"])
+            repair = json.loads(post.call_args.args[1]["messages"][-1]["content"])
+            self.assertIn("transforms", repair["errors"][0]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()
