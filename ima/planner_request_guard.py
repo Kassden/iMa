@@ -179,10 +179,12 @@ def _planner_with_preflight(original):
     class Insert(ast.NodeTransformer):
         def visit_Assign(self, node):
             nonlocal matches
-            if any(isinstance(target, ast.Name) and target.id == "audit_evidence" for target in node.targets):
+            if (any(isinstance(target, ast.Name) and target.id == "decision" for target in node.targets)
+                    and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute)
+                    and node.value.func.attr == "model_validate"):
                 matches += 1
                 check = ast.parse("decision = _request_guard_semantic_preflight(decision, evidence_bundle)").body[0]
-                return [ast.copy_location(check, node), node]
+                return [node, ast.copy_location(check, node)]
             return node
 
     tree = Insert().visit(tree)
