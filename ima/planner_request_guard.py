@@ -173,6 +173,7 @@ def semantic_preflight(decision, evidence):
 
 
 def _planner_with_preflight(original, source=None):
+    strict_bytecode = source is not None
     source = textwrap.dedent(source if source is not None else inspect.getsource(original))
     tree = ast.parse(source)
     # The installed allocation policy compiles a prompt-only AST override and
@@ -189,7 +190,9 @@ def _planner_with_preflight(original, source=None):
     exec(compile(tree, "<request-guard-parity>", "exec"), namespace, baseline)
 
     def signature(code):
-        return (code.co_code, code.co_names, code.co_varnames, code.co_freevars, code.co_cellvars,
+        # Full-module compilation can optimize imported module methods differently
+        # from isolated functions. Sealed server policies use isolated compilation.
+        return (code.co_code if strict_bytecode else None, code.co_names, code.co_varnames, code.co_freevars, code.co_cellvars,
                 tuple(signature(value) if isinstance(value, CodeType) else value for value in code.co_consts))
 
     if signature(baseline[original.__name__].__code__) != signature(original.__code__):
