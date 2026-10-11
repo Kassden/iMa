@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import FunctionType
 
 from ima.planner_request_guard import bind_response, bounded_context, encoded, PaidCallCircuit
 
@@ -79,6 +81,33 @@ class PlannerRequestGuardTests(unittest.TestCase):
             PaidCallCircuit(campaign).check_and_record(evidence)
             with self.assertRaisesRegex(ValueError, "already dispatched"):
                 PaidCallCircuit(campaign).check_and_record(evidence)
+
+    def test_real_planner_path_with_isolated_deployment_globals(self):
+        from ima import openrouter_orchestrator as planner, research_planner_context as context
+        from ima.planner_request_guard import install_guard
+        evidence, response = self.fixture()
+        raw = {"choices": [{"message": {"content": json.dumps(response["decision"])}}],
+               "usage": {"cost": .001}}
+        for byte_budget in (380000, 1):
+            original = planner.choose_research_decision
+            clone = FunctionType(original.__code__, dict(original.__globals__),
+                                 original.__name__, original.__defaults__, original.__closure__)
+            with tempfile.TemporaryDirectory() as directory, \
+                    patch.object(planner, "choose_research_decision", clone), \
+                    patch.object(context, "decision_planner_evidence", context.decision_planner_evidence), \
+                    patch.object(planner, "_post_json", return_value=raw) as post:
+                install_guard(directory, request_bytes=byte_budget)
+                if byte_budget == 1:
+                    with self.assertRaisesRegex(ValueError, "byte budget"):
+                        planner.choose_research_decision(evidence, {"trial_ceiling":260,"max_new_programs":12},
+                                                        planner.OpenRouterConfig("unused","fixture/model"))
+                    self.assertEqual(post.call_count, 0)
+                else:
+                    result = planner.choose_research_decision(evidence, {"trial_ceiling":260,"max_new_programs":12},
+                                                             planner.OpenRouterConfig("unused","fixture/model"))
+                    self.assertEqual(post.call_count, 1)
+                    self.assertEqual(result["decision"]["programs"][0]["evidence_ids"], ["e"])
+                    self.assertEqual(result["raw_response"], raw)
 
 
 if __name__ == "__main__":
