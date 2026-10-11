@@ -1,5 +1,6 @@
 """Pinned additive planner guard over the verified own-user discipline policy."""
 import hashlib
+import ast
 import importlib.util
 import json
 import os
@@ -37,6 +38,14 @@ def main():
     predecessor = load('ima_guard_predecessor', OLD)
     install = predecessor.install_policy
 
+    def planner_source():
+        # Predecessor installation verifies this file against its sealed manifest.
+        source = (CAMPAIGN/'ops/research-efficiency-20261008/openrouter_orchestrator.py').read_text()
+        nodes = [node for node in ast.parse(source).body
+                 if isinstance(node, ast.FunctionDef) and node.name == 'choose_research_decision']
+        assert len(nodes) == 1
+        return ast.get_source_segment(source, nodes[0])
+
     def dataset_equivalence():
         from ima.dataset_registry import DatasetRegistry, file_sha256
         from ima.research_controller import protocol_spec_parameters
@@ -52,7 +61,8 @@ def main():
 
     def install_combined():
         receipt = install()
-        receipt.update(guard.install_guard(CAMPAIGN, default_dataset_id=dataset_equivalence()), guard_manifest=manifest,
+        receipt.update(guard.install_guard(CAMPAIGN, default_dataset_id=dataset_equivalence(),
+                                          planner_source=planner_source()), guard_manifest=manifest,
                        predecessor_policy_sha256=OLD_SHA)
         print('Planner request guard installed: '+json.dumps(receipt, sort_keys=True), flush=True)
         return receipt
@@ -61,7 +71,8 @@ def main():
     if '--guard-self-test' in sys.argv:
         receipt = install()
         receipt.update(predecessor.canary())
-        receipt.update(guard.install_guard(CAMPAIGN, default_dataset_id=dataset_equivalence()), guard_manifest=manifest)
+        receipt.update(guard.install_guard(CAMPAIGN, default_dataset_id=dataset_equivalence(),
+                                          planner_source=planner_source()), guard_manifest=manifest)
         from ima import research_planner_context as context
         evidence = json.loads((CAMPAIGN/'evidence/D000203.json').read_text())
         response = json.loads((CAMPAIGN/'planner-responses/D000203.json').read_text())['response']
