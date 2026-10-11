@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import tempfile
 import textwrap
+from types import CodeType
 
 
 VERSION = 3
@@ -171,9 +172,28 @@ def semantic_preflight(decision, evidence):
     return candidate
 
 
-def _planner_with_preflight(original):
-    source = textwrap.dedent(inspect.getsource(original))
+def _planner_with_preflight(original, source=None):
+    source = textwrap.dedent(source if source is not None else inspect.getsource(original))
     tree = ast.parse(source)
+    # The installed allocation policy compiles a prompt-only AST override and
+    # leaves misleading inspect locations. Reconstruct it from verified source,
+    # then prove opcode/constants parity before adding the validation hook.
+    strings = [value for value in original.__code__.co_consts if isinstance(value, str)]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and len(node.value) > 200:
+            matches = [value for value in strings if value.startswith(node.value[:120])]
+            if len(matches) == 1:
+                node.value = matches[0]
+    namespace = dict(original.__globals__)
+    baseline = {}
+    exec(compile(tree, "<request-guard-parity>", "exec"), namespace, baseline)
+
+    def signature(code):
+        return (code.co_code, code.co_names, code.co_varnames, code.co_freevars, code.co_cellvars,
+                tuple(signature(value) if isinstance(value, CodeType) else value for value in code.co_consts))
+
+    if signature(baseline[original.__name__].__code__) != signature(original.__code__):
+        raise ValueError("Planner reconstruction differs from installed behavior")
     matches = 0
 
     class Insert(ast.NodeTransformer):
@@ -241,12 +261,12 @@ class PaidCallCircuit:
 
 
 def install_guard(campaign, context_bytes=CONTEXT_BYTES, request_bytes=REQUEST_BYTES,
-                  default_dataset_id=None):
+                  default_dataset_id=None, planner_source=None):
     from . import openrouter_orchestrator as orchestrator
     from . import research_planner_context as context
     if getattr(orchestrator.choose_research_decision, "request_guard_version", None):
         raise ValueError("Planner request guard already installed")
-    original_choose, planner_source_sha256 = _planner_with_preflight(orchestrator.choose_research_decision)
+    original_choose, planner_source_sha256 = _planner_with_preflight(orchestrator.choose_research_decision, planner_source)
     original_context = context.decision_planner_evidence
     original_post = orchestrator._post_json
     circuit = PaidCallCircuit(campaign)
