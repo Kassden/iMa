@@ -57,6 +57,15 @@ def test_floor_exact_samples_and_failed_censored_bounds():
     assert resolve_probit_budget(job, samples, 30000)["initial_seconds"] == 30000
 
 
+def test_qualified_resource_reload_uses_structured_workload_payload():
+    class ReloadedWorkload:
+        def model_dump(self):
+            return workload().model_dump()
+    policy = resolve_probit_budget(ReloadedWorkload(), [], 1200)
+    assert policy["initial_seconds"] == 14400
+    assert policy["workload_fingerprint"] == workload().fingerprint()
+
+
 def test_cold_numerical_admission_extrapolation_cannot_inflate_initial_allowance():
     job = workload(folds=3).model_copy(update={"rows": 140000,
         "selected_features": 100, "search_settings": {"max_iter": 500,
