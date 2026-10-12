@@ -95,7 +95,7 @@ def main():
         policy = resolve_probit_budget(JobWorkload(stage="fit", family="gaussian_probit", rows=100,
             generated_features=0, selected_features=3, categorical_cardinalities=(), folds=3,
             native_threads=1, native_thread_settings={}, search_settings={}, shared_artifacts={},
-            implementation_revision="canary", dependency_versions={}), [], 1200)
+            implementation_revision="canary", dependency_versions={"numpy": "canary"}), [], 1200)
         assert policy["initial_seconds"] == 14400
         print(json.dumps({"lifecycle_self_test": "passed", "policy": policy,
             "local_preflight_proof": proof, "spend": spend, "paid_calls": 0, "fits_cancelled": 0}))
