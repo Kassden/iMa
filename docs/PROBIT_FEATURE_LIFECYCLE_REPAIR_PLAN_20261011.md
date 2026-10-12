@@ -67,11 +67,13 @@ Make probit progress-aware with safe fold-local warm starts and connect audited 
 - .mega/state.jsonl and .mega/evidence.jsonl; generated read view .mega/dashboards/PROBIT_FEATURE_LIFECYCLE_REPAIR_PLAN_20261011.html.
 
 ## Regression Guardrails
-- Branch strategy: dedicated fix/probit-runtime-feature-lifecycle for large shared-worker change.
+- Branch strategy: separate branch `fix/probit-runtime-feature-lifecycle` for large shared-worker change.
 - Damage radius: large. Branch: fix/probit-runtime-feature-lifecycle, created before edits.
 - Protected: convergence/quadrature, strict cutoff, metric contracts, free allocation, memory100GB, native cost/tokens, current fits, immutable science/history, other users/services.
 - Preexisting dirty files preserved; stage owned files/hunks only. Scope expansions recorded before editing.
 - Planned edit surface: explicit paths below. Atomic runtime, feature, qualification and deployment commits.
+- Integration scope clarification: additive `ima/research_lifecycle.py` owns campaign hooks and deployment wiring so preexisting dirty controller/context files are not included in these commits; `tests/test_research_lifecycle.py` verifies these hooks.
+- Live refresh 2026-10-12: 744 completed, 38 failed, no active fits. D236 failed local context preflight at 300011>300000 bytes, with no transport attempts or planner receipt; billing freezes it as unknown. Add bounded optional-history reduction and a hash-bound pre-dispatch proof (never synthetic provider receipts) to unblock this specific verified-local failure. Genuine unknown/possibly sent charges stay frozen. Tests must reject forged proof, mismatched error, any transport/call evidence and changed decision hash.
 
 ## Phase 1: Evidence
 ### Subphase 1.1: Baseline and contract
@@ -98,8 +100,8 @@ Make probit progress-aware with safe fold-local warm starts and connect audited 
   - `tests/test_probit_runtime_policy.py`
   - `tests/test_probit_progress_warmstart.py`
 - Checklist:
-  - [ ] Implement policy, callbacks, profile and warm-start cache.
-  - [ ] Integrate actual executor and test restart/ownership/numerical safety.
+  - [x] Implement policy, callbacks, profile and warm-start cache.
+  - [x] Integrate actual executor and test restart/ownership/numerical safety.
 
 ## Phase 3: Features
 ### Subphase 3.1: Reusable tracked feature builds
@@ -112,11 +114,13 @@ Make probit progress-aware with safe fold-local warm starts and connect audited 
   - `ima/research_expansion.py`
   - `ima/research_planner_context.py`
   - `ima/mlflow_tracking.py`
+  - `ima/research_lifecycle.py`
+  - `tests/test_research_lifecycle.py`
   - `tests/test_feature_lifecycle.py`
   - `tests/test_feature_lifecycle_integration.py`
 - Checklist:
-  - [ ] Build safe deterministic and planner AST candidates with validators and lineage.
-  - [ ] Expose to controller/models and test leakage/idempotency/tracking failures.
+  - [x] Build safe deterministic and planner AST candidates with validators and lineage.
+  - [x] Expose to controller/models and test leakage/idempotency/tracking failures.
 
 ## Phase 4: Qualification
 ### Subphase 4.1: End-to-end and adversarial proof
@@ -127,8 +131,8 @@ Make probit progress-aware with safe fold-local warm starts and connect audited 
   - `tests/test_feature_lifecycle_integration.py`
   - `docs/PROBIT_FEATURE_LIFECYCLE_REPAIR_VALIDATION_20261011.md`
 - Checklist:
-  - [ ] Complete tests and adversarial attacks.
-  - [ ] Read back real server feature/dataset/probit/MLflow records.
+  - [x] Complete tests and adversarial attacks.
+  - [x] Read back real server feature/dataset/probit/MLflow records.
 
 ## Phase 5: Deployment
 ### Subphase 5.1: Immutable own-user rollout
@@ -139,5 +143,12 @@ Make probit progress-aware with safe fold-local warm starts and connect audited 
   - `deploy/systemd/ima-v7-probit-feature-lifecycle.py`
   - `docs/PROBIT_FEATURE_LIFECYCLE_REPAIR_VALIDATION_20261011.md`
 - Checklist:
-  - [ ] Push scoped commits, stage/qualify and preserve running fits.
-  - [ ] Activate at safe boundary and verify fresh outputs, documenting uncertainty.
+  - [x] Push scoped commits, stage/qualify and preserve running fits.
+  - [x] Activate at safe boundary and verify fresh outputs, documenting uncertainty.
+
+## Completion Readback
+- Core repair `10d6f094b0752cc5fdfa8d6e3a1706d25be02c83` activated 2026-10-12 13:49:34 UTC, no fits cancelled. Own service remains within 100 GB/24 CPU-thread cgroup ceilings.
+- Live D237 and D238 were accepted with reported cost and a verified successor dataset. Latest observed ledger: 745 completed, 38 failed, one running, no pending tracking/tells.
+- A fresh production successor-model attempt completed at 2.1562666448551417 with non-null build ID and sealed lifecycle release identity. This is not a claim of improvement over the 2.149422832 pooled champion.
+- Additional defensive compiled-namespace binding/assertions at `9057606` are committed/pushed and separately qualified, but not activated over the running fit. Independent inspection proves all five bindings are already correct in the active release. No automatic handover is promised or installed.
+- Detailed evidence and scientific limitations: `docs/PROBIT_FEATURE_LIFECYCLE_REPAIR_VALIDATION_20261011.md`.
