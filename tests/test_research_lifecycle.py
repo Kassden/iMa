@@ -125,3 +125,21 @@ def test_feedback_failure_does_not_discard_successful_fit(tmp_path):
         assert lifecycle_worker(request, None, 1).status == "completed"
     assert (tmp_path/"feature-feedback-pending.json").exists()
     assert json.loads((tmp_path/"result.json").read_text())["status"] == "completed"
+
+
+def test_hooks_reach_compiled_campaign_namespace(tmp_path):
+    from ima import research_expansion as expansion, performance_probit, mlflow_tracking
+    from ima.research_lifecycle import install_campaign_policy, lifecycle_worker, lifecycle_prepare
+    names = ("_capabilities", "_planner_spend", "_worker", "_prepare_program", "BoundedFitExecutor")
+    isolated = {name: getattr(expansion, name) for name in names}
+    exec("def run(): return _worker, _prepare_program, _capabilities, _planner_spend, BoundedFitExecutor", isolated)
+    patches = {name: getattr(expansion, name) for name in names}
+    patches.update(run_expansion_campaign=isolated["run"], _lifecycle_installed=False)
+    with patch.multiple(expansion, **patches, create=True), \
+         patch.object(performance_probit, "fit_probit", performance_probit.fit_probit), \
+         patch.object(mlflow_tracking, "research_run_parameters", mlflow_tracking.research_run_parameters):
+        install_campaign_policy(tmp_path, release_sha256="release")
+        actual = isolated["run"]()
+        assert actual[0] is lifecycle_worker and actual[1] is lifecycle_prepare
+        assert actual[2] is expansion._capabilities and actual[3] is expansion._planner_spend
+        assert actual[4] is expansion.BoundedFitExecutor

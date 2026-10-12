@@ -351,6 +351,15 @@ def install_campaign_policy(directory, *, release_sha256=None):
     expansion._worker = lifecycle_worker
     expansion._prepare_program = lifecycle_prepare
     expansion.BoundedFitExecutor = LifecycleFitExecutor
+    # Operator policies compile this loop with an isolated globals dictionary.
+    # Assigning module attributes alone does not replace its captured consumers.
+    hooks = {"_capabilities": capabilities, "_planner_spend": spend,
+             "_worker": lifecycle_worker, "_prepare_program": lifecycle_prepare,
+             "BoundedFitExecutor": LifecycleFitExecutor}
+    run_namespace = expansion.run_expansion_campaign.__globals__
+    if not all(key in run_namespace for key in hooks):
+        raise ValueError("Campaign lifecycle hook consumers changed")
+    run_namespace.update(hooks)
     expansion._lifecycle_installed = True
     return {"version": VERSION, "release_sha256": release_sha256,
             "paid_calls": 0, "fits_cancelled": 0,
