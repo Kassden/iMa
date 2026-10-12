@@ -46,7 +46,10 @@ def resolve_probit_budget(workload, samples=(), requested_seconds=14400.) -> dic
     """
     if isinstance(requested_seconds, bool) or not isinstance(requested_seconds, (int, float)) or not math.isfinite(requested_seconds) or requested_seconds <= 0:
         raise ValueError("Positive finite requested allowance required")
-    workload = workload if isinstance(workload, JobWorkload) else JobWorkload.model_validate(workload)
+    # Qualified deployment adapters may reload the resource model owner.
+    # Cross-release model instances are validated through their structured payload.
+    workload = workload if isinstance(workload, JobWorkload) else JobWorkload.model_validate(
+        workload.model_dump() if hasattr(workload, "model_dump") else workload)
     graph_probit = workload.family.startswith("graph:") and any(
         isinstance(node, dict) and node.get("model") == "gaussian_probit"
         for node in (workload.search_settings.get("graph_structure") or []))
