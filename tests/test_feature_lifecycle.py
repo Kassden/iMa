@@ -481,6 +481,75 @@ class FeatureLifecycleTests(unittest.TestCase):
         self.assertEqual([ratio().content_id()], entry["formula_report"]["definition_ids"])
         self.assertNotEqual(second["feature_build_id"], entry["build_id"])
 
+    def test_catalog_bounds_receipt_verification_and_outcome_reads_before_truncation(self):
+        tasted = self.build()
+        for number in range(12):
+            record_model_outcome(self.root, tasted["feature_build_id"],
+                self.outcome(tasted, attempt_id=f"attempt-{number}"))
+        self.build([ratio(name="older_untasted")])
+        latest = self.build([ratio(name="latest_untasted")])
+        self.submit([ratio(name="pending")])
+        receipt_method, verify_method, read_method = FeatureLifecycle.receipt, DatasetRegistry.verify, Path.read_text
+        outcome_reads = []
+
+        def read(path, *args, **kwargs):
+            if path.parent == self.lifecycle.root / "outcomes":
+                outcome_reads.append(path)
+            return read_method(path, *args, **kwargs)
+
+        with patch.object(FeatureLifecycle, "receipt", autospec=True, side_effect=receipt_method) as receipts, \
+                patch.object(DatasetRegistry, "verify", autospec=True, side_effect=verify_method) as verifications, \
+                patch.object(Path, "read_text", autospec=True, side_effect=read):
+            feedback = catalog(self.root, limit=1)
+        self.assertEqual(1, receipts.call_count)
+        self.assertEqual(1, verifications.call_count)
+        self.assertEqual([], outcome_reads)
+        self.assertEqual(latest["feature_build_id"], feedback["builds"][0]["build_id"])
+        self.assertEqual({"pending": 1, "ready": 3, "rejected": 0}, feedback["counts"])
+        self.assertEqual(3, feedback["omitted_builds"])
+        self.assertEqual(12, feedback["omitted_outcomes"])
+
+    def test_catalog_bounds_comparisons_and_outcomes_per_selected_build(self):
+        successor = self.build()
+        for comparison in range(6):
+            for number in range(5):
+                outcome = self.outcome(successor, attempt_id=f"attempt-{comparison}-{number}")
+                outcome["comparison_contract"]["metric"] = f"metric-{comparison}"
+                record_model_outcome(self.root, successor["feature_build_id"], outcome)
+        read_method = Path.read_text
+        outcome_reads = []
+
+        def read(path, *args, **kwargs):
+            if path.parent == self.lifecycle.root / "outcomes":
+                outcome_reads.append(path)
+            return read_method(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", autospec=True, side_effect=read):
+            feedback = catalog(self.root, limit=1)
+        self.assertEqual(16, len(outcome_reads))
+        entry = feedback["builds"][0]
+        self.assertEqual(30, entry["model_outcome_count"])
+        self.assertEqual(4, len(entry["comparisons"]))
+        self.assertEqual(2, entry["omitted_comparisons"])
+        self.assertEqual(14, entry["omitted_model_outcomes"])
+        self.assertEqual(14, feedback["omitted_outcomes"])
+        self.assertTrue(all(group["omitted_model_outcomes"] == 1 for group in entry["comparisons"]))
+
+    def test_catalog_legacy_receipts_are_bounded_and_unknown_outcomes_disclosed(self):
+        first = self.build()
+        record_model_outcome(self.root, first["feature_build_id"], self.outcome(first))
+        self.build([ratio(name="legacy_second")])
+        self.lifecycle.root.joinpath("catalog-index.json").unlink()
+        receipt_method = FeatureLifecycle.receipt
+        with patch.object(FeatureLifecycle, "receipt", autospec=True, side_effect=receipt_method) as receipts:
+            feedback = catalog(self.root, limit=1)
+        self.assertEqual(1, receipts.call_count)
+        self.assertEqual(1, feedback["unindexed_builds"])
+        self.assertEqual(1, feedback["unindexed_outcomes"])
+        self.assertEqual(1, feedback["omitted_outcomes"])
+        self.assertEqual(1, sum(feedback["counts"].values()))
+        self.assertFalse(feedback["builds"][0]["model_outcomes_complete"])
+
     def test_successor_of_successor_preserves_quarantine_and_old_features(self):
         first = self.build()
         definition = FeatureDefinition(name="log_reused_body_ratio", input_refs=(ratio().feature_id,),

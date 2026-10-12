@@ -257,6 +257,21 @@ class FeatureLifecycle:
         receipt["updated_at"] = datetime.now(timezone.utc).isoformat()
         receipt.setdefault("created_at", receipt["updated_at"])
         _write_json(self._path(receipt["build_id"]), receipt)
+        self._index(receipt)
+
+    def _index(self, receipt, outcome=None):
+        with self.registry._lock("feature-lifecycle-catalog"):
+            path = self.root / "catalog-index.json"
+            index = json.loads(path.read_text()) if path.exists() else {"builds": {}}
+            entry = index["builds"].setdefault(receipt["build_id"], {"outcomes": {}})
+            entry.update(status=receipt["status"], created_at=receipt.get("created_at"),
+                         updated_at=receipt.get("updated_at"))
+            if outcome is not None:
+                entry["outcomes"].setdefault(outcome["outcome_id"], {
+                    "comparison_id": outcome["comparison_id"],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+            _write_json(path, index)
 
     def submit(self, parent_features_path, parent_manifest_path, *, definitions, metadata=None, min_coverage=0.1) -> dict:
         if not math.isfinite(min_coverage) or not 0 < min_coverage <= 1:
@@ -635,20 +650,49 @@ def record_model_outcome(registry_root, build_id: str, outcome: dict, *, baselin
                 raise ValueError("Model attempt already binds a different outcome")
         else:
             _write_json(path, row)
+        lifecycle._index(receipt, row)
         return row
 
 
 def catalog(registry_root, *, limit: int = 20) -> dict:
-    """Compact controller evidence grouped by explicit comparison identity."""
+    """Use cheap summaries to bound receipt, parquet and outcome reads by limit.
+
+    Totals describe recorded status; integrity checks cover only the selected
+    window. Legacy receipts are hydrated within that same budget, and unindexed
+    historical outcomes are disclosed rather than scanned or called untested.
+    """
     if not 1 <= limit <= 1000:
         raise ValueError("Catalog limit must be between 1 and 1000")
     lifecycle = FeatureLifecycle(registry_root)
-    builds, counts, outcomes = [], {"pending": 0, "ready": 0, "rejected": 0}, {}
-    for path in sorted((lifecycle.root / "outcomes").glob("*.json")):
-        row = json.loads(path.read_text())
-        outcomes.setdefault(row["build_id"], []).append(row)
-    for path in sorted((lifecycle.root / "builds").glob("*.json")):
+    index_path = lifecycle.root / "catalog-index.json"
+    index = json.loads(index_path.read_text())["builds"] if index_path.exists() else {}
+    paths = {path.stem: path for path in (lifecycle.root / "builds").glob("*.json")}
+    index = {key: row for key, row in index.items() if key in paths}
+    outcome_paths = {path.stem: path for path in (lifecycle.root / "outcomes").glob("*.json")}
+    indexed_outcomes = {key for row in index.values() for key in row["outcomes"]}
+    unindexed_outcomes = len(outcome_paths.keys() - indexed_outcomes)
+    counts = {"pending": 0, "ready": 0, "rejected": 0}
+    for summary in index.values():
+        counts[summary["status"]] += 1
+    candidates = []
+    for build_id, path in paths.items():
+        summary = index.get(build_id)
+        created_at = (summary.get("created_at") or "") if summary else datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+        priority = (0 if summary and summary["status"] == "ready" and not summary["outcomes"] and not unindexed_outcomes else
+                    1 if summary is None else 2 if summary["status"] == "ready" else
+                    3 if summary["status"] == "pending" else 4)
+        candidates.append((priority, created_at, build_id, path))
+    candidates.sort(key=lambda row: (row[1], row[2]), reverse=True)
+    candidates.sort(key=lambda row: row[0])
+    builds, loaded_outcomes = [], 0
+    for _, _, build_id, path in candidates[:limit]:
         receipt = lifecycle.receipt(path.stem)
+        summary = index.get(build_id)
+        if summary is None:
+            lifecycle._index(receipt)
+            summary = {"status": receipt["status"], "outcomes": {}}
+            index[build_id] = summary
+            counts[receipt["status"]] += 1
         status = receipt["status"]
         error = receipt.get("error")
         if status == "ready":
@@ -656,6 +700,7 @@ def catalog(registry_root, *, limit: int = 20) -> dict:
                 manifest = lifecycle.registry.verify(receipt["dataset_id"])
             except (ValueError, OSError) as exc:
                 status, error = "rejected", f"integrity: {exc}"
+        counts[summary["status"]] -= 1
         counts[status] += 1
         entry = {"build_id": receipt["build_id"], "status": status,
                  "parent_dataset_id": receipt["spec"]["parent_dataset_id"],
@@ -663,7 +708,8 @@ def catalog(registry_root, *, limit: int = 20) -> dict:
                  "dataset_id": receipt.get("dataset_id"), "tracking": receipt["tracking"],
                  "diagnostics": receipt.get("diagnostics", {}), "comparisons": [],
                  "created_at": receipt.get("created_at"), "updated_at": receipt.get("updated_at"),
-                 "model_outcome_count": len(outcomes.get(receipt["build_id"], []))}
+                 "model_outcome_count": len(summary["outcomes"]),
+                 "model_outcomes_complete": not unindexed_outcomes}
         if error:
             entry["error"] = error
         if status == "ready":
@@ -678,21 +724,26 @@ def catalog(registry_root, *, limit: int = 20) -> dict:
                          } for d in manifest["feature_build"]["definitions"]],
                          formula_report=manifest["feature_build"]["validation"])
         groups = {}
-        for row in outcomes.get(receipt["build_id"], []):
-            group = groups.setdefault(row["comparison_id"], {"comparison_id": row["comparison_id"],
-                "comparison_contract": row["outcome"]["comparison_contract"], "model_outcomes": []})
-            group["model_outcomes"].append({k: row[k] for k in ("outcome", "baseline", "paired", "score_delta", "improvement") if k in row})
-        groups = list(groups.values())
-        for group in groups:
-            group["omitted_model_outcomes"] = max(0, len(group["model_outcomes"]) - 4)
-            group["model_outcomes"] = group["model_outcomes"][-4:]
-        entry["comparisons"] = groups[:4]
+        refs = sorted(summary["outcomes"].items(), key=lambda item: (item[1]["created_at"], item[0]), reverse=True)
+        for outcome_id, ref in refs:
+            groups.setdefault(ref["comparison_id"], []).append(outcome_id)
+        for comparison_id, outcome_ids in list(groups.items())[:4]:
+            group = {"comparison_id": comparison_id, "model_outcomes": [],
+                     "omitted_model_outcomes": max(0, len(outcome_ids) - 4)}
+            for outcome_id in outcome_ids[:4]:
+                row = json.loads(outcome_paths[outcome_id].read_text())
+                if row["build_id"] != build_id or row["comparison_id"] != comparison_id or row["outcome_id"] != outcome_id:
+                    raise ValueError("Catalog outcome index mismatch")
+                loaded_outcomes += 1
+                group["comparison_contract"] = row["outcome"]["comparison_contract"]
+                group["model_outcomes"].append({k: row[k] for k in ("outcome", "baseline", "paired", "score_delta", "improvement") if k in row})
+            entry["comparisons"].append(group)
         entry["omitted_comparisons"] = max(0, len(groups) - 4)
+        entry["omitted_model_outcomes"] = len(summary["outcomes"]) - sum(len(group["model_outcomes"]) for group in entry["comparisons"])
         builds.append(entry)
-    # New ready candidates without observations get the first controller slots.
-    builds.sort(key=lambda row: (row.get("created_at") or "", row["build_id"]), reverse=True)
-    builds.sort(key=lambda row: (0 if row["status"] == "ready" and not row["model_outcome_count"] else
-                                1 if row["status"] == "ready" else 2 if row["status"] == "pending" else 3))
-    return {"schema_version": 1, "counts": counts, "builds": builds[:limit],
-            "omitted_builds": max(0, len(builds) - limit),
+    return {"schema_version": 1, "counts": counts, "builds": builds,
+            "counts_scope": "recorded statuses; integrity checked only for selected builds",
+            "unindexed_builds": len(paths.keys() - index.keys()), "unindexed_outcomes": unindexed_outcomes,
+            "omitted_builds": max(0, len(paths) - len(builds)),
+            "omitted_outcomes": max(0, len(outcome_paths) - loaded_outcomes),
             "interpretation": "Scores are grouped by comparison contract; paired deltas apply only to those models. No global feature ranking."}
