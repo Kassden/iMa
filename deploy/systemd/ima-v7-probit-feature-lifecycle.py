@@ -92,6 +92,8 @@ def main():
         proof = prove_local_preflight(CAMPAIGN, "D000236")
         spend = expansion._planner_spend(CAMPAIGN)
         assert "D000236" not in spend["unresolved_decision_ids"]
+        for name in ("_capabilities", "_planner_spend", "_worker", "_prepare_program", "BoundedFitExecutor"):
+            assert expansion.run_expansion_campaign.__globals__[name] is getattr(expansion, name)
         policy = resolve_probit_budget(JobWorkload(stage="fit", family="gaussian_probit", rows=100,
             generated_features=0, selected_features=3, categorical_cardinalities=(), folds=3,
             native_threads=1, native_thread_settings={}, search_settings={}, shared_artifacts={},
