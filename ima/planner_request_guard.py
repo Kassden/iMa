@@ -15,6 +15,8 @@ import re
 import tempfile
 import textwrap
 from types import CodeType
+from contextvars import ContextVar
+import uuid
 
 
 VERSION = 3
@@ -109,6 +111,7 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
         "fold_local_graph_limit": "With recipe.transforms or feature_discovery, win-probability graph "
                                  "estimator nodes support logit, boosted, benter_conditional_logit and gaussian_probit; "
                                  "catboost_classifier and performance_distribution ancestors are unsupported on that path.",
+        "adjusted_speed_graph_limit": "Graph feature_discovery.adjusted_speed_residuals=true requires an unimplemented nested residual fit contract. Use residuals=false or a supported non-graph recipe.",
     }
     receipt.update(request_guard_version=VERSION, context_byte_limit=max_bytes,
                    bytes_before_request_guard=before,
@@ -116,6 +119,33 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
                        "historical_paper_searches": "Counted previews only; full evidence/report remains durable",
                        "zero_capacity_programs": "Exhausted programs omitted, positive capacity retained",
                        "outcome_runtime_artifacts": "Execution paths omitted, science/metrics retained"})
+    receipt["request_guard_projection_sha256"] = hashlib.sha256(encoded(view)).hexdigest()
+    size = len(encoded(view))
+    omissions = receipt.setdefault("adaptive_omissions", {})
+    target = int(max_bytes * .90)
+    for key, keep in (("hypothesis_memory", 1), ("recent_planner_failures", 1)):
+        rows = evidence.get(key)
+        if isinstance(rows, list) and len(rows) > keep and size > target:
+            omissions[key] = len(rows)-keep
+            evidence[key] = rows[:keep]
+            size = len(encoded(view))
+    # Full recipes remain in the contract champions; replace only exact duplicates.
+    champions = evidence.get("champions_by_contract", {})
+    champions = champions if isinstance(champions, dict) else {}
+    families = evidence.get("champions_by_family", {})
+    for row in families.values() if isinstance(families, dict) else ():
+        if size <= target:
+            break
+        if not isinstance(row, dict) or not row.get("recipe"):
+            continue
+        for key, champion in champions.items():
+            if (isinstance(champion, dict) and champion.get("attempt_id") == row.get("attempt_id")
+                    and champion.get("recipe") == row["recipe"]):
+                row.pop("recipe")
+                row["recipe_reference"] = {"champions_by_contract": key, "attempt_id": row["attempt_id"]}
+                omissions["duplicate_family_recipes"] = omissions.get("duplicate_family_recipes", 0)+1
+                break
+        size = len(encoded(view))
     receipt["request_guard_projection_sha256"] = hashlib.sha256(encoded(view)).hexdigest()
     size = len(encoded(view))
     if size > max_bytes:
@@ -154,6 +184,8 @@ def semantic_preflight(decision, evidence):
               if finding["proposal_id"] in fixed and finding["code"] == "undeclared_recipe_changes"]
     for proposal in candidate.programs:
         recipe = proposal.recipe
+        if recipe.pipeline_graph and recipe.feature_discovery and recipe.feature_discovery.adjusted_speed_residuals:
+            errors.append(f"{proposal.proposal_id}: Graph adjusted-speed histories require a nested residual fit contract; disable adjusted_speed_residuals or use a supported non-graph recipe")
         if recipe.pipeline_graph and (recipe.transforms or recipe.feature_discovery):
             from .pipeline_graph import PipelineGraph
             graph = PipelineGraph.from_dict(recipe.pipeline_graph).validate()
@@ -273,6 +305,7 @@ def install_guard(campaign, context_bytes=CONTEXT_BYTES, request_bytes=REQUEST_B
     original_context = context.decision_planner_evidence
     original_post = orchestrator._post_json
     circuit = PaidCallCircuit(campaign)
+    dispatched = ContextVar("request_guard_dispatched", default=None)
 
     def project(bundle):
         return bounded_context(original_context(bundle), context_bytes)
@@ -282,11 +315,25 @@ def install_guard(campaign, context_bytes=CONTEXT_BYTES, request_bytes=REQUEST_B
         size = len(encoded(payload))
         if size > request_bytes:
             raise ValueError(f"Planner HTTP request exceeds byte budget: {size}>{request_bytes}; no paid call")
+        if dispatched.get() is not None:
+            dispatched.set(dispatched.get()+1)
         return original_post(url, payload, config)
 
     def choose(evidence, limits, config):
-        circuit.check_and_record(evidence)
-        return bind_response(original_choose(evidence, limits, config), evidence)
+        token = dispatched.set(0)
+        try:
+            circuit.check_and_record(evidence)
+            return bind_response(original_choose(evidence, limits, config), evidence)
+        except Exception:
+            if dispatched.get() == 0 and config.transport_observer:
+                identity = {"producer": "planner_request_guard", "preflight_version": 1,
+                            "decision_id": evidence["decision_id"], "evidence_id": evidence["evidence_id"],
+                            "preflight_nonce": uuid.uuid4().hex}
+                config.transport_observer({**identity, "phase": "request_started"})
+                config.transport_observer({**identity, "phase": "request.preflight_failed"})
+            raise
+        finally:
+            dispatched.reset(token)
 
     choose.request_guard_version = VERSION
     context.decision_planner_evidence = project

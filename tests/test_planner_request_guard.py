@@ -100,16 +100,63 @@ class PlannerRequestGuardTests(unittest.TestCase):
                     patch.object(planner, "_post_json", return_value=raw) as post:
                 install_guard(directory, request_bytes=byte_budget)
                 if byte_budget == 1:
+                    events = []
                     with self.assertRaisesRegex(ValueError, "byte budget"):
                         planner.choose_research_decision(evidence, {"trial_ceiling":260,"max_new_programs":12},
-                                                        planner.OpenRouterConfig("unused","fixture/model"))
+                                                        planner.OpenRouterConfig("unused","fixture/model", transport_observer=events.append))
                     self.assertEqual(post.call_count, 0)
+                    from ima.openrouter_transport import classify_transport_attempt
+                    self.assertEqual(classify_transport_attempt(events)["classification"], "not_dispatched")
                 else:
                     result = planner.choose_research_decision(evidence, {"trial_ceiling":260,"max_new_programs":12},
                                                              planner.OpenRouterConfig("unused","fixture/model"))
                     self.assertEqual(post.call_count, 1)
                     self.assertEqual(result["decision"]["programs"][0]["evidence_ids"], ["e"])
                     self.assertEqual(result["raw_response"], raw)
+
+    def test_adaptive_history_projection_preserves_safety_and_parent_ids(self):
+        protected = {"completed_trial_index": [{"attempt_id": "parent"}],
+                     "capabilities": {"safety": "Keep eligibility and future taint"}}
+        view = protected | {"hypothesis_memory": [{"narrative": "x"*80000} for _ in range(4)]}
+        result = bounded_context(view)
+        self.assertLess(len(encoded(result)), 300000)
+        self.assertEqual(len(result["hypothesis_memory"]), 1)
+        for key in protected:
+            self.assertEqual(result[key], view[key])
+        self.assertEqual(len(view["hypothesis_memory"]), 4)
+        self.assertEqual(result, bounded_context(result))
+
+    def test_post_entry_failure_cannot_emit_unsent_preflight(self):
+        from ima import openrouter_orchestrator as planner, research_planner_context as context
+        from ima.planner_request_guard import install_guard
+        evidence, _ = self.fixture()
+        original = planner.choose_research_decision
+        clone = FunctionType(original.__code__, dict(original.__globals__), original.__name__,
+                             original.__defaults__, original.__closure__)
+        events = []
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(planner, "choose_research_decision", clone), \
+                patch.object(context, "decision_planner_evidence", context.decision_planner_evidence), \
+                patch.object(planner, "_post_json", side_effect=TimeoutError("response uncertain")):
+            install_guard(directory)
+            with self.assertRaises(Exception):
+                planner.choose_research_decision(evidence, {"trial_ceiling":260,"max_new_programs":12},
+                    planner.OpenRouterConfig("unused", "fixture/model", transport_observer=events.append))
+        self.assertFalse(any(e["phase"] == "request.preflight_failed" for e in events))
+
+    def test_adjusted_speed_graph_fails_semantic_preflight(self):
+        from ima.planner_request_guard import semantic_preflight
+        from ima.research_expansion import PlannerDecision
+        from tests.test_pipeline_graph import graph_spec
+        evidence, response = self.fixture()
+        recipe = response["decision"]["programs"][0]["recipe"]
+        recipe["pipeline_graph"] = graph_spec()
+        recipe["calibration"] = {"kind": "none", "parameters": {}}
+        recipe["blend"] = {"kind": "none", "parameters": {}}
+        recipe["feature_discovery"] = {"entities": ["horse"], "measurements": ["speed_mps"],
+                                      "adjusted_speed_residuals": True}
+        with self.assertRaisesRegex(ValueError, "nested residual"):
+            semantic_preflight(PlannerDecision.model_validate(response["decision"]), evidence)
 
     def test_effective_default_dataset_is_comparison_only(self):
         from ima.proposal_audit import audit_decisions
