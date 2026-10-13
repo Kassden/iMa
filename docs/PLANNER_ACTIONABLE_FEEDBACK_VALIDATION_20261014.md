@@ -12,6 +12,7 @@ D241 was rejected after two paid responses. Its second proposal declared pipelin
 
 ## Verification
 - Final targeted suites: 179 tests and 43 subtests passed; six existing all-missing synthetic prize warnings.
+- Additional planner/memo/context/discipline/expansion consumer suite: 96 tests and 57 subtests passed; 12 existing Optuna constant_liar experimental warnings. Combined nonoverlapping targeted coverage: 275 tests and 100 subtests.
 - Preserved D241 second response replay gives exact l2 0.001048550555018385 versus 0.041030125528818434 and max_iter 4847 versus 3525.
 - Both legitimate corrections pass semantic preflight while retaining all three programs and the original 10-trial budget.
 - Actual guarded choose replay accepts restore and joint corrections, rejects repeated-invalid JSON after exactly two calls, and preserves token/cost sums and original input data.
