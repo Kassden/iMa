@@ -37,6 +37,8 @@ Preserved Gaussian trial `attempt-3dccd98bb0a31cdfcee67962e4bb5f6f5111f86f128d2c
 
 Trial `attempt-c70ea85e4d6471ed3dbff563cadefccaa4b76b582c6ee20904707e81e197b075` is running after the handover, proving resumed execution rather than merely an active service.
 
+Latest subsequent planner decision D241 was rejected for a legitimate undeclared model change, not context size or unknown billing. Its composition-only fixed control changed outer Benter regularization from 0.001048550555018385 to 0.041030125528818434. The executor explicitly overlays outer model parameters onto the primary graph estimator, so this is a real training change, not harmless metadata. The guard must reject that matched-control claim rather than normalize it away. Reported D241 cost is USD 0.008626387; accepted D240 work continues. Planner proposal quality remains imperfect; this repair does not guarantee every proposed hypothesis is valid.
+
 ## Boundaries and Limits
 
 MemoryMax remains 100 GB and CPU quota remains 24 CPU-seconds/second. Other users, repositories and services were untouched. Dirty workspace files were preserved and only owned commits were pushed to `fix/planner-context-predispatch`; main was not merged. The global scope checker reports thousands of preexisting/generated paths, so it cannot claim a clean whole-worktree pass.
