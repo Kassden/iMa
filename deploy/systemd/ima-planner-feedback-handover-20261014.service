@@ -1,0 +1,13 @@
+[Unit]
+Description=Single-use graceful IMA planner feedback handover
+After=ima-v7-openrouter-recovery-20261007.service
+ConditionPathExists=%h/research-v2/campaigns/agentic_v7_openrouter_recovery_20261007/STOP
+
+[Service]
+Type=oneshot
+TimeoutStartSec=infinity
+ExecStart=/usr/bin/python3 %h/research-v2/deploy-probit-feature-lifecycle.py activate 5411b780d6111ea6349a134845a1a5b63e75be9a
+ExecStartPost=/usr/bin/systemctl --user disable ima-planner-feedback-handover-20261014.service
+
+[Install]
+WantedBy=default.target
