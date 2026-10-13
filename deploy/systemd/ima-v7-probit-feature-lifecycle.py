@@ -56,7 +56,9 @@ def install_previous_with_hooks():
     original_load = previous.load
 
     def composed_load(name, path):
-        module = original_load(name, path)
+        module = (load(name, stage/"ima/planner_request_guard.py")
+                  if name == "ima.planner_request_guard" and (stage/"ima/planner_request_guard.py").exists()
+                  else original_load(name, path))
         if name == "ima.planner_request_guard":
             from ima.research_lifecycle import compact_optional_history, install_campaign_policy
             bound, install = module.bounded_context, module.install_guard
@@ -75,6 +77,8 @@ def install_previous_with_hooks():
         return module
 
     previous.load = composed_load
+    if (stage/"ima/openrouter_transport.py").exists():
+        load("ima.openrouter_transport", stage/"ima/openrouter_transport.py")
     return previous, stage, manifest
 
 
@@ -90,8 +94,18 @@ def main():
         from ima.probit_runtime_policy import resolve_probit_budget
         from ima.research_resources import JobWorkload
         proof = prove_local_preflight(CAMPAIGN, "D000236")
+        if (stage/"ima/planner_request_guard.py").exists():
+            prove_local_preflight(CAMPAIGN, "D000239")
+            from ima.research_planner_context import decision_planner_evidence
+            replay = decision_planner_evidence(json.loads((CAMPAIGN/"evidence/D000239.json").read_text()))
+            from ima.planner_request_guard import encoded
+            assert len(encoded(replay)) <= 300000
+            (stage/"context-replay.json").write_text(json.dumps({"context_bytes": len(encoded(replay)),
+                "original_evidence_id": replay.get("evidence_id"), "adaptive_omissions": replay.get("planner_decision_view",{}).get("adaptive_omissions")}))
         spend = expansion._planner_spend(CAMPAIGN)
         assert "D000236" not in spend["unresolved_decision_ids"]
+        if (stage/"ima/planner_request_guard.py").exists():
+            assert "D000239" not in spend["unresolved_decision_ids"]
         for name in ("_capabilities", "_planner_spend", "_worker", "_prepare_program", "BoundedFitExecutor"):
             assert expansion.run_expansion_campaign.__globals__[name] is getattr(expansion, name)
         policy = resolve_probit_budget(JobWorkload(stage="fit", family="gaussian_probit", rows=100,
