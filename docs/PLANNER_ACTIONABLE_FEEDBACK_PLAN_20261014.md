@@ -102,4 +102,4 @@ Improve proposal reliability with exact bounded matched-control repair guidance;
   - `docs/PLANNER_ACTIONABLE_FEEDBACK_VALIDATION_20261014.md`
 - Checklist:
   - [x] Push and stage qualified release.
-  - [ ] Activate safely and verify new planning.
+  - [x] Activate safely and verify new planning.
