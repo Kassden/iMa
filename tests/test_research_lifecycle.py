@@ -114,6 +114,24 @@ def test_missing_proof_input_leaves_billing_unresolved(tmp_path):
     assert not _qualified_unsent(tmp_path, "D000999")
 
 
+def test_native_billing_consumes_guard_preflight_and_keeps_sent_unknown(tmp_path):
+    from ima.research_expansion import _planner_spend
+    (tmp_path/"decisions").mkdir()
+    (tmp_path/"planner-transport").mkdir()
+    identity = {"producer": "planner_request_guard", "preflight_version": 1,
+                "decision_id": "D000001", "evidence_id": "e", "preflight_nonce": "nonce"}
+    events = [{**identity, "phase": "request_started"}, {**identity, "phase": "request.preflight_failed"}]
+    (tmp_path/"planner-transport/D000001-01.json").write_text(json.dumps({"events": events}))
+    (tmp_path/"decisions/D000001.json").write_text(json.dumps({"planner_status": "failed", "planner_usage": {},
+        "transport_attempts": [{"events": events}]}))
+    spend = _planner_spend(tmp_path)
+    assert spend["not_dispatched_decision_ids"] == ["D000001"]
+    assert not spend["spend_unknown"]
+    events.append({"phase": "http11.send_request_headers.started"})
+    (tmp_path/"planner-transport/D000001-01.json").write_text(json.dumps({"events": events}))
+    assert _planner_spend(tmp_path)["spend_unknown"]
+
+
 def test_feedback_failure_does_not_discard_successful_fit(tmp_path):
     from ima import research_expansion as expansion
     from ima.research_lifecycle import lifecycle_worker

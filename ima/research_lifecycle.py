@@ -15,6 +15,9 @@ VERSION = 1
 QUALIFIED_PREFLIGHTS = {"D000236": {
     "decision_sha256": "a2294b248a8eb309c9a326e0ee97a7602b6188c7dc220df91dce9b8e161584af",
     "evidence_sha256": "556758ef40306fe63b0c96cb20e02c3952be8d42422acedf2ef2251160bf0ad7",
+}, "D000239": {
+    "decision_sha256": "0b92a53f0aaedc47b8d12bd40990810b2a101233612abf0b2385eb3fb391ec7a",
+    "evidence_sha256": "9f3473e801aaed49028a8bd4719664c7302be3f6daa590477860c3a7db59fa13",
 }}
 _REQUEST = ContextVar("ima_lifecycle_request", default=None)
 _PROFILES = ContextVar("ima_lifecycle_profiles", default=None)
