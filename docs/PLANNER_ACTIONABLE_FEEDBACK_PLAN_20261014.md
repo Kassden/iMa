@@ -78,8 +78,8 @@ Improve proposal reliability with exact bounded matched-control repair guidance;
   - `ima/planner_request_guard.py`
   - `tests/test_planner_request_guard.py`
 - Checklist:
-  - [ ] Implement request contract and bounded structured errors.
-  - [ ] Test blend-only, joint and repeated invalid responses.
+  - [x] Implement request contract and bounded structured errors.
+  - [x] Test blend-only, joint and repeated invalid responses.
 
 ## Phase 3: Verification
 ### Subphase 3.1: Saved failure and adversarial qualification
@@ -89,8 +89,8 @@ Improve proposal reliability with exact bounded matched-control repair guidance;
 - Planned Touch Files:
   - `docs/PLANNER_ACTIONABLE_FEEDBACK_VALIDATION_20261014.md`
 - Checklist:
-  - [ ] Pass regression and saved failure replay.
-  - [ ] Record proof and remaining uncertainty.
+  - [x] Pass regression and saved failure replay.
+  - [x] Record proof and remaining uncertainty.
 
 ## Phase 4: Deployment
 ### Subphase 4.1: Own campaign rollout
@@ -101,5 +101,5 @@ Improve proposal reliability with exact bounded matched-control repair guidance;
   - `deploy/systemd/ima-planner-feedback-handover-20261014.service`
   - `docs/PLANNER_ACTIONABLE_FEEDBACK_VALIDATION_20261014.md`
 - Checklist:
-  - [ ] Push and stage qualified release.
+  - [x] Push and stage qualified release.
   - [ ] Activate safely and verify new planning.
