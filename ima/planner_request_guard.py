@@ -192,9 +192,19 @@ def _control_repairs(audit, evidence, fixed):
     index = {}
     for key in ("completed_trial_index", "active_trials", "champions_by_family", "champions_by_contract"):
         rows = evidence.get(key, [])
+        if not isinstance(rows, (dict, list)):
+            continue
         for row in rows.values() if isinstance(rows, dict) else rows:
             if isinstance(row, dict) and isinstance(row.get("attempt_id"), str):
                 index[row["attempt_id"]] = index.get(row["attempt_id"], {}) | row
+    memory = evidence.get("hypothesis_memory", [])
+    for item in memory if isinstance(memory, list) else ():
+        if not isinstance(item, dict) or item.get("kind") not in {"evaluated", "preparation_rejected"}:
+            continue
+        payload = item.get("payload")
+        if isinstance(payload, dict) and isinstance(payload.get("attempt_id"), str):
+            aid = payload["attempt_id"]
+            index[aid] = index.get(aid, {}) | payload
     errors = []
     for record in audit["proposals"]:
         if record["proposal_id"] not in fixed:
@@ -202,7 +212,7 @@ def _control_repairs(audit, evidence, fixed):
         for comparison in record["parent_comparisons"]:
             findings = [f for f in audit["findings"] if f["proposal_id"] == record["proposal_id"]
                         and f["code"] == "undeclared_recipe_changes"
-                        and comparison["attempt_id"] in f["message"]]
+                        and f["message"].startswith(f"Against {comparison['attempt_id']}, fields ")]
             if not findings:
                 continue
             parent = index.get(comparison["attempt_id"], {}).get("recipe", {})

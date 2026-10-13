@@ -296,6 +296,41 @@ class PlannerRequestGuardTests(unittest.TestCase):
         fallback = [{"message": "schema error"}]
         self.assertIs(_repair_errors(ValueError("other"), fallback), fallback)
 
+    def test_memory_parent_values_and_malformed_optional_sections(self):
+        from ima.planner_request_guard import semantic_preflight, ProposalRepairError
+        from ima.research_expansion import PlannerDecision
+        evidence, response = self.fixture()
+        proposal = response["decision"]["programs"][0]
+        proposal.update(parent_trial_ids=["parent"], fixed_parameters=True,
+                        changed_axes=["pipeline_composition"])
+        parent = copy.deepcopy(proposal["recipe"])
+        parent["model"]["parameters"] = {"l2": .125}
+        proposal["recipe"]["model"]["parameters"] = {"l2": .5}
+        evidence.update(completed_trial_index=[{"attempt_id": "parent"}], active_trials=None,
+            champions_by_family=None, hypothesis_memory=[{"kind": "evaluated", "payload": {
+                "attempt_id": "parent", "recipe": parent}}])
+        with self.assertRaises(ProposalRepairError) as caught:
+            semantic_preflight(PlannerDecision.model_validate(response["decision"]), evidence)
+        difference = caught.exception.repair_errors[0]["differences_preview"][0]
+        self.assertEqual(difference["parent"], .125)
+        self.assertEqual(difference["proposed"], .5)
+
+    def test_feedback_does_not_match_parent_id_prefix(self):
+        from ima.planner_request_guard import semantic_preflight, ProposalRepairError
+        from ima.research_expansion import PlannerDecision
+        evidence, response = self.fixture()
+        proposal = response["decision"]["programs"][0]
+        proposal.update(parent_trial_ids=["attempt-1", "attempt-10"], fixed_parameters=True,
+                        changed_axes=["pipeline_composition"])
+        unchanged = copy.deepcopy(proposal["recipe"])
+        different = copy.deepcopy(unchanged)
+        different["model"]["parameters"] = {"l2": .125}
+        evidence["completed_trial_index"] = [{"attempt_id": "attempt-1", "recipe": unchanged},
+                                             {"attempt_id": "attempt-10", "recipe": different}]
+        with self.assertRaises(ProposalRepairError) as caught:
+            semantic_preflight(PlannerDecision.model_validate(response["decision"]), evidence)
+        self.assertEqual([r["parent_attempt_id"] for r in caught.exception.repair_errors], ["attempt-10"])
+
     def test_unsupported_learned_feature_graph_fails_before_dispatch(self):
         from ima.research_expansion import PlannerDecision
         from ima.planner_request_guard import semantic_preflight
