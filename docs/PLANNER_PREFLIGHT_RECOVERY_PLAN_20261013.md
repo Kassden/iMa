@@ -61,6 +61,7 @@ Prevent growing context from stranding V7, distinguish locally unsent failures f
 - Dedicated branch fix/planner-context-predispatch. Protect 4-hour probit policy, warm starts, feature lineage, free planner budgets, 100GB ceiling, native cost/tokens and original scientific data.
 - Atomic units: plan, guarded projection/receipts, classifier, historical recovery, deploy and validation.
 - Scope checker may see preexisting dirty/untracked work; stage owned paths only and disclose that baseline.
+- Deployment scope expansion: an own-user, single-use systemd handover service makes the graceful wait survive SSH/client disconnection. It must not terminate the productive fit or mutate scientific records.
 
 ## Phase 1: Evidence
 ### Subphase 1.1: Lock incident contracts
@@ -107,6 +108,7 @@ Prevent growing context from stranding V7, distinguish locally unsent failures f
 - Success Criteria: campaign running valid work without unknown local charges.
 - Planned Touch Files:
   - `deploy/systemd/ima-v7-probit-feature-lifecycle.py`
+  - `deploy/systemd/ima-preflight-handover-20261013.service`
   - `docs/PLANNER_PREFLIGHT_RECOVERY_VALIDATION_20261013.md`
 - Checklist:
   - [ ] Push/stage/qualify owned release.
