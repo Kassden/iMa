@@ -133,7 +133,7 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
     champions = evidence.get("champions_by_contract", {})
     champions = champions if isinstance(champions, dict) else {}
     families = evidence.get("champions_by_family", {})
-    for row in families.values() if isinstance(families, dict) else ():
+    for family, row in list(families.items()) if isinstance(families, dict) else ():
         if size <= target:
             break
         if not isinstance(row, dict) or not row.get("recipe"):
@@ -141,8 +141,10 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
         for key, champion in champions.items():
             if (isinstance(champion, dict) and champion.get("attempt_id") == row.get("attempt_id")
                     and champion.get("recipe") == row["recipe"]):
-                row.pop("recipe")
-                row["recipe_reference"] = {"champions_by_contract": key, "attempt_id": row["attempt_id"]}
+                replacement = deepcopy(row)
+                replacement.pop("recipe")
+                replacement["recipe_reference"] = {"champions_by_contract": key, "attempt_id": row["attempt_id"]}
+                families[family] = replacement
                 omissions["duplicate_family_recipes"] = omissions.get("duplicate_family_recipes", 0)+1
                 break
         size = len(encoded(view))

@@ -144,6 +144,17 @@ class PlannerRequestGuardTests(unittest.TestCase):
                     planner.OpenRouterConfig("unused", "fixture/model", transport_observer=events.append))
         self.assertFalse(any(e["phase"] == "request.preflight_failed" for e in events))
 
+    def test_duplicate_recipe_becomes_resolvable_reference_without_losing_taint(self):
+        row = {"attempt_id": "parent", "recipe": {"spec": "x"*160000}, "target_tainted": True}
+        bundle = {"champions_by_contract": {"contract": row}, "champions_by_family": {"family": row}}
+        result = bounded_context(bundle)
+        self.assertEqual(result["champions_by_contract"]["contract"], row)
+        family = result["champions_by_family"]["family"]
+        self.assertTrue(family["target_tainted"])
+        self.assertEqual(family["recipe_reference"], {"champions_by_contract": "contract", "attempt_id": "parent"})
+        self.assertNotIn("recipe", family)
+        self.assertEqual(bundle["champions_by_family"]["family"], row)
+
     def test_adjusted_speed_graph_fails_semantic_preflight(self):
         from ima.planner_request_guard import semantic_preflight
         from ima.research_expansion import PlannerDecision
