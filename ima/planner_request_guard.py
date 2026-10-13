@@ -19,7 +19,7 @@ from contextvars import ContextVar
 import uuid
 
 
-VERSION = 3
+VERSION = 4
 CONTEXT_BYTES = 300_000
 REQUEST_BYTES = 380_000
 
@@ -108,6 +108,11 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
         "fixed_controls": "Copy every unchanged parent recipe field exactly, including transforms. "
                           "If changing transforms as well as a model/feature, declare transform among changed_axes "
                           "and describe a joint test, not a single-axis ablation.",
+        "graph_primary_binding": "recipe.model.parameters overrides primary_node_id.model_parameters, "
+                                 "including l2 and max_iter. These are executable settings, not metadata. "
+                                 "For a pipeline_composition-only fixed test copy recipe.model exactly from the parent. "
+                                 "To change its settings too declare hyperparameters and describe a joint test. "
+                                 "fixed_parameters=true means no Optuna tuning, NOT unchanged parent settings.",
         "fold_local_graph_limit": "With recipe.transforms or feature_discovery, win-probability graph "
                                  "estimator nodes support logit, boosted, benter_conditional_logit and gaussian_probit; "
                                  "catboost_classifier and performance_distribution ancestors are unsupported on that path.",
@@ -175,6 +180,83 @@ def effective_dataset_audit(original, decisions, evidence, default_dataset_id):
     return result
 
 
+class ProposalRepairError(ValueError):
+    """Bounded machine-readable diagnostics; never edit the scientific proposal."""
+
+    def __init__(self, errors):
+        self.repair_errors = errors
+        super().__init__("Decision admission preflight: " + "; ".join(e["message"] for e in errors))
+
+
+def _control_repairs(audit, evidence, fixed):
+    index = {}
+    for key in ("completed_trial_index", "active_trials", "champions_by_family", "champions_by_contract"):
+        rows = evidence.get(key, [])
+        for row in rows.values() if isinstance(rows, dict) else rows:
+            if isinstance(row, dict) and isinstance(row.get("attempt_id"), str):
+                index[row["attempt_id"]] = index.get(row["attempt_id"], {}) | row
+    errors = []
+    for record in audit["proposals"]:
+        if record["proposal_id"] not in fixed:
+            continue
+        for comparison in record["parent_comparisons"]:
+            findings = [f for f in audit["findings"] if f["proposal_id"] == record["proposal_id"]
+                        and f["code"] == "undeclared_recipe_changes"
+                        and comparison["attempt_id"] in f["message"]]
+            if not findings:
+                continue
+            parent = index.get(comparison["attempt_id"], {}).get("recipe", {})
+            proposed = record["declared_proposal"]["recipe"]
+            differences = []
+
+            def walk(old, new, path):
+                if old == new or len(differences) >= 8:
+                    return
+                if isinstance(old, dict) and isinstance(new, dict) and len(path) < 8:
+                    for key in sorted(set(old) | set(new)):
+                        walk(old.get(key), new.get(key), path + [key])
+                else:
+                    def preview(value):
+                        return value if len(encoded(value)) <= 240 else {"omitted": True, "source": "parent/candidate recipe in evidence"}
+                    differences.append({"path": path, "parent": preview(old), "proposed": preview(new)})
+
+            # Model precedence is the frequent failure; lead with exact values.
+            fields = comparison.get("changed_recipe_fields", [])
+            for field in sorted(fields, key=lambda value: (value != "model", value)):
+                walk(parent.get(field), proposed.get(field), ["recipe", field])
+            errors.append({"type": "undeclared_recipe_changes", "proposal_id": record["proposal_id"],
+                "parent_attempt_id": comparison["attempt_id"], "declared_axes": record["declared_proposal"]["changed_axes"],
+                "changed_recipe_fields": fields, "differences_preview": differences,
+                "message": findings[0]["message"],
+                "model_axis_hint": ("model_family" if parent.get("model", {}).get("kind") != proposed.get("model", {}).get("kind")
+                                    else "hyperparameters") if "model" in fields else None,
+                "repair_options": ["Restore undeclared fields exactly from parent for the claimed single-axis test.",
+                    "Or explicitly declare all changed axes and describe a joint experiment; do not claim isolated causality."],
+                "primary_binding": "Outer recipe.model.parameters overrides primary graph node parameters."})
+            if len(errors) >= 8:
+                return errors
+    return errors
+
+
+def _repair_errors(exc, fallback):
+    if not isinstance(exc, ProposalRepairError):
+        return fallback
+    result = deepcopy(exc.repair_errors)
+    # Feedback is optional detail, not a second copy of the full evidence bundle.
+    while len(encoded(result)) > 12000:
+        detailed = next((row for row in reversed(result) if row.get("differences_preview")), None)
+        if detailed is not None:
+            detailed["differences_preview"].pop()
+            detailed["preview_truncated"] = True
+        elif len(result) > 1:
+            result.pop()
+            result[0]["additional_errors_omitted"] = True
+        else:
+            return [{"type": "undeclared_recipe_changes", "message": str(exc)[:1500],
+                     "detail_reference": "parent and proposed recipes in current evidence", "preview_truncated": True}]
+    return result
+
+
 def semantic_preflight(decision, evidence):
     from .research_expansion import PlannerDecision
     from .proposal_audit import audit_decisions
@@ -182,6 +264,7 @@ def semantic_preflight(decision, evidence):
     candidate = PlannerDecision.model_validate(bound)
     fixed = {p.proposal_id for p in candidate.programs if p.fixed_parameters and p.parent_trial_ids}
     audit = audit_decisions([bound], evidence)
+    repairs = _control_repairs(audit, evidence, fixed)
     errors = [finding["message"] for finding in audit["findings"]
               if finding["proposal_id"] in fixed and finding["code"] == "undeclared_recipe_changes"]
     for proposal in candidate.programs:
@@ -202,6 +285,10 @@ def semantic_preflight(decision, evidence):
                         "logit", "boosted", "benter_conditional_logit", "gaussian_probit"}:
                     errors.append(f"{proposal.proposal_id}: fold-local learned-feature win node does not implement {kind}")
     if errors:
+        if repairs:
+            repairs.extend({"message": error} for error in errors
+                           if not any(r["message"] == error for r in repairs))
+            raise ProposalRepairError(repairs[:8])
         raise ValueError("Decision admission preflight: " + "; ".join(errors[:8]))
     return candidate
 
@@ -232,10 +319,15 @@ def _planner_with_preflight(original, source=None):
     if signature(baseline[original.__name__].__code__) != signature(original.__code__):
         raise ValueError("Planner reconstruction differs from installed behavior")
     matches = 0
+    repair_matches = 0
 
     class Insert(ast.NodeTransformer):
         def visit_Assign(self, node):
-            nonlocal matches
+            nonlocal matches, repair_matches
+            if any(isinstance(target, ast.Name) and target.id == "errors" for target in node.targets):
+                repair_matches += 1
+                check = ast.parse("errors = _request_guard_repair_errors(exc, errors)").body[0]
+                return [node, ast.copy_location(check, node)]
             if (any(isinstance(target, ast.Name) and target.id == "decision" for target in node.targets)
                     and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute)
                     and node.value.func.attr == "model_validate"):
@@ -245,10 +337,11 @@ def _planner_with_preflight(original, source=None):
             return node
 
     tree = Insert().visit(tree)
-    if matches != 1:
+    if matches != 1 or repair_matches != 1:
         raise ValueError("Planner semantic repair integration point changed")
     ast.fix_missing_locations(tree)
-    namespace = dict(original.__globals__) | {"_request_guard_semantic_preflight": semantic_preflight}
+    namespace = dict(original.__globals__) | {"_request_guard_semantic_preflight": semantic_preflight,
+                                            "_request_guard_repair_errors": _repair_errors}
     compiled = {}
     exec(compile(tree, __file__+":semantic-preflight", "exec"), namespace, compiled)
     return compiled[original.__name__], hashlib.sha256(source.encode()).hexdigest()

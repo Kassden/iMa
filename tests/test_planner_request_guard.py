@@ -235,6 +235,67 @@ class PlannerRequestGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "differs from installed"):
             _planner_with_preflight(installed, source.replace('"temperature": .2', '"temperature": .9'))
 
+    def test_model_correction_has_exact_values_and_accepts_restore_or_joint(self):
+        from ima import openrouter_orchestrator as planner, research_planner_context as context
+        from ima.planner_request_guard import install_guard
+        for repair_mode in ("restore", "joint", "invalid"):
+            with self.subTest(repair_mode=repair_mode):
+                evidence, response = self.fixture()
+                proposal = response["decision"]["programs"][0]
+                proposal.update(parent_trial_ids=["parent"], fixed_parameters=True,
+                                changed_axes=["pipeline_composition"])
+                parent = copy.deepcopy(proposal["recipe"])
+                parent["model"]["parameters"] = {"l2": .001048550555018385, "max_iter": 4847}
+                proposal["recipe"]["model"]["parameters"] = {"l2": .041030125528818434, "max_iter": 3525}
+                evidence["completed_trial_index"] = [{"attempt_id": "parent", "recipe": parent}]
+                before = copy.deepcopy(response)
+                corrected = copy.deepcopy(response["decision"])
+                if repair_mode == "restore":
+                    corrected["programs"][0]["recipe"]["model"] = copy.deepcopy(parent["model"])
+                elif repair_mode == "joint":
+                    corrected["programs"][0]["changed_axes"].append("hyperparameters")
+                    corrected["programs"][0]["hypothesis"] = "Joint composition and regularization test; no isolated attribution"
+                raw = [{"choices": [{"message": {"content": json.dumps(d)}}],
+                        "usage": {"prompt_tokens": 100, "completion_tokens": 10, "cost": .001}}
+                       for d in (response["decision"], corrected)]
+                original = planner.choose_research_decision
+                clone = FunctionType(original.__code__, dict(original.__globals__), original.__name__,
+                                     original.__defaults__, original.__closure__)
+                with tempfile.TemporaryDirectory() as directory, \
+                        patch.object(planner, "choose_research_decision", clone), \
+                        patch.object(context, "decision_planner_evidence", context.decision_planner_evidence), \
+                        patch.object(planner, "_post_json", side_effect=raw) as post:
+                    install_guard(directory)
+                    if repair_mode == "invalid":
+                        with self.assertRaisesRegex(planner.OpenRouterError, "outside declared axes"):
+                            planner.choose_research_decision(evidence, {"trial_ceiling": 260, "max_new_programs": 12},
+                                planner.OpenRouterConfig("unused", "fixture/model"))
+                    else:
+                        result = planner.choose_research_decision(evidence, {"trial_ceiling": 260, "max_new_programs": 12},
+                            planner.OpenRouterConfig("unused", "fixture/model"))
+                        self.assertEqual(result["usage"]["total_cost_usd"], .002)
+                        self.assertEqual(result["usage"]["total_tokens"], 220)
+                    self.assertEqual(post.call_count, 2)
+                    feedback = json.loads(post.call_args.args[1]["messages"][-1]["content"])["errors"][0]
+                    self.assertEqual(feedback["proposal_id"], "p")
+                    self.assertEqual(feedback["parent_attempt_id"], "parent")
+                    self.assertEqual(feedback["model_axis_hint"], "hyperparameters")
+                    values = {tuple(row["path"]): row for row in feedback["differences_preview"]}
+                    self.assertEqual(values[("recipe", "model", "parameters", "l2")]["parent"], .001048550555018385)
+                    self.assertEqual(values[("recipe", "model", "parameters", "max_iter")]["proposed"], 3525)
+                    self.assertIn("overrides", feedback["primary_binding"])
+                self.assertEqual(response, before)
+
+    def test_repair_detail_is_bounded_and_fallback_is_unchanged(self):
+        from ima.planner_request_guard import ProposalRepairError, _repair_errors
+        errors = [{"message": "Mismatch", "differences_preview": [{"parent": "x" * 5000}] * 8} for _ in range(8)]
+        before = copy.deepcopy(errors)
+        result = _repair_errors(ProposalRepairError(errors), [])
+        self.assertLessEqual(len(encoded(result)), 12000)
+        self.assertEqual(errors, before)
+        fallback = [{"message": "schema error"}]
+        self.assertIs(_repair_errors(ValueError("other"), fallback), fallback)
+
     def test_unsupported_learned_feature_graph_fails_before_dispatch(self):
         from ima.research_expansion import PlannerDecision
         from ima.planner_request_guard import semantic_preflight
