@@ -6,7 +6,7 @@ ConditionPathExists=%h/research-v2/campaigns/agentic_v7_openrouter_recovery_2026
 [Service]
 Type=oneshot
 TimeoutStartSec=infinity
-ExecStart=/usr/bin/python3 %h/research-v2/deploy-probit-feature-lifecycle.py activate 5411b780d6111ea6349a134845a1a5b63e75be9a
+ExecStart=/usr/bin/python3 %h/research-v2/deploy-probit-feature-lifecycle.py activate 172c06cd21b7b2af3cea51f0a84915571ac6ce01
 ExecStartPost=/usr/bin/systemctl --user disable ima-planner-feedback-handover-20261014.service
 
 [Install]
