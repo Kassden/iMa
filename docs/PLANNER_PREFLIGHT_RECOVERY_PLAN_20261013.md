@@ -87,8 +87,8 @@ Prevent growing context from stranding V7, distinguish locally unsent failures f
   - `tests/test_openrouter_transport.py`
   - `tests/test_research_lifecycle.py`
 - Checklist:
-  - [ ] Implement adaptive projection and actual dispatch-boundary receipts.
-  - [ ] Validate residual graphs and D239 recovery with preservation tests.
+  - [x] Implement adaptive projection and actual dispatch-boundary receipts.
+  - [x] Validate residual graphs and D239 recovery with preservation tests.
 
 ## Phase 3: Qualification
 ### Subphase 3.1: Real context and failure replay
@@ -98,8 +98,8 @@ Prevent growing context from stranding V7, distinguish locally unsent failures f
 - Planned Touch Files:
   - `docs/PLANNER_PREFLIGHT_RECOVERY_VALIDATION_20261013.md`
 - Checklist:
-  - [ ] Complete adversarial and runtime tests.
-  - [ ] Read back saved context, unchanged identities and billing evidence.
+  - [x] Complete adversarial and runtime tests.
+  - [x] Read back saved context, unchanged identities and billing evidence.
 
 ## Phase 4: Deployment
 ### Subphase 4.1: Resume own V7
@@ -111,5 +111,5 @@ Prevent growing context from stranding V7, distinguish locally unsent failures f
   - `deploy/systemd/ima-preflight-handover-20261013.service`
   - `docs/PLANNER_PREFLIGHT_RECOVERY_VALIDATION_20261013.md`
 - Checklist:
-  - [ ] Push/stage/qualify owned release.
-  - [ ] Activate and verify fresh end-to-end behavior.
+  - [x] Push/stage/qualify owned release.
+  - [x] Activate and verify fresh end-to-end behavior.

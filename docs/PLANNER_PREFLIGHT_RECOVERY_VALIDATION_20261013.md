@@ -31,7 +31,11 @@ A valid Gaussian-probit component began fitting within the selected pipeline. It
 
 The final alias-safety release is waiting for that productive fit to finish. The own-user one-shot `ima-preflight-handover-20261013.service` owns the graceful wait, survives SSH disconnection, and disables itself after successful activation. Only the foreground handover helper was terminated while moving the wait into systemd; the training PID and fit were preserved. No model fits were cancelled. The original campaign is intentionally draining during this short safe handover.
 
-Final activation and fresh post-handover readback are pending at this checkpoint. Do not interpret a staged release or an activating handover unit as completed rollout.
+Final release `c414644` activated at 2026-10-13 13:15:33 UTC. The one-shot handover unit finished successfully and disabled itself. No fits were cancelled. Fresh post-handover readback at 13:23:48 UTC shows training, 748 completed / 39 failed / one running, zero pending tells/tracking and no unresolved charges. Known and total spending match at USD 11.069227935.
+
+Preserved Gaussian trial `attempt-3dccd98bb0a31cdfcee67962e4bb5f6f5111f86f128d2c99ce270c3c00555adb` completed successfully in 1475.199247 seconds (24.6 minutes), with three probit fit profiles and development fundamental race log loss 2.161712945474768. Its runtime receipt proves initial allowance 14,400 seconds and hard cap 21,600 seconds. A 20-minute deadline would have interrupted this trial. This score does not beat the approximately 2.14942 champion.
+
+Trial `attempt-c70ea85e4d6471ed3dbff563cadefccaa4b76b582c6ee20904707e81e197b075` is running after the handover, proving resumed execution rather than merely an active service.
 
 ## Boundaries and Limits
 
