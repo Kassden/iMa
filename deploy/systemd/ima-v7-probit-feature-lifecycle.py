@@ -99,7 +99,10 @@ def main():
             from ima.research_planner_context import decision_planner_evidence
             replay = decision_planner_evidence(json.loads((CAMPAIGN/"evidence/D000239.json").read_text()))
             from ima.planner_request_guard import encoded
-            assert len(encoded(replay)) <= 300000
+            from ima.planner_request_guard import CONTEXT_BYTES, REQUEST_BYTES, bounded_context
+            assert CONTEXT_BYTES is None and REQUEST_BYTES is None
+            large = {"capabilities": {"safety": "x" * 900000}}
+            assert bounded_context(large)["capabilities"] == large["capabilities"]
             (stage/"context-replay.json").write_text(json.dumps({"context_bytes": len(encoded(replay)),
                 "original_evidence_id": replay.get("evidence_id"), "adaptive_omissions": replay.get("planner_decision_view",{}).get("adaptive_omissions")}))
         spend = expansion._planner_spend(CAMPAIGN)
