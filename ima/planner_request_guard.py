@@ -19,9 +19,10 @@ from contextvars import ContextVar
 import uuid
 
 
-VERSION = 4
-CONTEXT_BYTES = 300_000
-REQUEST_BYTES = 380_000
+VERSION = 5
+CONTEXT_BYTES = None
+REQUEST_BYTES = None
+SOFT_CONTEXT_BYTES = 270_000
 
 
 def encoded(value):
@@ -84,7 +85,7 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
     view = deepcopy(projected)
     receipt = view.setdefault("planner_decision_view", {})
     if receipt.get("request_guard_version") == VERSION:
-        if len(encoded(view)) > max_bytes:
+        if max_bytes is not None and len(encoded(view)) > max_bytes:
             raise ValueError("Mandatory planner context exceeds byte budget")
         return view
     before = len(encoded(view))
@@ -119,6 +120,7 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
         "adjusted_speed_graph_limit": "Graph feature_discovery.adjusted_speed_residuals=true requires an unimplemented nested residual fit contract. Use residuals=false or a supported non-graph recipe.",
     }
     receipt.update(request_guard_version=VERSION, context_byte_limit=max_bytes,
+                   context_soft_target_bytes=SOFT_CONTEXT_BYTES if max_bytes is None else int(max_bytes * .90),
                    bytes_before_request_guard=before,
                    request_guard_omissions={
                        "historical_paper_searches": "Counted previews only; full evidence/report remains durable",
@@ -127,7 +129,7 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
     receipt["request_guard_projection_sha256"] = hashlib.sha256(encoded(view)).hexdigest()
     size = len(encoded(view))
     omissions = receipt.setdefault("adaptive_omissions", {})
-    target = int(max_bytes * .90)
+    target = SOFT_CONTEXT_BYTES if max_bytes is None else int(max_bytes * .90)
     for key, keep in (("hypothesis_memory", 1), ("recent_planner_failures", 1)):
         rows = evidence.get(key)
         if isinstance(rows, list) and len(rows) > keep and size > target:
@@ -155,7 +157,7 @@ def bounded_context(projected, max_bytes=CONTEXT_BYTES):
         size = len(encoded(view))
     receipt["request_guard_projection_sha256"] = hashlib.sha256(encoded(view)).hexdigest()
     size = len(encoded(view))
-    if size > max_bytes:
+    if max_bytes is not None and size > max_bytes:
         raise ValueError(f"Mandatory planner context exceeds byte budget: {size}>{max_bytes}; no paid call")
     return view
 
@@ -418,7 +420,7 @@ def install_guard(campaign, context_bytes=CONTEXT_BYTES, request_bytes=REQUEST_B
     def post(url, payload, config):
         # Static schemas, dynamic context and schema-repair candidates all count.
         size = len(encoded(payload))
-        if size > request_bytes:
+        if request_bytes is not None and size > request_bytes:
             raise ValueError(f"Planner HTTP request exceeds byte budget: {size}>{request_bytes}; no paid call")
         if dispatched.get() is not None:
             dispatched.set(dispatched.get()+1)

@@ -64,7 +64,36 @@ class PlannerRequestGuardTests(unittest.TestCase):
         self.assertLess(len(encoded(result)), 5000)
         self.assertEqual(result, bounded_context(result))
         with self.assertRaisesRegex(ValueError, "no paid call"):
-            bounded_context({"evidence": {"capabilities": {"safety": "x"*400000}}})
+            bounded_context({"evidence": {"capabilities": {"safety": "x"*400000}}}, max_bytes=300000)
+
+    def test_default_content_and_http_limits_are_disabled(self):
+        from ima import openrouter_orchestrator as planner, research_planner_context as context
+        from ima.planner_request_guard import install_guard, CONTEXT_BYTES, REQUEST_BYTES
+        self.assertIsNone(CONTEXT_BYTES)
+        self.assertIsNone(REQUEST_BYTES)
+        evidence, response = self.fixture()
+        evidence["capabilities"] = {"safety": "x" * 900000}
+        protected = copy.deepcopy(evidence["capabilities"])
+        view = bounded_context(evidence)
+        self.assertEqual(view["capabilities"], protected)
+        self.assertGreater(len(encoded(view)), 900000)
+        self.assertEqual(view, bounded_context(view))
+        original = planner.choose_research_decision
+        clone = FunctionType(original.__code__, dict(original.__globals__), original.__name__,
+                             original.__defaults__, original.__closure__)
+        raw = {"choices": [{"message": {"content": json.dumps(response["decision"])}}], "usage": {"cost": .001}}
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(planner, "choose_research_decision", clone), \
+                patch.object(context, "decision_planner_evidence", context.decision_planner_evidence), \
+                patch.object(planner, "_post_json", return_value=raw) as post:
+            receipt = install_guard(directory)
+            self.assertIsNone(receipt["context_bytes"])
+            self.assertIsNone(receipt["request_bytes"])
+            result = planner.choose_research_decision(evidence, {"trial_ceiling": 260, "max_new_programs": 12},
+                                                    planner.OpenRouterConfig("unused", "fixture/model"))
+            self.assertEqual(post.call_count, 1)
+            self.assertGreater(len(encoded(post.call_args.args[1])), 900000)
+            self.assertEqual(result["usage"]["total_cost_usd"], .001)
 
     def test_persistent_circuit_and_new_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -125,6 +154,21 @@ class PlannerRequestGuardTests(unittest.TestCase):
             self.assertEqual(result[key], view[key])
         self.assertEqual(len(view["hypothesis_memory"]), 4)
         self.assertEqual(result, bounded_context(result))
+
+    def test_uncapped_context_still_optimizes_to_soft_target(self):
+        from ima.planner_request_guard import SOFT_CONTEXT_BYTES
+        bundle = {"capabilities": {"safety": "x" * 150000},
+                  "completed_trial_index": [{"attempt_id": "parent"}],
+                  "hypothesis_memory": [{"narrative": "y" * 100000} for _ in range(4)]}
+        before = copy.deepcopy(bundle)
+        result = bounded_context(bundle)
+        self.assertLess(len(encoded(result)), SOFT_CONTEXT_BYTES)
+        self.assertEqual(result["capabilities"], bundle["capabilities"])
+        self.assertEqual(result["completed_trial_index"], bundle["completed_trial_index"])
+        self.assertEqual(len(result["hypothesis_memory"]), 1)
+        self.assertIsNone(result["planner_decision_view"]["context_byte_limit"])
+        self.assertEqual(result["planner_decision_view"]["context_soft_target_bytes"], SOFT_CONTEXT_BYTES)
+        self.assertEqual(bundle, before)
 
     def test_post_entry_failure_cannot_emit_unsent_preflight(self):
         from ima import openrouter_orchestrator as planner, research_planner_context as context
