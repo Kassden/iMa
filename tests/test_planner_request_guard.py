@@ -12,6 +12,45 @@ from ima.planner_request_guard import bind_response, bounded_context, encoded, P
 
 
 class PlannerRequestGuardTests(unittest.TestCase):
+    def test_pending_duplicate_uses_two_call_correction_with_costs(self):
+        from ima import openrouter_orchestrator as planner, research_planner_context as context
+        from ima.planner_request_guard import install_guard
+        from ima.experiment_discipline import proposal_signature
+        from ima.research_specs import ResearchProposal
+        evidence, response = self.fixture()
+        proposal = ResearchProposal.model_validate(response["decision"]["programs"][0])
+        evidence["experiment_discipline"] = {"pending_controls": [{"signature": proposal_signature(proposal),
+            "program_id": "existing-program", "pending_trials": 4}]}
+        corrected = dict(response["decision"], programs=[], extensions={"existing-program": 1})
+        raw = [{"choices": [{"message": {"content": json.dumps(decision)}}], "usage": {"cost": .001}}
+               for decision in (response["decision"], corrected)]
+        original = planner.choose_research_decision
+        clone = FunctionType(original.__code__, dict(original.__globals__), original.__name__,
+                             original.__defaults__, original.__closure__)
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(planner, "choose_research_decision", clone), \
+                patch.object(context, "decision_planner_evidence", context.decision_planner_evidence), \
+                patch.object(planner, "_post_json", side_effect=raw) as post:
+            install_guard(directory)
+            result = planner.choose_research_decision(evidence, {"trial_ceiling": 260, "max_new_programs": 12},
+                                                     planner.OpenRouterConfig("unused", "fixture/model"))
+            self.assertEqual(post.call_count, 2)
+            self.assertEqual(result["repair_count"], 1)
+            self.assertEqual(result["decision"]["extensions"], {"existing-program": 1})
+            self.assertEqual(result["usage"]["total_cost_usd"], .002)
+            self.assertIn("existing-program", str(post.call_args.args[1]["messages"][-1]))
+
+    def test_duplicates_inside_decision_fail_semantic_preflight(self):
+        from ima.planner_request_guard import semantic_preflight
+        from ima.research_expansion import PlannerDecision
+        evidence, response = self.fixture()
+        second = copy.deepcopy(response["decision"]["programs"][0])
+        second["proposal_id"] = "second"
+        response["decision"]["programs"].append(second)
+        response["decision"]["trial_budget"] = 2
+        with self.assertRaisesRegex(ValueError, "Pending experiment repeats"):
+            semantic_preflight(PlannerDecision.model_validate(response["decision"]), evidence)
+
     def fixture(self):
         from ima.research_specs import ResearchProposal, PipelineRecipe, ModelSpec, TargetSpec
         proposal = ResearchProposal(proposal_id="p", hypothesis="Test regularization against reference",

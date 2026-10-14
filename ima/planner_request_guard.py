@@ -19,7 +19,7 @@ from contextvars import ContextVar
 import uuid
 
 
-VERSION = 5
+VERSION = 6
 CONTEXT_BYTES = None
 REQUEST_BYTES = None
 SOFT_CONTEXT_BYTES = 270_000
@@ -279,6 +279,20 @@ def semantic_preflight(decision, evidence):
     repairs = _control_repairs(audit, evidence, fixed)
     errors = [finding["message"] for finding in audit["findings"]
               if finding["proposal_id"] in fixed and finding["code"] == "undeclared_recipe_changes"]
+    from .experiment_discipline import proposal_signature
+    pending = evidence.get("experiment_discipline", {}).get("pending_controls", [])
+    signatures = {row["signature"]: row["program_id"] for row in pending
+                  if row.get("pending_trials", 0) > 0 and row.get("signature") and row.get("program_id")}
+    for proposal in candidate.programs:
+        signature = proposal_signature(proposal)
+        if signature in signatures:
+            program_id = signatures[signature]
+            errors.append(f"{proposal.proposal_id}: Pending experiment repeats {program_id}; "
+                          "remove this new proposal and wait for outcomes, extend the existing program "
+                          "through extensions={program_id: additional_trials} when more trials are justified, or propose a genuinely "
+                          "different declared experiment. Do not clone its authorization.")
+        else:
+            signatures[signature] = proposal.proposal_id
     for proposal in candidate.programs:
         recipe = proposal.recipe
         if recipe.pipeline_graph and recipe.feature_discovery and recipe.feature_discovery.adjusted_speed_residuals:
