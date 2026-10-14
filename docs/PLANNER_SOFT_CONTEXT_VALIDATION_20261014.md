@@ -33,3 +33,4 @@ The previously running probit attempt-e88a481... ended before handover with Runt
 
 ## Scope
 Only planned guard/test/adapter/docs/unit paths were committed. Preexisting dirty and generated files were preserved. This proves local cap removal and a fresh valid dispatch, not unlimited provider capacity, permanently zero rejected proposals, or a new model-score gain.
+Whole-worktree scope check reports 4071 changed/generated paths and does not pass; the committed branch diff against 6a12d83 contains exactly the six planned paths. This is an owned-change scope proof, not a claim that the checkout is clean.
