@@ -75,7 +75,7 @@ Remove local content-size rejection while retaining efficient context projection
   - `tests/test_planner_request_guard.py`
   - `deploy/systemd/ima-v7-probit-feature-lifecycle.py`
 - Checklist:
-  - [ ] Qualify default None limits and soft target with tests and D247 replay.
+  - [x] Qualify default None limits and soft target with tests and D247 replay.
 
 ## Phase 3: Deployment
 ### Subphase 3.1: Preserve fit and switch automatically
@@ -86,5 +86,5 @@ Remove local content-size rejection while retaining efficient context projection
   - `deploy/systemd/ima-soft-context-handover-20261014.service`
   - `docs/PLANNER_SOFT_CONTEXT_VALIDATION_20261014.md`
 - Checklist:
-  - [ ] Stage qualified release and durable handover.
-  - [ ] Verify activation, native usage and real work.
+  - [x] Stage qualified release and durable handover.
+  - [x] Verify activation, native usage and real work.
