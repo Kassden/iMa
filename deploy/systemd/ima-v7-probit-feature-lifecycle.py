@@ -70,6 +70,9 @@ def install_previous_with_hooks():
                 receipt = install(*args, **kwargs)
                 receipt["lifecycle"] = install_campaign_policy(CAMPAIGN,
                     release_sha256=hashlib.sha256((stage/"lifecycle-manifest.json").read_bytes()).hexdigest())
+                if (stage/"ima/campaign_throughput_policy.py").exists():
+                    policy = load("ima.campaign_throughput_policy", stage/"ima/campaign_throughput_policy.py")
+                    receipt["throughput"] = policy.install_throughput_policy()
                 return receipt
 
             module.bounded_context = bounded
@@ -116,6 +119,15 @@ def main():
             native_threads=1, native_thread_settings={}, search_settings={}, shared_artifacts={},
             implementation_revision="canary", dependency_versions={"numpy": "canary"}), [], 1200)
         assert policy["initial_seconds"] == 14400
+        if (stage/"ima/campaign_throughput_policy.py").exists():
+            from ima.research_resources import ProgressiveCapacity
+            warm = ProgressiveCapacity(representative_baseline=5)
+            observed = warm.observe(headroom_gib=40, private_per_fit_gib=56,
+                                    representative_folds=5, now=0)
+            assert observed["cap"] == 26 and observed["policy_version"] == 1
+            cold = ProgressiveCapacity(representative_baseline=0)
+            assert cold.cap == 2
+            print(json.dumps({"throughput_self_test": observed, "cold_cap": cold.cap}))
         print(json.dumps({"lifecycle_self_test": "passed", "policy": policy,
             "local_preflight_proof": proof, "spend": spend, "paid_calls": 0, "fits_cancelled": 0}))
     return result
