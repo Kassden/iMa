@@ -1,0 +1,13 @@
+[Unit]
+Description=Single-use graceful IMA soft-context policy handover
+After=ima-v7-openrouter-recovery-20261007.service
+ConditionPathExists=%h/research-v2/campaigns/agentic_v7_openrouter_recovery_20261007/STOP
+
+[Service]
+Type=oneshot
+TimeoutStartSec=infinity
+ExecStart=/usr/bin/python3 %h/research-v2/deploy-probit-feature-lifecycle.py activate da5b0252bb68893c9d7922e5a463e0aa7eddffb1
+ExecStartPost=/usr/bin/systemctl --user disable ima-soft-context-handover-20261014.service
+
+[Install]
+WantedBy=default.target

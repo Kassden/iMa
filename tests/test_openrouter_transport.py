@@ -100,3 +100,15 @@ class OpenRouterTransportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+def test_guarded_preflight_requires_complete_identity_and_rejects_sent_siblings():
+    from ima.openrouter_transport import classify_transport_attempt, classify_transport_attempts
+    identity = {"producer": "planner_request_guard", "preflight_version": 1,
+                "decision_id": "D000001", "evidence_id": "e", "preflight_nonce": "nonce"}
+    events = [{**identity, "phase": "request_started"}, {**identity, "phase": "request.preflight_failed"}]
+    assert classify_transport_attempt(events)["classification"] == "not_dispatched"
+    assert classify_transport_attempt(events[:1])["classification"] == "unknown"
+    corrupted = [events[0], {**events[1], "preflight_nonce": "other"}]
+    assert classify_transport_attempt(corrupted)["classification"] == "unknown"
+    sent = [{"phase": "request_started"}, {"phase": "http11.send_request_headers.started"}]
+    assert classify_transport_attempts([events, sent])["classification"] == "unknown"
+    assert classify_transport_attempt(events+sent)["classification"] == "possibly_dispatched"

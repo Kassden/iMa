@@ -1,0 +1,144 @@
+"""Sealed, additive own-user runtime/feature hooks over the qualified paid guard."""
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import sys
+
+ROOT = Path("/home/imaopt/research-v2")
+CAMPAIGN = ROOT/"campaigns/agentic_v7_openrouter_recovery_20261007"
+PREDECESSOR = ROOT/"live-releases/ima-planner-guard-32582e5a7a5eeb6823ce6ed81f4801a8097c8da4/deploy/systemd/ima-v7-planner-request-guard.py"
+PREDECESSOR_SHA = "d66333a431ebadcdc16dbbea7ecc08d8fb3c30903ed06db2aee5fdcaa29a4bda"
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    parent, _, attribute = name.rpartition(".")
+    if parent in sys.modules:
+        setattr(sys.modules[parent], attribute, module)
+    return module
+
+
+def prepare_environment():
+    if os.getuid() != 1001 or Path.home() != Path("/home/imaopt"):
+        raise RuntimeError("Requires own imaopt user")
+    stage = Path(__file__).resolve().parents[2]
+    manifest = json.loads((stage/"lifecycle-manifest.json").read_text())
+    for name, digest in manifest["files"].items():
+        path = stage/name
+        if path.is_symlink() or not path.resolve().is_relative_to(stage) or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise RuntimeError("Lifecycle release checksum mismatch: "+name)
+    if hashlib.sha256(PREDECESSOR.read_bytes()).hexdigest() != PREDECESSOR_SHA:
+        raise RuntimeError("Qualified predecessor changed")
+    import ima
+    # Load pinned controller first; new files are additive rather than a second repo.
+    from ima import research_expansion
+    if str(stage/"ima") not in ima.__path__:
+        ima.__path__.insert(0, str(stage/"ima"))
+    for module in ("probit_runtime_policy", "performance_probit", "research_worker_runtime",
+                   "feature_lifecycle", "research_lifecycle"):
+        if module in {"performance_probit", "research_worker_runtime"}:
+            load("ima."+module, stage/"ima"/(module+".py"))
+        else:
+            __import__("ima."+module)
+    return stage, manifest
+
+
+def install_previous_with_hooks():
+    stage, manifest = prepare_environment()
+    previous = load("ima_lifecycle_predecessor", PREDECESSOR)
+    original_load = previous.load
+
+    def composed_load(name, path):
+        module = (load(name, stage/"ima/planner_request_guard.py")
+                  if name == "ima.planner_request_guard" and (stage/"ima/planner_request_guard.py").exists()
+                  else original_load(name, path))
+        if name == "ima.planner_request_guard":
+            from ima.research_lifecycle import compact_optional_history, install_campaign_policy
+            bound, install = module.bounded_context, module.install_guard
+
+            def bounded(value, max_bytes=module.CONTEXT_BYTES):
+                return bound(compact_optional_history(value), max_bytes)
+
+            def combined(*args, **kwargs):
+                receipt = install(*args, **kwargs)
+                receipt["lifecycle"] = install_campaign_policy(CAMPAIGN,
+                    release_sha256=hashlib.sha256((stage/"lifecycle-manifest.json").read_bytes()).hexdigest())
+                if (stage/"ima/campaign_throughput_policy.py").exists():
+                    policy = load("ima.campaign_throughput_policy", stage/"ima/campaign_throughput_policy.py")
+                    receipt["throughput"] = policy.install_throughput_policy()
+                return receipt
+
+            module.bounded_context = bounded
+            module.install_guard = combined
+        return module
+
+    previous.load = composed_load
+    if (stage/"ima/openrouter_transport.py").exists():
+        load("ima.openrouter_transport", stage/"ima/openrouter_transport.py")
+    return previous, stage, manifest
+
+
+def main():
+    previous, stage, manifest = install_previous_with_hooks()
+    self_test = "--lifecycle-self-test" in sys.argv
+    if self_test:
+        sys.argv = [sys.argv[0], "--guard-self-test"]
+    result = previous.main()
+    if self_test:
+        from ima import research_expansion as expansion
+        from ima.research_lifecycle import prove_local_preflight
+        from ima.probit_runtime_policy import resolve_probit_budget
+        from ima.research_resources import JobWorkload
+        proof = prove_local_preflight(CAMPAIGN, "D000236")
+        if (stage/"ima/planner_request_guard.py").exists():
+            prove_local_preflight(CAMPAIGN, "D000239")
+            from ima.research_planner_context import decision_planner_evidence
+            replay = decision_planner_evidence(json.loads((CAMPAIGN/"evidence/D000239.json").read_text()))
+            from ima.planner_request_guard import encoded
+            from ima.planner_request_guard import CONTEXT_BYTES, REQUEST_BYTES, bounded_context
+            assert CONTEXT_BYTES is None and REQUEST_BYTES is None
+            large = {"capabilities": {"safety": "x" * 900000}}
+            assert bounded_context(large)["capabilities"] == large["capabilities"]
+            (stage/"context-replay.json").write_text(json.dumps({"context_bytes": len(encoded(replay)),
+                "original_evidence_id": replay.get("evidence_id"), "adaptive_omissions": replay.get("planner_decision_view",{}).get("adaptive_omissions")}))
+        spend = expansion._planner_spend(CAMPAIGN)
+        assert "D000236" not in spend["unresolved_decision_ids"]
+        if (stage/"ima/planner_request_guard.py").exists():
+            assert "D000239" not in spend["unresolved_decision_ids"]
+        for name in ("_capabilities", "_planner_spend", "_worker", "_prepare_program", "BoundedFitExecutor"):
+            assert expansion.run_expansion_campaign.__globals__[name] is getattr(expansion, name)
+        policy = resolve_probit_budget(JobWorkload(stage="fit", family="gaussian_probit", rows=100,
+            generated_features=0, selected_features=3, categorical_cardinalities=(), folds=3,
+            native_threads=1, native_thread_settings={}, search_settings={}, shared_artifacts={},
+            implementation_revision="canary", dependency_versions={"numpy": "canary"}), [], 1200)
+        assert policy["initial_seconds"] == 14400
+        if (stage/"ima/campaign_throughput_policy.py").exists():
+            from ima.research_resources import ProgressiveCapacity
+            warm = ProgressiveCapacity(representative_baseline=5)
+            observed = warm.observe(headroom_gib=40, private_per_fit_gib=56,
+                                    representative_folds=5, now=0)
+            assert observed["cap"] == 26 and observed["policy_version"] == 1
+            cold = ProgressiveCapacity(representative_baseline=0)
+            assert cold.cap == 2
+            print(json.dumps({"throughput_self_test": observed, "cold_cap": cold.cap}))
+        print(json.dumps({"lifecycle_self_test": "passed", "policy": policy,
+            "local_preflight_proof": proof, "spend": spend, "paid_calls": 0, "fits_cancelled": 0}))
+    return result
+
+
+if __name__ == "__mp_main__":
+    # Spawned workers must import the same sealed implementation as their parent.
+    stage, manifest = prepare_environment()
+    from ima.research_lifecycle import install_campaign_policy
+    install_campaign_policy(CAMPAIGN,
+        release_sha256=hashlib.sha256((stage/"lifecycle-manifest.json").read_bytes()).hexdigest())
+
+if __name__ == "__main__":
+    raise SystemExit(main())

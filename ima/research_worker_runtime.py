@@ -65,8 +65,54 @@ def remaining_deadline(path, seconds):
     state = read_runtime(path)
     deadline = state.get("deadline_at")
     if deadline:
-        return max(0., datetime.fromisoformat(deadline).timestamp()-time.time())
+        absolute = datetime.fromisoformat(deadline).timestamp()
+        if state.get("progress_policy") and state.get("hard_deadline_at"):
+            absolute = min(absolute, datetime.fromisoformat(state["hard_deadline_at"]).timestamp())
+        return max(0., absolute-time.time())
     return float(seconds)
+
+
+def extend_attempt_deadline(path, progress_path=None, *, now=None, task_nonce=None):
+    """Atomically observe progress and receipt a bounded soft-deadline extension.
+
+    Admission persists the policy and absolute hard cap. Receipts survive restart;
+    resubmission cannot reset either cap or consume old optimizer evidence again.
+    """
+    from .probit_runtime_policy import normalize_progress_policy, observe_optimizer_progress
+    now = time.time() if now is None else now
+    progress_path = Path(progress_path) if progress_path else Path(path).parent/"progress.json"
+    try:
+        progress = read_runtime(progress_path)
+    except (OSError, ValueError):
+        progress = {}
+
+    def update(state):
+        if (not state.get("progress_policy") or state.get("status") != "running"
+                or (task_nonce is not None and state.get("task_nonce") != task_nonce)):
+            return {}
+        policy = normalize_progress_policy(state["progress_policy"])
+        changes = observe_optimizer_progress(state, progress, policy, now)
+        evidence = changes.get("productive_progress", state.get("productive_progress"))
+        deadline = datetime.fromisoformat(state["deadline_at"]).timestamp()
+        hard = datetime.fromisoformat(state["hard_deadline_at"]).timestamp()
+        receipts = state.get("runtime_extensions", [])
+        consumed = receipts[-1]["progress_updated_at_epoch"] if receipts else 0
+        if (evidence and len(receipts) < policy.max_extensions and now < hard
+                and 0 <= now-evidence["updated_at_epoch"] <= policy.progress_max_age_seconds
+                and evidence["updated_at_epoch"] > consumed
+                and deadline-now <= policy.extension_window_seconds):
+            new_deadline = min(hard, deadline+policy.extension_seconds)
+            if new_deadline > max(deadline, now):
+                changes.update(deadline_at=datetime.fromtimestamp(new_deadline, timezone.utc).isoformat(),
+                    runtime_extensions=receipts+[{"extended_at_epoch": now,
+                        "previous_deadline_at": state["deadline_at"],
+                        "deadline_at": datetime.fromtimestamp(new_deadline, timezone.utc).isoformat(),
+                        "progress_updated_at_epoch": evidence["updated_at_epoch"],
+                        "reason": "productive_"+evidence["kind"], "progress": evidence,
+                        "workload_fingerprint": policy.workload_fingerprint}])
+        return changes
+
+    return _update_runtime(path, update)
 
 
 def _boot_identity():
@@ -194,7 +240,6 @@ def _timed_call(function, args, kwargs, runtime_path, seconds):
     path = Path(runtime_path)
     previous = read_runtime(path)
     started = datetime.now(timezone.utc)
-    deadline = previous["deadline_at"]
     if remaining_deadline(path, seconds) <= 0:
         raise TimeoutError("Persisted attempt deadline expired before execution")
     if os.name == "posix" and os.getpgrp() != os.getpid():
@@ -205,7 +250,7 @@ def _timed_call(function, args, kwargs, runtime_path, seconds):
         raise RuntimeError("Attempt process isolation could not be proved")
     state = {"schema_version":1,"pid":os.getpid(),"process_group":os.getpgrp(),
              "started_at":previous.get("started_at",started.isoformat()),
-             "resumed_at":started.isoformat(),"deadline_at":deadline,
+             "resumed_at":started.isoformat(),
              "status":"running","stage":"training",
              "private_peak_bytes":previous.get("private_peak_bytes",0),
              "boot_id":_boot_identity(),"process_identity":identity,
@@ -225,7 +270,8 @@ def _timed_call(function, args, kwargs, runtime_path, seconds):
                          private_current_bytes=sample.get("private_bytes",0),
                          private_peak_bytes=max(state["private_peak_bytes"],sample.get("private_bytes",0)),
                          cpu_seconds=sample.get("cpu_seconds",0),children=list(children.values()))
-            _update_runtime(path, {key:value for key,value in state.items() if key != "status"})
+            _update_runtime(path, lambda current: {key:value for key,value in state.items() if key != "status"}
+                            if current.get("task_nonce") == state["task_nonce"] else {})
             stop.wait(2)
 
     thread = threading.Thread(target=heartbeat,daemon=True)
@@ -252,7 +298,9 @@ def _timed_call(function, args, kwargs, runtime_path, seconds):
         state["children"] = list(children.values())
         state["updated_at"] = datetime.now(timezone.utc).isoformat()
         _update_runtime(guard,{"task_nonce":state["task_nonce"],"status":"idle"})
-        _update_runtime(path,state)
+        _update_runtime(path, lambda current: (dict(state, status=current["status"])
+                        if current.get("status") in {"timed_out", "cancelled"} else state)
+                        if current.get("task_nonce") == state["task_nonce"] else {})
 
 
 def cleanup_attempt_group(path):
@@ -341,58 +389,97 @@ class BoundedFitExecutor:
                 timer.cancel()
                 timer.join(timeout=2)
 
-    def submit(self,function,*args,runtime_path,timeout,**kwargs):
+    def submit(self,function,*args,runtime_path,timeout,progress_policy=None,progress_path=None,**kwargs):
         _validate_timeout(timeout)
+        from .probit_runtime_policy import normalize_progress_policy
+        policy = normalize_progress_policy(progress_policy) if progress_policy is not None else None
         now = datetime.now(timezone.utc)
 
         def admission(state):
-            return {"schema_version":1,"started_at":state.get("started_at",now.isoformat()),
-                    "deadline_at":state.get("deadline_at") or datetime.fromtimestamp(now.timestamp()+timeout,timezone.utc).isoformat(),
+            nonlocal policy
+            if state.get("progress_policy"):
+                persisted = normalize_progress_policy(state["progress_policy"])
+                if policy is None or persisted.workload_fingerprint != policy.workload_fingerprint:
+                    raise ValueError("Persisted progress policy cannot change workload on restart")
+                # New ledger measurements may change the next attempt's budget,
+                # but this attempt keeps its admitted limits and used extensions.
+                policy = persisted
+            allowance = max(timeout, policy.initial_seconds) if policy else timeout
+            deadline = state.get("deadline_at") or datetime.fromtimestamp(now.timestamp()+allowance,timezone.utc).isoformat()
+            changes = {"schema_version":1,"started_at":state.get("started_at",now.isoformat()),
+                    "deadline_at":deadline,
                     "status":"queued","submitted_at":now.isoformat(),"task_nonce":uuid.uuid4().hex}
+            if policy:
+                if timeout > policy.hard_seconds and not state.get("deadline_at"):
+                    raise ValueError("Requested timeout exceeds policy hard cap")
+                changes.update(progress_policy=policy.to_dict(),
+                    hard_deadline_at=state.get("hard_deadline_at") or datetime.fromtimestamp(
+                        datetime.fromisoformat(deadline).timestamp()+policy.hard_seconds-allowance, timezone.utc).isoformat(),
+                    runtime_extensions=state.get("runtime_extensions", []),
+                    progress_not_before_epoch=now.timestamp(), optimizer_observation=None, productive_progress=None)
+            return changes
 
-        _update_runtime(runtime_path,admission)
+        admitted = _update_runtime(runtime_path,admission)
         remaining = remaining_deadline(runtime_path,timeout)
         if not remaining:
             _update_runtime(runtime_path,{"status":"timed_out"})
             future = Future()
             future.set_exception(TimeoutError("Persisted attempt deadline expired"))
             return future
+        hard_remaining = max(0., datetime.fromisoformat(admitted["hard_deadline_at"]).timestamp()-time.time()) if policy else remaining
         raw = self.pool.schedule(_timed_call,
-            args=(function,args,kwargs,str(runtime_path),remaining),timeout=remaining)
+            args=(function,args,kwargs,str(runtime_path),remaining),timeout=hard_remaining)
         future = Future()
         completion_lock = threading.Lock()
 
-        def expire():
+        def expire(force=False):
             try:
                 with completion_lock:
                     if future.done():
                         return
+                    if policy and not force:
+                        extend_attempt_deadline(runtime_path, progress_path, task_nonce=admitted["task_nonce"])
+                        left = remaining_deadline(runtime_path,timeout)
+                        if left > 0:
+                            start_timer(min(left, 2., policy.extension_window_seconds/2))
+                            return
                     try:
                         future.set_exception(TimeoutError("Persisted attempt deadline expired"))
                     except InvalidStateError:
                         return
                 # Pebble cancellation terminates its owning worker, including running tasks.
                 raw.cancel()
-                _update_runtime(runtime_path,{"status":"timed_out"})
+                _update_runtime(runtime_path, lambda state: {"status":"timed_out"}
+                                if state.get("task_nonce") == admitted["task_nonce"]
+                                and state.get("status") != "cancelled" else {})
             finally:
                 with self._timer_lock:
-                    self._timers.discard(timer)
+                    self._timers.discard(threading.current_thread())
 
-        timer = threading.Timer(remaining_deadline(runtime_path,timeout),expire)
-        timer.daemon = True
-        with self._timer_lock:
-            self._timers.add(timer)
+        timer = None
+
+        def start_timer(delay):
+            nonlocal timer
+            timer = threading.Timer(delay,expire)
+            timer.daemon = True
+            with self._timer_lock:
+                self._timers.add(timer)
+            timer.start()
 
         def finish(completed):
             try:
                 result = completed.result()
                 if remaining_deadline(runtime_path,timeout) <= 0:
-                    expire()
+                    expire(force=True)
                 else:
                     with completion_lock:
                         if not future.done():
                             future.set_result(result)
             except BaseException as exc:
+                if policy and isinstance(exc, TimeoutError):
+                    _update_runtime(runtime_path, lambda state: {"status":"timed_out"}
+                                    if state.get("task_nonce") == admitted["task_nonce"]
+                                    and state.get("status") != "cancelled" else {})
                 if not future.done():
                     try:
                         future.set_exception(exc)
@@ -400,16 +487,21 @@ class BoundedFitExecutor:
                         pass
 
         def stop_timer(completed):
-            timer.cancel()
-            if threading.current_thread() is not timer:
+            if timer is not None:
+                timer.cancel()
                 with self._timer_lock:
                     self._timers.discard(timer)
             if completed.cancelled():
                 raw.cancel()
+                if policy:
+                    _update_runtime(runtime_path, lambda state: {"status":"cancelled"}
+                                    if state.get("task_nonce") == admitted["task_nonce"] else {})
 
         raw.add_done_callback(finish)
         future.add_done_callback(stop_timer)
-        timer.start()
+        with completion_lock:
+            if not future.done():
+                start_timer(min(remaining, 2., policy.extension_window_seconds/2) if policy else remaining)
         return future
 
 

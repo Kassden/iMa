@@ -23,9 +23,10 @@ def classify_transport_attempt(events: Iterable[Mapping[str, Any]] | None) -> di
     except TypeError:
         return unknown
 
+    events = list(iterator)
     phases = []
     incomplete = False
-    for event in iterator:
+    for event in events:
         if not isinstance(event, Mapping) or not isinstance(event.get("phase"), str):
             incomplete = True
             continue
@@ -46,6 +47,14 @@ def classify_transport_attempt(events: Iterable[Mapping[str, Any]] | None) -> di
             phases.append(phase)
 
     if incomplete or not phases or phases[0] != "request_started":
+        return unknown
+    if phases == ["request_started", "request.preflight_failed"] and len(events) == 2:
+        required = ("producer", "preflight_version", "decision_id", "evidence_id", "preflight_nonce")
+        first, last = events
+        if (first.get("producer") == "planner_request_guard" and first.get("preflight_version") == 1
+                and all(first.get(key) is not None and first.get(key) == last.get(key) for key in required)
+                and all(isinstance(first.get(key), str) and first[key] for key in ("decision_id", "evidence_id", "preflight_nonce"))):
+            return {"classification": "not_dispatched", "reason": "guarded_local_preflight_before_http"}
         return unknown
     if phases[-1] != "request_failed" or phases.count("request_started") != 1:
         return unknown
