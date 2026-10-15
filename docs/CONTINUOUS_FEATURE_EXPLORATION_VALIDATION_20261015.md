@@ -102,6 +102,16 @@ injected allocator exception. Real local MLflow runs were read back, not merely
 mocked. The read-only reviewer was collected and natively closed after its
 three findings were fixed and tested.
 
+GitHub's broader legacy job is **not green**: run `38658576377` reported one
+scheduler test failure and 18 import/setup errors. Its environment does not
+install pytest, although earlier committed probit/lifecycle tests already import
+it. The scheduler failure was independently reproduced from a clean archive of
+the pre-feature parent `89a71fd` (`test_large_fit_does_not_serialize_independent_fits`).
+These are separate preexisting CI/release issues; they are not represented as
+passing or repaired by this feature-worker rollout. The new scientific tests
+were executed with the existing local pytest environment, and the server uses
+its already-qualified pinned scientific dependencies.
+
 ## Receipts And Limits
 
 Server release directory:
