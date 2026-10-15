@@ -66,6 +66,14 @@ these are not rich-model/champion improvements.
   proposal rejection; there were no active model fits. Feature work continued
   independently. No extra planner calls were made by this worker.
 
+At the subsequent live readback, **14 paired screens** were finished, one was
+running and 19 were queued. The generated count had grown from 33 to 34 because
+the adaptive bundle mechanism supplied another hypothesis. Most importantly,
+the real main-planner evidence file **D000270** contained seven completed screen
+attempts and their paired outcomes. This establishes delivery into an actual
+new planner review, beyond the isolated capability canary; it does not claim
+that the planner has already adopted or confirmed those features.
+
 ## Resource And Preservation Proof
 
 The own-user main service retains a **92 GB decimal** hard limit and its
@@ -86,6 +94,12 @@ about 2.97 GB. Feature peak observed earlier was about 4.61 GB; instantaneous
 usage varies while datasets are prepared. Both cgroups had zero `oom` and
 `oom_kill` counters. The feature service restores the previous main limit if it
 stops; it does not restart the model controller.
+
+Later readback showed 225 `memory.high` events in the feature cgroup: its soft
+7.2 GB pressure threshold had caused reclaim/throttling during preparation.
+Hard-limit events, `oom` and `oom_kill` remained zero. These pressure events are
+not recorded as successful fits or hidden as OOM-free unlimited capacity; the
+one-worker admission and 8 GB hard limit remain in place.
 
 ## Tests And Review
 
