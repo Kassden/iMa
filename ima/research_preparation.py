@@ -181,7 +181,7 @@ class PreparationCache:
             update("released")
 
     @contextmanager
-    def _lock(self, identity, *, shared=False, owner=None, stage="preparing"):
+    def _lock(self, identity, *, shared=False, owner=None, stage="preparing", pins=None):
         with open(self.root/(identity+".lock"),"a+b") as stream:
             start = time.monotonic()
             deadline_epoch = time.time() + self.lock_timeout
@@ -204,37 +204,99 @@ class PreparationCache:
                             "deadline_at_epoch": deadline_epoch,
                         })
                     time.sleep(min(.02, max(0, self.lock_timeout-(time.monotonic()-start))))
+            transferred=False
+            def retain():
+                nonlocal transferred
+                if pins is None or transferred: return
+                descriptor=os.dup(stream.fileno())
+                pin=open(self.root/(identity+'.pin.lock'),'a+b')
+                try:
+                    fcntl.flock(pin,fcntl.LOCK_SH)
+                    fcntl.flock(stream,fcntl.LOCK_SH)
+                    pins.callback(pin.close)
+                    pins.callback(os.close,descriptor)
+                    transferred=True
+                except BaseException:
+                    pin.close()
+                    os.close(descriptor)
+                    raise
             try:
                 if shared:
-                    yield waited, time.monotonic()-start
+                    yield waited, time.monotonic()-start, retain
                 else:
                     with self._producer_status(identity, owner) as update:
-                        yield waited, time.monotonic()-start, update
+                        yield waited, time.monotonic()-start, update, retain
             finally:
-                fcntl.flock(stream,fcntl.LOCK_UN)
+                if not transferred: fcntl.flock(stream,fcntl.LOCK_UN)
 
-    def prepare_fold(self, key: PreparationKey, builder, *, owner=None) -> PreparationArtifact:
+    def prepare_fold(self, key: PreparationKey, builder, *, owner=None, pins=None) -> PreparationArtifact:
+        control = os.environ.get('IMA_STORAGE_ROOT')
+        if not control:
+            return self._prepare_fold(key,builder,owner=owner,pins=pins)
+        from .research_storage import StorageAuthority
+        authority=StorageAuthority(control)
+        key=key if isinstance(key,PreparationKey) else PreparationKey.model_validate(key)
+        columns=max((len(d.get('numeric',())) for d in key.feature_definitions),default=32)
+        rows=sum(map(len,(key.training_row_keys,key.calibration_row_keys,key.score_row_keys)))
+        path=self.root/key.cache_id()
+        if path.exists():
+            try:
+                allocated=sum(p.stat().st_blocks*512 for p in path.iterdir())
+                authority.record_cache(self.root,key.cache_id(),allocated,enforce_limit=False)
+            except FileNotFoundError:
+                pass
+            authority.trim_caches(0)
+        exists=path.exists()
+        estimate=1024**2 if exists else max(16*1024**2,rows*max(columns,1)*16+16*1024**2)
+        if not exists:
+            authority.trim_caches(estimate)
+        with authority.admitted(bytes_required=estimate,inodes_required=8,
+                                stage='fold_preparation',output=self.root,
+                                cache_bytes=0 if exists else estimate) as token:
+            budget={'authority':authority,'token':token,'limit':estimate,'written':0,'cache':True}
+            def bounded_builder():
+                prepared=builder()
+                if not isinstance(prepared,PreparedFold):
+                    return prepared
+                required=sum(a.nbytes for a in prepared.arrays.values())*2+16*1024**2
+                if required>estimate:
+                    authority.extend(token,extra_bytes=required-estimate,
+                                     extra_cache_bytes=required-estimate)
+                    budget['limit']=required
+                return prepared
+            def ready(artifact):
+                allocated=sum(p.stat().st_blocks*512 for p in artifact.path.iterdir())
+                authority.commit_cache(token,self.root,artifact.artifact_id,allocated)
+            return self._prepare_fold(key,bounded_builder,owner=owner,write_budget=budget,
+                                      pins=pins,on_ready=ready)
+
+    def _prepare_fold(self, key: PreparationKey, builder, *, owner=None,write_budget=None,
+                      pins=None,on_ready=None) -> PreparationArtifact:
         key = key if isinstance(key,PreparationKey) else PreparationKey.model_validate(key)
         identity = key.cache_id()
         destination = self.root/identity
         if destination.exists():
-            with self._lock(identity,shared=True,stage="reading") as (waited,seconds):
+            with self._lock(identity,shared=True,stage="reading",pins=pins) as (waited,seconds,retain):
                 artifact = PreparationArtifact(str(self.root),identity,"wait" if waited else "hit",seconds)
                 try:
                     if artifact.manifest()["key"] != key.model_dump(mode="json"):
                         raise ValueError("Preparation key mismatch")
                     artifact.load_arrays()
+                    if on_ready: on_ready(artifact)
+                    retain()
                     self.stats[artifact.cache_status] += 1
                     return artifact
                 except (OSError,ValueError,KeyError,EOFError):
                     pass
-        with self._lock(identity,owner=owner) as (waited, seconds, update):
+        with self._lock(identity,owner=owner,pins=pins) as (waited, seconds, update,retain):
             artifact = PreparationArtifact(str(self.root),identity,"wait" if waited else "hit",seconds)
             try:
                 manifest = artifact.manifest()
                 if manifest["key"] != key.model_dump(mode="json"):
                     raise ValueError("Preparation key mismatch")
                 artifact.load_arrays()
+                if on_ready: on_ready(artifact)
+                retain()
                 self.stats[artifact.cache_status] += 1
                 return artifact
             except (OSError,ValueError,KeyError,EOFError):
@@ -250,10 +312,16 @@ class PreparationCache:
                 self._validate(prepared,key)
                 update("writing")
                 arrays = {name:np.ascontiguousarray(array) for name,array in prepared.arrays.items()}
-                joblib.dump(arrays,temporary/"arrays.joblib",compress=0)
+                def dump(value,path):
+                    if write_budget is None:
+                        return joblib.dump(value,path,compress=0)
+                    from .research_storage import ReservedFile
+                    with open(path,'wb') as stream:
+                        return joblib.dump(value,ReservedFile(stream,write_budget),compress=0)
+                dump(arrays,temporary/"arrays.joblib")
                 checksums = {"arrays.joblib":_checksum(temporary/"arrays.joblib")}
                 if prepared.fitted_state is not None:
-                    joblib.dump(prepared.fitted_state,temporary/"fitted.joblib",compress=0)
+                    dump(prepared.fitted_state,temporary/"fitted.joblib")
                     checksums["fitted.joblib"] = _checksum(temporary/"fitted.joblib")
                 manifest = {"schema_version":1,"artifact_id":identity,"key":key.model_dump(mode="json"),"feature_names":prepared.feature_names,"row_keys":prepared.row_keys,"category_vocabulary":prepared.category_vocabulary,"arrays":{name:{"dtype":str(a.dtype),"shape":list(a.shape),"nbytes":a.nbytes} for name,a in arrays.items()},"checksums":checksums}
                 with open(temporary/"manifest.json","w") as stream:
@@ -274,6 +342,8 @@ class PreparationCache:
                 self.stats["builds"] += 1
                 result = PreparationArtifact(str(self.root),identity,"miss",seconds)
                 result.load_arrays()
+                if on_ready: on_ready(result)
+                retain()
                 return result
             finally:
                 if temporary.exists():
@@ -310,8 +380,9 @@ class PreparationCache:
     def evict(self, artifact_id):
         artifact = PreparationArtifact(str(self.root),artifact_id,"hit")
         artifact.path  # Validate identifier before forming the lock path.
-        with open(self.root/(artifact_id+".lock"),"a+b") as stream:
+        with open(self.root/(artifact_id+'.pin.lock'),'a+b') as pin, open(self.root/(artifact_id+".lock"),"a+b") as stream:
             try:
+                fcntl.flock(pin,fcntl.LOCK_EX | fcntl.LOCK_NB)
                 fcntl.flock(stream,fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return False
