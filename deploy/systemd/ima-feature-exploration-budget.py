@@ -39,6 +39,13 @@ def save(value):
 @contextmanager
 def frozen_model():
     """Pause admission and existing fits briefly; never terminate them."""
+    if manager('show',MODEL_UNIT,'-p','ActiveState','--value') in {'inactive','failed'}:
+        if manager('show',MODEL_UNIT,'-p','MainPID','--value')!='0':
+            raise RuntimeError('Inactive main reports live PID; hold feature startup')
+        yield
+        if manager('show',MODEL_UNIT,'-p','ActiveState','--value') not in {'inactive','failed'}:
+            raise RuntimeError('Main started during feature budget partition')
+        return
     if manager("show", MODEL_UNIT, "-p", "FreezerState", "--value") != "running":
         raise RuntimeError("Model is already frozen by another owner")
     try:
@@ -64,8 +71,18 @@ def main(action):
         prior_cpu = old["previous_cpu_quota"] if old and old.get("status") in {"reserved", "reserving"} else manager(
             "show", MODEL_UNIT, "-p", "CPUQuotaPerSecUSec", "--value")
         for _ in range(120):
-            status = json.loads((MODEL_CAMPAIGN/"status.json").read_text())
+            active=manager('show',MODEL_UNIT,'-p','ActiveState','--value')
             relative = manager("show", MODEL_UNIT, "-p", "ControlGroup", "--value")
+            if active in {'inactive','failed'} and not relative:
+                if manager('show',MODEL_UNIT,'-p','MainPID','--value')!='0':
+                    raise RuntimeError('Inactive main reports live PID')
+                # Reserve its future 92GB limit, not a second independent 100GB.
+                # Historical status is not evidence of live memory ownership.
+                group=None; current=0
+                status={'resources':{'reserved_ram_gib':0,'resident_gib':0,'emergency_gib':0},
+                        'active_trials':[],'main_inactive':True}
+                break
+            status = json.loads((MODEL_CAMPAIGN/"status.json").read_text())
             group = Path("/sys/fs/cgroup")/relative.lstrip("/")
             if not str(group).startswith("/sys/fs/cgroup/user.slice/user-1001.slice/"):
                 raise RuntimeError("Not an own-user cgroup")
@@ -85,12 +102,12 @@ def main(action):
         save(receipt)
         with frozen_model():
             # Recheck after the acknowledged pause closes the admission race.
-            status = json.loads((MODEL_CAMPAIGN/"status.json").read_text())
-            if not partition_safe(status, int((group/"memory.current").read_text())):
+            status = status if group is None else json.loads((MODEL_CAMPAIGN/"status.json").read_text())
+            if not partition_safe(status,0 if group is None else int((group/"memory.current").read_text())):
                 raise RuntimeError("Memory grew before admission pause; no limit changed")
-            members = {pid for path in group.rglob("cgroup.procs") for pid in path.read_text().split()}
-            members.update((group/"cgroup.procs").read_text().split())
-            oom_before = (group/"memory.events").read_text()
+            members = set() if group is None else {pid for path in group.rglob("cgroup.procs") for pid in path.read_text().split()}
+            if group is not None: members.update((group/"cgroup.procs").read_text().split())
+            oom_before = None if group is None else (group/"memory.events").read_text()
             DROPIN.parent.mkdir(parents=True, exist_ok=True)
             DROPIN.write_text(BODY)
             subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
@@ -100,7 +117,7 @@ def main(action):
             assert MODEL_BYTES-4096 <= observed <= MODEL_BYTES
             assert manager("show", MODEL_UNIT, "-p", "MainPID", "--value") == receipt["main_pid_before"]
             assert all(Path("/proc", pid).exists() for pid in members)
-            assert (group/"memory.events").read_text() == oom_before
+            assert group is None or (group/"memory.events").read_text() == oom_before
             receipt.update(status="reserved", observed_model_memory_max=observed,
                            preserved_pids=sorted(members), admission_pause_acknowledged=True,
                            memory_events_before=oom_before, fits_cancelled=0)
