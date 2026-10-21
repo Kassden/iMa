@@ -88,6 +88,17 @@ def is_running(pid):
 
 
 class BoundedWorkers(unittest.TestCase):
+    def test_two_day_budget_is_persisted_without_clamping(self):
+        from datetime import datetime
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)/"runtime.json"
+            with BoundedFitExecutor(1) as pool:
+                self.assertEqual(6, pool.submit(quick, 3, runtime_path=path, timeout=172800).result(20))
+            row = json.loads(path.read_text())
+            deadline = datetime.fromisoformat(row['deadline_at'])
+            submitted = datetime.fromisoformat(row['submitted_at'])
+            self.assertAlmostEqual(172800, (deadline-submitted).total_seconds(), delta=2)
+
     def test_timeout_isolated_replacement_and_child_cleanup(self):
         import psutil
         with tempfile.TemporaryDirectory() as root:
@@ -209,6 +220,20 @@ class BoundedWorkers(unittest.TestCase):
             _signal_verified(identity, signal.SIGTERM)
         process.send_signal.assert_not_called()
         pinned_signal.assert_not_called()
+
+    def test_queued_worker_cannot_adopt_a_replacement_assignment(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root)/'runtime.json'
+            before={'deadline_at':(datetime.now(timezone.utc)+timedelta(seconds=60)).isoformat(),
+                    'task_nonce':'replacement','status':'queued'}
+            path.write_text(json.dumps(before))
+            function=Mock()
+            with patch('ima.research_worker_runtime.os.setsid') as isolate:
+                with self.assertRaisesRegex(RuntimeError,'assignment changed'):
+                    _timed_call(function,(),{},path,60,'stale-queued-task')
+            function.assert_not_called()
+            isolate.assert_not_called()
+            self.assertEqual(before,read_runtime(path))
 
     def test_boot_mismatch_and_legacy_identity_fail_closed(self):
         with tempfile.TemporaryDirectory() as root:

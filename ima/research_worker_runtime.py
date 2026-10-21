@@ -235,13 +235,15 @@ def _owned_root_action(state, action, *, active_only=False):
             fcntl.flock(lock,fcntl.LOCK_UN)
 
 
-def _timed_call(function, args, kwargs, runtime_path, seconds):
+def _timed_call(function, args, kwargs, runtime_path, seconds, expected_nonce=None):
     import psutil
     path = Path(runtime_path)
     previous = read_runtime(path)
     started = datetime.now(timezone.utc)
     if remaining_deadline(path, seconds) <= 0:
         raise TimeoutError("Persisted attempt deadline expired before execution")
+    if not expected_nonce or previous.get('task_nonce') != expected_nonce:
+        raise RuntimeError('Worker assignment changed before execution')
     if os.name == "posix" and os.getpgrp() != os.getpid():
         os.setsid()
     process = psutil.Process()
@@ -255,10 +257,14 @@ def _timed_call(function, args, kwargs, runtime_path, seconds):
              "private_peak_bytes":previous.get("private_peak_bytes",0),
              "boot_id":_boot_identity(),"process_identity":identity,
              "children":_descendant_identities(process),
-             "task_nonce":previous["task_nonce"]}
+             "task_nonce":expected_nonce}
     guard = _task_guard_path(identity,state["boot_id"])
+    def claim(current):
+        if current.get('task_nonce') != expected_nonce or current.get('status') != 'queued':
+            raise RuntimeError('Worker assignment changed before execution')
+        return state
+    _update_runtime(path, claim)
     _update_runtime(guard,{"task_nonce":state["task_nonce"],"status":"running"})
-    _update_runtime(path, state)
     stop = threading.Event()
 
     def heartbeat():
@@ -428,7 +434,7 @@ class BoundedFitExecutor:
             return future
         hard_remaining = max(0., datetime.fromisoformat(admitted["hard_deadline_at"]).timestamp()-time.time()) if policy else remaining
         raw = self.pool.schedule(_timed_call,
-            args=(function,args,kwargs,str(runtime_path),remaining),timeout=hard_remaining)
+            args=(function,args,kwargs,str(runtime_path),remaining,admitted['task_nonce']),timeout=hard_remaining)
         future = Future()
         completion_lock = threading.Lock()
 
