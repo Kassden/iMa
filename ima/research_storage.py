@@ -6,11 +6,13 @@ Stable lock inodes are never replaced or removed.
 from __future__ import annotations
 
 from contextlib import ExitStack, closing, contextmanager
+from contextvars import ContextVar
 import errno
 import fcntl
 import hashlib
 import functools
 import inspect
+import io
 import json
 import os
 from pathlib import Path
@@ -23,8 +25,28 @@ import time
 import uuid
 
 
+_OUTPUT_BUDGET=ContextVar('ima_output_budget',default=None)
+
+
 class StorageBlocked(RuntimeError):
     """Retryable admission failure; not a scientific trial failure."""
+    def __init__(self,message,diagnostic=None):
+        super().__init__(message)
+        self.diagnostic={**(diagnostic or {}),'failure_kind':'infrastructure_storage','retryable':True}
+
+    def __reduce__(self):
+        return type(self),(str(self),self.diagnostic)
+
+
+def as_storage_blocked(error,*,stage,output):
+    if isinstance(error,StorageBlocked):return error
+    if not os.environ.get('IMA_STORAGE_ROOT'):return None
+    pressure=isinstance(error,OSError) and error.errno in {errno.ENOSPC,errno.EDQUOT}
+    full_sqlite=isinstance(error,sqlite3.Error) and (getattr(error,'sqlite_errorcode',0)&255)==sqlite3.SQLITE_FULL
+    if pressure or full_sqlite:
+        return StorageBlocked(str(error),{'stage':stage,'output':str(output),
+            'errno':getattr(error,'errno',None),'sqlite_errorcode':getattr(error,'sqlite_errorcode',None)})
+    return None
 
 
 def _owned_path(path, root, *, directory=False):
@@ -182,6 +204,20 @@ class StorageAuthority:
             state['reservations'].pop(token,None)
             _atomic_json(self.root/'state.json',state)
 
+    def consume(self,token,*,written_bytes,created_inodes=0):
+        """Already-written bytes are now accounted by statvfs, not future leases."""
+        if any(type(value) is not int or value<0 for value in (written_bytes,created_inodes)):
+            raise ValueError('Consumed capacity must be nonnegative integers')
+        with self._locked() as state:
+            record=state['reservations'][token]
+            if record['pid']!=os.getpid() or record['process_identity']!=_process_identity(os.getpid()):
+                raise ValueError('Reservation owner changed')
+            if written_bytes>record['bytes'] or created_inodes>record['inodes']:
+                raise ValueError('Write exceeded its admitted future byte capacity')
+            record['bytes']-=written_bytes
+            record['inodes']-=created_inodes
+            _atomic_json(self.root/'state.json',state)
+
     @staticmethod
     def _reconcile(state):
         for token,r in list(state['reservations'].items()):
@@ -257,7 +293,12 @@ def admitted_output(output, *, estimated_bytes, stage, inodes=8):
     authority=StorageAuthority(control)
     with authority.admitted(bytes_required=int(estimated_bytes),inodes_required=inodes,
                             stage=stage,output=output) as token:
-        yield authority,token
+        budget={'authority':authority,'token':token,'limit':int(estimated_bytes),
+                'written':0,'consume':True,'root':Path(output).absolute(),
+                'inode_remaining':inodes,'inode_unconsumed':0}
+        context=_OUTPUT_BUDGET.set(budget)
+        try:yield authority,token
+        finally:_OUTPUT_BUDGET.reset(context)
 
 
 def storage_writer(*,stage,output,estimate):
@@ -268,6 +309,9 @@ def storage_writer(*,stage,output,estimate):
     the decorator alone is not a hard filesystem quota.
     """
     def decorate(function):
+        if (inspect.isgeneratorfunction(function) or inspect.isasyncgenfunction(function)
+                or inspect.iscoroutinefunction(function)):
+            raise TypeError('Storage admission requires a synchronous writer, not deferred execution')
         signature=inspect.signature(function)
         @functools.wraps(function)
         def wrapped(*args,**kwargs):
@@ -275,8 +319,13 @@ def storage_writer(*,stage,output,estimate):
                 return function(*args,**kwargs)
             bound=signature.bind(*args,**kwargs); bound.apply_defaults()
             arguments=bound.arguments
-            with admitted_output(output(arguments),estimated_bytes=int(estimate(arguments)),stage=stage):
-                return function(*args,**kwargs)
+            try:
+                with admitted_output(output(arguments),estimated_bytes=int(estimate(arguments)),stage=stage):
+                    return function(*args,**kwargs)
+            except Exception as exc:
+                converted=as_storage_blocked(exc,stage=stage,output=output(arguments))
+                if converted is None or converted is exc:raise
+                raise converted from exc
         return wrapped
     return decorate
 
@@ -285,10 +334,11 @@ class ReservedFile:
     """Extend the shared lease BEFORE buffered Joblib bytes reach the disk."""
     def __init__(self,stream,budget):
         self.stream=stream; self.budget=budget
+        self.unconsumed=0
 
     def write(self,data):
         size=memoryview(data).nbytes
-        required=self.budget['written']+size
+        required=self.budget['written']+size+(64*1024 if self.budget.get('cache') else 0)
         if required>self.budget['limit']:
             extra=max(1024**2,required-self.budget['limit'])
             self.budget['authority'].extend(self.budget['token'],extra_bytes=extra,
@@ -296,10 +346,80 @@ class ReservedFile:
             self.budget['limit']+=extra
         result=self.stream.write(data)
         self.budget['written']+=result
+        if self.budget.get('consume'):
+            self.unconsumed+=result
+            if self.unconsumed>=16*1024**2:self.flush()
         return result
+
+    def flush(self):
+        self.stream.flush()
+        pending=self.unconsumed
+        inodes=self.budget.get('inode_unconsumed',0)
+        if self.budget.get('consume') and (pending or inodes):
+            self.budget['authority'].consume(self.budget['token'],written_bytes=pending,created_inodes=inodes)
+            self.unconsumed=0
+            self.budget['inode_unconsumed']=0
 
     def __getattr__(self,name):
         return getattr(self.stream,name)
+
+
+@contextmanager
+def reserved_output_file(path,mode='wb',*,encoding='utf-8'):
+    """A bounded stream for cooperating exports inside an admitted worker."""
+    budget=_OUTPUT_BUDGET.get()
+    if budget is None:
+        with open(path,mode,**({} if 'b' in mode else {'encoding':encoding})) as stream:
+            yield stream
+        return
+    path=Path(path).absolute()
+    if path.resolve()!=path or not path.is_relative_to(budget['root']):
+        raise ValueError('Export escaped its admitted output root')
+    if budget['root'].is_dir():
+        _owned_path(path,budget['root'])
+    elif path!=budget['root'] or path.parent.stat().st_uid!=os.getuid():
+        raise ValueError('Export has no admitted own-user parent')
+    if mode not in {'w','wb','x','xb','a','ab'}:
+        raise ValueError('Reserved exports require a write-only file mode')
+    flags=os.O_WRONLY|os.O_NOFOLLOW
+    if mode.startswith('a'):flags|=os.O_APPEND
+    fd=None
+    if not mode.startswith('x'):
+        try:fd=os.open(path,flags)
+        except FileNotFoundError:pass
+    if fd is None:
+        if budget['inode_remaining']==0:
+            budget['authority'].extend(budget['token'],extra_bytes=0,extra_inodes=1)
+            budget['inode_remaining']=1
+        try:fd=os.open(path,flags|os.O_CREAT|os.O_EXCL,0o600)
+        except FileExistsError:
+            if mode.startswith('x'):raise
+            fd=os.open(path,flags)
+        else:
+            budget['inode_remaining']-=1
+            budget['inode_unconsumed']+=1
+    try:
+        info=os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_uid!=os.getuid()
+                or info.st_dev!=budget['authority'].root.stat().st_dev):
+            raise ValueError('Unsafe or cross-filesystem export target')
+        if mode.startswith('w'):os.ftruncate(fd,0)
+        stream=os.fdopen(fd,'ab' if mode.startswith('a') else 'wb')
+    except BaseException:
+        os.close(fd)
+        raise
+    with stream:
+        reserved=ReservedFile(stream,budget)
+        if 'b' in mode:
+            try:yield reserved
+            finally:reserved.flush()
+        else:
+            text=io.TextIOWrapper(reserved,encoding=encoding)
+            try:
+                yield text
+                text.flush()
+            finally:
+                text.detach()
 
 
 def payload_identity(path, allowed_root):

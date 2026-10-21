@@ -1,16 +1,86 @@
 import json
 import multiprocessing
 import os
+import pickle
+import errno
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
 from ima.research_storage import StorageAuthority, StorageBlocked, payload_identity, reclaim_payload
+import ima.research_storage as storage
 
 
 def space(free=1000, inodes=100):
     return SimpleNamespace(f_bavail=free,f_bfree=free,f_frsize=1,f_favail=inodes)
+
+
+def test_consumed_bytes_leave_the_future_reservation_without_releasing_cache_growth(tmp_path):
+    authority=StorageAuthority(tmp_path/'control',headroom_bytes=0,headroom_inodes=0,
+        statvfs=lambda path:space(10000))
+    token=authority.reserve(bytes_required=128,stage='fixture',output=tmp_path/'artifact',cache_bytes=128)
+    authority.consume(token,written_bytes=32)
+    row=authority.status()['reservations'][token]
+    assert row['bytes']==96 and row['cache_growth_bytes']==128
+    with pytest.raises(ValueError,match='exceeded'):authority.consume(token,written_bytes=97)
+    with patch('ima.research_storage.os.getpid',return_value=999999):
+        with pytest.raises(ValueError,match='owner'):authority.consume(token,written_bytes=1)
+    authority.release(token)
+
+
+def test_deferred_writers_cannot_silently_outlive_their_reservation(tmp_path):
+    def generator():yield 'deferred'
+    async def coroutine():return 'deferred'
+    async def async_generator():yield 'deferred'
+    for function in (generator,coroutine,async_generator):
+        with pytest.raises(TypeError,match='synchronous'):
+            storage.storage_writer(stage='fixture',output=lambda a:tmp_path,estimate=lambda a:64)(function)
+
+
+def test_flushing_one_export_does_not_release_another_streams_buffer(tmp_path,monkeypatch):
+    authority=StorageAuthority(tmp_path/'control',headroom_bytes=0,headroom_inodes=0,
+        statvfs=lambda path:space(10000))
+    monkeypatch.setenv('IMA_STORAGE_ROOT',str(authority.root))
+    monkeypatch.setattr(storage,'StorageAuthority',lambda root:authority)
+    with storage.admitted_output(tmp_path,estimated_bytes=128,stage='fixture'):
+        with storage.reserved_output_file(tmp_path/'a.bin') as first:
+            first.write(b'a'*32)
+            with storage.reserved_output_file(tmp_path/'b.bin') as second:
+                second.write(b'b')
+                second.flush()
+                assert authority.status()['reserved_bytes']==127
+                assert (tmp_path/'a.bin').stat().st_size==0
+            first.flush()
+            assert authority.status()['reserved_bytes']==95
+    assert authority.status()['reserved_bytes']==0
+
+
+def test_file_creation_uses_the_initially_admitted_inode_allowance(tmp_path,monkeypatch):
+    authority=StorageAuthority(tmp_path/'control',headroom_bytes=0,headroom_inodes=0,
+        statvfs=lambda path:space(10000,inodes=9))
+    monkeypatch.setenv('IMA_STORAGE_ROOT',str(authority.root))
+    monkeypatch.setattr(storage,'StorageAuthority',lambda root:authority)
+    with storage.admitted_output(tmp_path,estimated_bytes=128,stage='fixture',inodes=8):
+        with patch.object(authority,'extend',wraps=authority.extend) as extend:
+            with storage.reserved_output_file(tmp_path/'one.bin') as stream:
+                stream.write(b'a')
+            extend.assert_not_called()
+        assert authority.status()['reserved_inodes']==7
+
+
+def test_storage_pressure_diagnostic_pickles_without_reclassifying_other_io(tmp_path,monkeypatch):
+    monkeypatch.delenv('IMA_STORAGE_ROOT',raising=False)
+    full=OSError(errno.ENOSPC,'full')
+    assert storage.as_storage_blocked(full,stage='fixture',output=tmp_path) is None
+    monkeypatch.setenv('IMA_STORAGE_ROOT',str(tmp_path/'control'))
+    failure=storage.as_storage_blocked(full,stage='fixture',output=tmp_path)
+    replay=pickle.loads(pickle.dumps(failure))
+    assert replay.diagnostic==failure.diagnostic
+    assert replay.diagnostic['failure_kind']=='infrastructure_storage'
+    assert replay.diagnostic['retryable'] is True
+    assert storage.as_storage_blocked(OSError(errno.EIO,'io error'),stage='fixture',output=tmp_path) is None
 
 
 def test_reservations_are_atomic_and_include_other_workers(tmp_path):
