@@ -1,6 +1,7 @@
-"""Inspect storage or plan exact own-user fold-cache retirement; fail closed."""
+"""Inspect, explicitly provision bounded control state, or plan cache retirement."""
 from __future__ import annotations
 import argparse
+from dataclasses import asdict
 import hashlib
 import json
 import os
@@ -17,6 +18,12 @@ def main(argv=None):
     inspect.add_argument('--root',type=Path,required=True)
     status=commands.add_parser('status')
     status.add_argument('--authority',type=Path,required=True)
+    control_init=commands.add_parser('control-init',help='Explicit healthy-storage bootstrap; does not authorize restart')
+    control_init.add_argument('--authority',type=Path,required=True)
+    control_init.add_argument('--policy',type=Path,required=True)
+    control_init.add_argument('--policy-sha256',required=True)
+    control_status=commands.add_parser('control-status',help='Read bounded control state; may recover its rollback journal')
+    control_status.add_argument('--authority',type=Path,required=True)
     plan=commands.add_parser('plan')
     plan.add_argument('--root',type=Path,required=True)
     plan.add_argument('--cache-root',type=Path,action='append',required=True)
@@ -37,6 +44,29 @@ def main(argv=None):
             'mode':'read_only','reclaim_authorized':False}
     elif args.command=='status':
         result=StorageAuthority(args.authority).status()
+    elif args.command in {'control-init','control-status'}:
+        from ima.research_control import ControlIntentStore,ControlPolicy
+        if args.command=='control-init':
+            with args.policy.open('rb') as stream:encoded=stream.read(65537)
+            if len(encoded)>65536 or hashlib.sha256(encoded).hexdigest()!=args.policy_sha256:
+                raise ValueError('Explicit control policy digest or size mismatch')
+            try:policy=ControlPolicy(**json.loads(encoded))
+            except (TypeError,ValueError) as exc:raise ValueError('Invalid explicit control policy') from exc
+            authority=StorageAuthority(args.authority)
+            store=ControlIntentStore.bootstrap(authority,policy)
+        else:
+            if not args.authority.is_dir():raise ValueError('Existing authority required; no implicit control bootstrap')
+            authority=StorageAuthority(args.authority)
+            store=ControlIntentStore(authority)
+        pending=[json.loads(raw) for raw in store.pending()]
+        result={'mode':'explicit_healthy_control_bootstrap' if args.command=='control-init' else 'bounded_control_readback',
+            'control_root':str(store.root),'policy':asdict(store.policy),
+            'policy_identity_sha256':hashlib.sha256((store.root/'policy.json').read_bytes()).hexdigest(),
+            'normal_headroom_bytes':authority.headroom_bytes,'allocated_bytes':store.allocated_bytes(),
+            'pending_count':len(pending),'pending_intents':[
+                {key:row[key] for key in ('campaign','destination','role','sequence','state','payload_hash')}
+                for row in pending],
+            'may_recover_bounded_journal':True,'rollout_qualified':False,'normal_restart_authorized':False}
     elif args.command=='plan':
         root=args.root.absolute(); records=[]
         for cache in args.cache_root:
