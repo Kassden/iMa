@@ -83,6 +83,35 @@ def test_storage_pressure_diagnostic_pickles_without_reclassifying_other_io(tmp_
     assert storage.as_storage_blocked(OSError(errno.EIO,'io error'),stage='fixture',output=tmp_path) is None
 
 
+def test_structured_storage_causes_are_cycle_bounded_and_do_not_parse_messages(tmp_path,monkeypatch):
+    monkeypatch.setenv('IMA_STORAGE_ROOT',str(tmp_path/'control'))
+    full=OSError(errno.EDQUOT,'quota full')
+    outer=RuntimeError('wrapper');outer.__cause__=full
+    assert storage.as_storage_blocked(outer,stage='fixture',output=tmp_path).diagnostic['errno']==errno.EDQUOT
+    ordinary=ValueError('database or disk is full')
+    assert storage.as_storage_blocked(ordinary,stage='fixture',output=tmp_path) is None
+    hidden=ValueError('unrelated failure');hidden.__context__=full;hidden.__suppress_context__=True
+    assert storage.as_storage_blocked(hidden,stage='fixture',output=tmp_path) is None
+    first=RuntimeError('one');second=RuntimeError('two')
+    first.__cause__=second;second.__cause__=first
+    assert storage.as_storage_blocked(first,stage='fixture',output=tmp_path) is None
+
+
+def test_native_database_full_is_found_through_an_explicit_orig_link(tmp_path,monkeypatch):
+    import sqlite3
+    monkeypatch.setenv('IMA_STORAGE_ROOT',str(tmp_path/'control'))
+    with sqlite3.connect(tmp_path/'bounded.sqlite') as conn:
+        conn.execute('PRAGMA page_size=512');conn.execute('PRAGMA max_page_count=2')
+        conn.execute('CREATE TABLE payload(value BLOB)');conn.commit()
+        try:conn.execute('INSERT INTO payload VALUES(?)',(b'x'*100000,))
+        except sqlite3.Error as exc:native=exc
+        else:pytest.fail('Fixture must produce actual SQLITE_FULL')
+    wrapper=RuntimeError('database adapter');wrapper.orig=native
+    result=storage.as_storage_blocked(wrapper,stage='fixture',output=tmp_path)
+    assert result.diagnostic['sqlite_errorcode']==sqlite3.SQLITE_FULL
+    assert result.diagnostic['cause_exception_type']==type(native).__name__
+
+
 def test_reservations_are_atomic_and_include_other_workers(tmp_path):
     a=StorageAuthority(tmp_path/'authority',headroom_bytes=100,headroom_inodes=2,statvfs=lambda _:space())
     one=a.reserve(bytes_required=600,inodes_required=5,stage='fit',output=tmp_path/'out')

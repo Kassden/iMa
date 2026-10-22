@@ -41,11 +41,25 @@ class StorageBlocked(RuntimeError):
 def as_storage_blocked(error,*,stage,output):
     if isinstance(error,StorageBlocked):return error
     if not os.environ.get('IMA_STORAGE_ROOT'):return None
-    pressure=isinstance(error,OSError) and error.errno in {errno.ENOSPC,errno.EDQUOT}
-    full_sqlite=isinstance(error,sqlite3.Error) and (getattr(error,'sqlite_errorcode',0)&255)==sqlite3.SQLITE_FULL
-    if pressure or full_sqlite:
-        return StorageBlocked(str(error),{'stage':stage,'output':str(output),
-            'errno':getattr(error,'errno',None),'sqlite_errorcode':getattr(error,'sqlite_errorcode',None)})
+    pending=[error];seen=set()
+    while pending and len(seen)<32:
+        cause=pending.pop()
+        if id(cause) in seen:continue
+        seen.add(id(cause))
+        if isinstance(cause,StorageBlocked):return cause
+        pressure=isinstance(cause,OSError) and cause.errno in {errno.ENOSPC,errno.EDQUOT}
+        full_sqlite=isinstance(cause,sqlite3.Error) and (getattr(cause,'sqlite_errorcode',0)&255)==sqlite3.SQLITE_FULL
+        if pressure or full_sqlite:
+            return StorageBlocked(str(cause),{'stage':stage,'output':str(output),
+                'errno':getattr(cause,'errno',None),'sqlite_errorcode':getattr(cause,'sqlite_errorcode',None),
+                'wrapper_exception_type':type(error).__name__,'cause_exception_type':type(cause).__name__})
+        # SQLAlchemy keeps the native database error in .orig. Follow explicit
+        # structured causes, not error-message substrings or suppressed context.
+        original=vars(cause).get('orig')
+        if isinstance(original,BaseException):pending.append(original)
+        if cause.__cause__ is not None:pending.append(cause.__cause__)
+        elif not cause.__suppress_context__ and cause.__context__ is not None:
+            pending.append(cause.__context__)
     return None
 
 
