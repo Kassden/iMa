@@ -1327,6 +1327,23 @@ def _resolve_dataset(config: Any, campaign_dir: Path) -> Path:
     cached = campaign_dir / "inputs" / "rich-history.csv.gz"
     if cached.exists():
         return cached
+    from .research_storage import admitted_output, as_storage_blocked
+    try:
+        with admitted_output(campaign_dir, estimated_bytes=64*1024**2,
+                             stage="controller_fallback_dataset"):
+            return _build_fallback_dataset(cached)
+    except Exception as exc:
+        converted = as_storage_blocked(exc, stage="controller_fallback_dataset", output=cached)
+        if converted is None or converted is exc:
+            raise
+        raise converted from exc
+
+
+def _build_fallback_dataset(cached: Path) -> Path:
+    """Build under admission; publish only a completely flushed gzip export."""
+    import gzip
+    import io
+    from .research_storage import reserved_output_file
     from .rich_features import load_full_rich_history
     frame = load_full_rich_history(
         Path("track/hkracing 2/runs.csv"),
@@ -1334,9 +1351,27 @@ def _resolve_dataset(config: Any, campaign_dir: Path) -> Path:
         Path("data/processed/historical/runners.csv.gz"),
     )
     cached.parent.mkdir(parents=True, exist_ok=True)
-    temporary = cached.with_suffix(cached.suffix + ".tmp")
-    frame.to_csv(temporary, index=False, compression="gzip")
-    os.replace(temporary, cached)
+    # All production callers hold the campaign lock. Reuse one staging slot
+    # so a killed exporter cannot accumulate a new orphan on every restart.
+    temporary = cached.with_name(cached.name + ".tmp")
+    opened = False
+    try:
+        with reserved_output_file(temporary, "wb") as stream:
+            opened = True
+            with gzip.GzipFile(fileobj=stream, mode="wb") as compressed:
+                with io.TextIOWrapper(compressed, encoding="utf-8", newline="") as text:
+                    frame.to_csv(text, index=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, cached)
+        directory_fd = os.open(cached.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if opened:
+            temporary.unlink(missing_ok=True)
     return cached
 
 
