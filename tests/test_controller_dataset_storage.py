@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
+from pathlib import Path
 import errno
 
 import pandas as pd
@@ -86,4 +87,25 @@ def test_fallback_refuses_staging_symlink_without_deleting_foreign_target(tmp_pa
         _resolve_dataset(SimpleNamespace(dataset_path=None),campaign)
     assert staging.is_symlink()
     assert protected.read_bytes()==b'preserve'
+    assert authority.status()['reserved_bytes']==0
+
+
+def test_dataset_cleanup_failure_preserves_primary_storage_classification(tmp_path,monkeypatch):
+    authority,campaign=configure(tmp_path,monkeypatch,128*1024**2)
+    frame=pd.DataFrame({'race_id':['r1']})
+    monkeypatch.setattr('ima.rich_features.load_full_rich_history',lambda *args:frame)
+    monkeypatch.setattr(frame,'to_csv',Mock(side_effect=OSError(errno.ENOSPC,'primary full')))
+    staging=campaign/'inputs'/'rich-history.csv.gz.tmp'
+    original_unlink=Path.unlink
+    def unlink(self,*args,**kwargs):
+        if self==staging and self.exists():
+            assert authority.status()['reserved_bytes']>0
+            raise PermissionError(errno.EACCES,'fixture cleanup denied')
+        return original_unlink(self,*args,**kwargs)
+    monkeypatch.setattr(Path,'unlink',unlink)
+    with pytest.raises(storage.StorageBlocked) as error:
+        _resolve_dataset(SimpleNamespace(dataset_path=None),campaign)
+    assert error.value.diagnostic['errno']==errno.ENOSPC
+    assert any('errno=13' in note for note in error.value.__cause__.__notes__)
+    assert not (staging.parent/'rich-history.csv.gz').exists()
     assert authority.status()['reserved_bytes']==0

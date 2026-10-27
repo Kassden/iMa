@@ -1355,6 +1355,7 @@ def _build_fallback_dataset(cached: Path) -> Path:
     # so a killed exporter cannot accumulate a new orphan on every restart.
     temporary = cached.with_name(cached.name + ".tmp")
     opened = False
+    failure = None
     try:
         with reserved_output_file(temporary, "wb") as stream:
             opened = True
@@ -1369,9 +1370,12 @@ def _build_fallback_dataset(cached: Path) -> Path:
             os.fsync(directory_fd)
         finally:
             os.close(directory_fd)
+    except BaseException as exc:
+        failure = exc
+        raise
     finally:
         if opened:
-            temporary.unlink(missing_ok=True)
+            _cleanup_export_staging(temporary, failure)
     return cached
 
 
@@ -1589,10 +1593,54 @@ def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    if os.environ.get("IMA_STORAGE_ROOT"):
+        from .research_storage import admitted_output, as_storage_blocked, reserved_output_file
+        encoded = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False).encode("utf-8")
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        try:
+            with admitted_output(path.parent, estimated_bytes=len(encoded)+65536,
+                                 stage="controller_json", inodes=4):
+                opened = False
+                failure = None
+                try:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    with reserved_output_file(temporary, "wb") as handle:
+                        opened = True
+                        handle.write(encoded)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    os.replace(temporary, path)
+                    directory_fd = os.open(path.parent, os.O_RDONLY)
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
+                except BaseException as exc:
+                    failure = exc
+                    raise
+                finally:
+                    if opened:
+                        _cleanup_export_staging(temporary, failure)
+        except Exception as exc:
+            converted = as_storage_blocked(exc, stage="controller_json", output=path)
+            if converted is None or converted is exc:
+                raise
+            raise converted from exc
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     os.replace(temporary, path)
+
+
+def _cleanup_export_staging(path: Path, failure: BaseException | None) -> None:
+    """Keep the primary error if removing a bounded staging slot also fails."""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as cleanup:
+        if failure is None:
+            raise
+        failure.add_note(f"Staging cleanup failed: {type(cleanup).__name__}, errno={cleanup.errno}; retained slot {path}")
 
 
 def _read_json(path: Path) -> dict[str, Any]:
