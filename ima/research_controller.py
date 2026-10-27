@@ -176,7 +176,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
             "Executable agentic campaigns require an explicit protocol_path"
         )
     campaign_dir = Path(config.campaign_dir)
-    campaign_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_campaign_directory(campaign_dir)
     with campaign_lock(campaign_dir):
         dataset_path = _resolve_dataset(config, campaign_dir)
         dataset_hash = _hash_file(dataset_path)
@@ -1569,6 +1569,47 @@ def _hash_file(path: Path) -> str:
 @contextmanager
 def campaign_lock(campaign_dir: Path) -> Iterator[None]:
     path = campaign_dir / "controller.lock"
+    if os.environ.get("IMA_STORAGE_ROOT"):
+        import stat
+        from .research_storage import admitted_output, as_storage_blocked, reserved_output_file
+
+        retained_fd = None
+        try:
+            try:
+                with admitted_output(path.parent, estimated_bytes=4096, stage="controller_lock",
+                                     inodes=_publication_inode_budget(path)):
+                    with reserved_output_file(path, "ab") as handle:
+                        fd = handle.fileno()
+                        before = os.fstat(fd)
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        locked = os.fstat(fd)
+                        named = os.stat(path, follow_symlinks=False)
+                        if (not stat.S_ISREG(locked.st_mode) or locked.st_uid != os.getuid()
+                                or locked.st_nlink != 1 or not os.path.samestat(before, locked)
+                                or not os.path.samestat(locked, named)):
+                            raise ValueError("Unsafe or changed controller lock target")
+                        retained_fd = os.dup(fd)
+                        metadata = (json.dumps({"pid": os.getpid(), "started_at": utc_now()}) + "\n").encode("utf-8")
+                        os.ftruncate(fd, 0)
+                        handle.write(metadata)
+                        handle.flush()
+                        os.fsync(fd)
+            except BlockingIOError as exc:
+                raise RuntimeError(f"Campaign controller already running: {campaign_dir}") from exc
+            except Exception as exc:
+                converted = as_storage_blocked(exc, stage="controller_lock", output=path)
+                if converted is None or converted is exc:
+                    raise
+                raise converted from exc
+            # The duplicated descriptor keeps the lock after admission has ended.
+            yield
+        finally:
+            if retained_fd is not None:
+                try:
+                    fcntl.flock(retained_fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(retained_fd)
+        return
     handle = path.open("a+", encoding="utf-8")
     try:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1584,6 +1625,25 @@ def campaign_lock(campaign_dir: Path) -> Iterator[None]:
     finally:
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         handle.close()
+
+
+def _prepare_campaign_directory(campaign_dir: Path) -> None:
+    campaign_dir = Path(campaign_dir)
+    if not os.environ.get("IMA_STORAGE_ROOT"):
+        campaign_dir.mkdir(parents=True, exist_ok=True)
+        return
+    from .research_storage import admitted_output, as_storage_blocked
+
+    missing_inodes = max(0, _publication_inode_budget(campaign_dir) - 1)
+    try:
+        with admitted_output(campaign_dir, estimated_bytes=max(4096,missing_inodes*65536),
+                             stage="controller_campaign_directory", inodes=missing_inodes):
+            campaign_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        converted = as_storage_blocked(exc, stage="controller_campaign_directory", output=campaign_dir)
+        if converted is None or converted is exc:
+            raise
+        raise converted from exc
 
 
 def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
@@ -1750,16 +1810,22 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _controller_lock_held(path: Path) -> bool:
-    if not path.exists():
-        return False
-    handle = path.open("a+", encoding="utf-8")
     try:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        handle.close()
+        os.close(fd)
         return True
-    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-    handle.close()
+    except BaseException:
+        os.close(fd)
+        raise
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
     return False
 
 

@@ -868,7 +868,7 @@ def run_expansion_campaign(config):
     if not config.dataset_path or not config.protocol_path:
         raise ValueError("V6 requires immutable dataset and explicit protocol paths")
     directory = Path(config.campaign_dir)
-    directory.mkdir(parents=True, exist_ok=True)
+    core._prepare_campaign_directory(directory)
     with core.campaign_lock(directory):
         campaign_started = time.monotonic()
         dataset = core._resolve_dataset(config, directory)
