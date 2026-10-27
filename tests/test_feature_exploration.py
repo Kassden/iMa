@@ -39,16 +39,19 @@ class FeatureQueueTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("feature_budget_inactive_test", path)
         budget = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(budget)
-        with patch.object(budget, "manager", side_effect=["inactive", "0", "inactive"]), \
+        unit = {'ActiveState':'inactive', 'MainPID':'0', 'ControlGroup':''}
+        def manager(*args):
+            return unit[args[args.index('-p')+1]]
+        with patch.object(budget, "manager", side_effect=manager), \
              patch.object(budget.subprocess, "run") as run:
             with budget.frozen_model():
                 pass
             run.assert_not_called()
-        with patch.object(budget, "manager", side_effect=["inactive", "0", "active"]), \
+        with patch.object(budget, "manager", side_effect=manager), \
              patch.object(budget.subprocess, "run") as run:
             with self.assertRaisesRegex(RuntimeError, "Main started"):
                 with budget.frozen_model():
-                    pass
+                    unit['ActiveState'] = 'active'
             run.assert_not_called()
 
     def test_restart_deduplication_and_context_isolation(self):

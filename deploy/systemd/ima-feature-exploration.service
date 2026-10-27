@@ -9,10 +9,12 @@ StartLimitBurst=3
 Type=exec
 Slice=ima-research.slice
 EnvironmentFile=%h/research-v2/feature-exploration.env
-ExecStartPre=/bin/sh -c 'exec "$IMA_FEATURE_PYTHON" -P "$IMA_FEATURE_RELEASE/deploy/systemd/ima-feature-exploration-budget.py" reserve'
+Environment=IMA_STORAGE_ROOT=/home/imaopt/research-v2/storage-control
+ExecCondition=/bin/sh -c '"$IMA_FEATURE_PYTHON" -P "$IMA_FEATURE_RELEASE/deploy/systemd/ima-feature-exploration-budget.py" reserve; rc=$?; if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then exit "$rc"; else exit 255; fi'
 ExecStart=/bin/sh -c 'exec "$IMA_FEATURE_PYTHON" -u -P "$IMA_FEATURE_RELEASE/scripts/feature_exploration.py" --root "$IMA_FEATURE_ROOT" --parent-features "$IMA_FEATURE_PARENT" --registry "$IMA_FEATURE_REGISTRY" --main-campaign "$IMA_FEATURE_MAIN" --tracking-uri "$IMA_FEATURE_TRACKING" --code-revision "$IMA_FEATURE_REVISION" --environment-hash "$IMA_FEATURE_ENVIRONMENT" run'
 ExecStopPost=/bin/sh -c 'exec "$IMA_FEATURE_PYTHON" -P "$IMA_FEATURE_RELEASE/deploy/systemd/ima-feature-exploration-budget.py" restore'
 Restart=on-failure
+RestartPreventExitStatus=2
 RestartSec=60
 TimeoutStartSec=700
 TimeoutStopSec=30
