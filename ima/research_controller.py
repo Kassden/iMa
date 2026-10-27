@@ -1587,28 +1587,118 @@ def campaign_lock(campaign_dir: Path) -> Iterator[None]:
 
 
 def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
+    if os.environ.get("IMA_STORAGE_ROOT"):
+        import stat
+        from .research_storage import admitted_output, as_storage_blocked, reserved_output_file
+
+        encoded = (json.dumps(payload, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+        lock_fd = None
+        original_length = None
+        primary = None
+        try:
+            with admitted_output(path.parent, estimated_bytes=len(encoded) + 65536,
+                                 stage="controller_jsonl", inodes=_publication_inode_budget(path.parent)):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    with reserved_output_file(path, "ab") as handle:
+                        stream_info = os.fstat(handle.fileno())
+                        lock_fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+                        locked_info = os.fstat(lock_fd)
+                        if (not os.path.samestat(stream_info, locked_info)
+                                or not os.path.samestat(stream_info, os.stat(path, follow_symlinks=False))):
+                            raise ValueError("JSONL target changed while opening")
+                        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                        locked_info = os.fstat(lock_fd)
+                        if (not stat.S_ISREG(locked_info.st_mode) or locked_info.st_nlink!=1
+                                or locked_info.st_uid!=os.getuid()
+                                or not os.path.samestat(stream_info, locked_info)
+                                or not os.path.samestat(locked_info, os.stat(path, follow_symlinks=False))):
+                            raise ValueError("JSONL target changed while waiting for append lock")
+                        original_length = locked_info.st_size
+                        try:
+                            handle.write(encoded)
+                            handle.flush()
+                            os.fsync(handle.fileno())
+                        except BaseException as exc:
+                            primary = exc
+                except BaseException as exc:
+                    if primary is None:
+                        primary = exc
+                if primary is not None and lock_fd is not None and original_length is not None:
+                    try:
+                        os.ftruncate(lock_fd, original_length)
+                        os.fsync(lock_fd)
+                    except OSError as cleanup:
+                        primary.add_note(
+                            f"JSONL append rollback failed: {type(cleanup).__name__}, "
+                            f"errno={cleanup.errno}; original file length was {original_length}"
+                        )
+                if primary is not None:
+                    raise primary
+        except Exception as exc:
+            converted = as_storage_blocked(exc, stage="controller_jsonl", output=path)
+            if converted is None or converted is exc:
+                raise
+            raise converted from exc
+        finally:
+            if lock_fd is not None:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(lock_fd)
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
+def _publication_inode_budget(parent: Path) -> int:
+    """Reserve the output inode plus every directory mkdir(parents=True) may create."""
+    required = 1
+    while not parent.exists():
+        required += 1
+        if parent == parent.parent:
+            raise ValueError("Publication has no existing filesystem ancestor")
+        parent = parent.parent
+    return required
+
+
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    encoded = json.dumps(payload, indent=2, sort_keys=True,
+                         allow_nan=not bool(os.environ.get("IMA_STORAGE_ROOT"))).encode("utf-8")
+    _write_bytes_atomic(path, encoded, stage="controller_json")
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    _write_bytes_atomic(path, text.encode("utf-8"), stage="controller_text")
+
+
+def _write_bytes_atomic(path: Path, encoded: bytes, *, stage: str) -> None:
+    """Publish one controller-owned artifact; the caller serializes its staging slot."""
     if os.environ.get("IMA_STORAGE_ROOT"):
+        import stat
         from .research_storage import admitted_output, as_storage_blocked, reserved_output_file
-        encoded = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False).encode("utf-8")
         temporary = path.with_suffix(path.suffix + ".tmp")
         try:
             with admitted_output(path.parent, estimated_bytes=len(encoded)+65536,
-                                 stage="controller_json", inodes=4):
+                                 stage=stage, inodes=max(4,_publication_inode_budget(path.parent))):
                 opened = False
+                identity = None
                 failure = None
                 try:
                     path.parent.mkdir(parents=True, exist_ok=True)
                     with reserved_output_file(temporary, "wb") as handle:
+                        info = os.fstat(handle.fileno())
+                        identity = (info.st_dev, info.st_ino)
                         opened = True
                         handle.write(encoded)
                         handle.flush()
                         os.fsync(handle.fileno())
+                    observed = temporary.lstat()
+                    if ((observed.st_dev, observed.st_ino) != identity
+                            or not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1
+                            or observed.st_uid != os.getuid()):
+                        raise ValueError("Publication staging identity changed")
                     os.replace(temporary, path)
                     directory_fd = os.open(path.parent, os.O_RDONLY)
                     try:
@@ -1620,22 +1710,32 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
                     raise
                 finally:
                     if opened:
-                        _cleanup_export_staging(temporary, failure)
+                        _cleanup_export_staging(temporary, failure, expected_identity=identity)
         except Exception as exc:
-            converted = as_storage_blocked(exc, stage="controller_json", output=path)
+            converted = as_storage_blocked(exc, stage=stage, output=path)
             if converted is None or converted is exc:
                 raise
             raise converted from exc
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    temporary.write_bytes(encoded)
     os.replace(temporary, path)
 
 
-def _cleanup_export_staging(path: Path, failure: BaseException | None) -> None:
+def _cleanup_export_staging(path: Path, failure: BaseException | None, *, expected_identity=None) -> None:
     """Keep the primary error if removing a bounded staging slot also fails."""
     try:
+        if expected_identity is not None:
+            try:
+                info = path.lstat()
+            except FileNotFoundError:
+                return
+            if (info.st_dev, info.st_ino) != expected_identity:
+                if failure is not None:
+                    failure.add_note(f"Changed staging identity retained: {path}")
+                    return
+                raise ValueError(f"Changed staging identity retained: {path}")
         path.unlink(missing_ok=True)
     except OSError as cleanup:
         if failure is None:

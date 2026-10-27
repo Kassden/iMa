@@ -1563,9 +1563,7 @@ def run_expansion_campaign(config):
                     from .research_summary import summary,summary_markdown
                     current_summary = summary(snapshot)
                     core._write_json_atomic(directory/"summary.json",current_summary)
-                    temporary = directory/"summary.md.tmp"
-                    temporary.write_text(summary_markdown(current_summary))
-                    temporary.replace(directory/"summary.md")
+                    core._write_text_atomic(directory/"summary.md",summary_markdown(current_summary))
                     signature = content_id({"counts":counts,"error":last_error,"ready":sorted(ready),
                         "running":[(item["attempt_id"],item["status"],item["progress"].get("stage"),item["progress"].get("fold_id")) for item in status["active_trials"]],
                         "cap":ramp.cap,"decision":decision_number,"oom":len(history_snapshot["oom_facts"])})
@@ -1638,9 +1636,7 @@ def run_expansion_campaign(config):
                     core._write_json_atomic(directory/"status.json",final_snapshot)
                     final_summary = summary(final_snapshot)
                     core._write_json_atomic(directory/"summary.json",final_summary)
-                    temporary = directory/"summary.md.tmp"
-                    temporary.write_text(summary_markdown(final_summary))
-                    temporary.replace(directory/"summary.md")
+                    core._write_text_atomic(directory/"summary.md",summary_markdown(final_summary))
                     return finished
                 if inflight:
                     wait(inflight,timeout=1,return_when=FIRST_COMPLETED)
