@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import fcntl
+import os
+import stat
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -13,6 +17,107 @@ import numpy as np
 import pandas as pd
 
 from .research_specs import PipelineRecipe, is_fundamental_first_portfolio
+
+
+def _check_package_lock(path: Path, fd: int) -> None:
+    opened = os.fstat(fd)
+    try:
+        current = path.lstat()
+    except FileNotFoundError as exc:
+        raise ValueError("Package lock inode was removed while in use") from exc
+    if (not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1
+            or opened.st_uid != os.getuid()
+            or (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino)
+            or stat.S_ISLNK(current.st_mode) or current.st_nlink != 1
+            or current.st_uid != os.getuid()):
+        raise ValueError("Unsafe or replaced package lock inode")
+
+
+@contextmanager
+def _package_lock(directory: Path, *, exclusive: bool, create: bool = False,
+                  admitted: bool = False):
+    """Lock a stable package sidecar; readers never create legacy sidecars."""
+    lock_path = directory / ".save.lock"
+    fd = None
+    primary_error = None
+    try:
+        # Setup belongs to the same cleanup scope as the lock body. In
+        # particular, sync failures after dup() must close the retained FD.
+        if create and admitted:
+            from .research_storage import reserved_output_file
+            with reserved_output_file(lock_path, "a") as stream:
+                stream.flush()
+                fd = os.dup(stream.fileno())
+                os.fsync(fd)
+            _fsync_directory(directory)
+        else:
+            flags = os.O_RDONLY if not exclusive else os.O_RDWR
+            if create:
+                flags |= os.O_CREAT
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            try:
+                fd = os.open(lock_path, flags, 0o600)
+            except FileNotFoundError:
+                if exclusive or create:
+                    raise
+                yield False
+                return
+
+        _check_package_lock(lock_path, fd)
+        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        _check_package_lock(lock_path, fd)
+        yield True
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        if fd is not None:
+            # Closing the retained open description releases its flock even
+            # when setup failed before acquisition; no second cleanup can
+            # prevent this close from being attempted.
+            try:
+                os.close(fd)
+            except BaseException as cleanup:
+                if primary_error is None:
+                    raise
+                primary_error.add_note(f'Package lock close also failed: {cleanup!r}')
+
+
+def _fsync_directory(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+_PRIVATE_PACKAGE_ENTRIES = {
+    "model.joblib", "recipe.json", "feature-replay.json",
+    "feature-weights.csv", "manifest.json", "manifest.json.tmp",
+}
+
+
+def _validate_private_package_payloads(path: Path) -> list[Path]:
+    """Validate the complete private package directory before any retry deletion."""
+    entries = []
+    for child in path.iterdir():
+        if child.name == ".save.lock":
+            continue
+        info = child.lstat()
+        if (child.name not in _PRIVATE_PACKAGE_ENTRIES
+                or not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or info.st_nlink != 1):
+            raise ValueError(f"Unsafe entry in private model package retry: {child.name}")
+        entries.append(child)
+    return entries
+
+
+def _clear_private_package_payloads(path: Path) -> None:
+    """Discard validated retry payloads while retaining the stable lock inode."""
+    entries = _validate_private_package_payloads(path)
+    for child in entries:
+        child.unlink()
+    _fsync_directory(path)
 
 
 def speed_to_finish_seconds(distance_m, speed_mps):
@@ -272,36 +377,90 @@ class ResearchModelPackage:
             raise TypeError("Packaged model does not expose joint finish orders")
         return self.model.predict_joint(self._feature_frame(frame))
 
-    def save(self, path: Path) -> Path:
+    from .research_storage import storage_writer
+
+    @storage_writer(stage='model_package',output=lambda a:a['path'],estimate=lambda a:64*1024**2)
+    def save(self, path: Path, *, private_retry: bool = False) -> Path:
+        from .research_storage import reserved_output_file
+        admitted = bool(os.environ.get('IMA_STORAGE_ROOT'))
+        if not isinstance(private_retry, bool):
+            raise TypeError('private_retry must be a boolean')
         path.mkdir(parents=True, exist_ok=True)
-        manifest = self.manifest()
-        joblib.dump(self, path / "model.joblib")
-        (path / "manifest.json").write_text(
-            json.dumps(asdict(manifest), indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        (path / "recipe.json").write_text(
-            json.dumps(self.recipe.canonical_payload(), indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        context = getattr(self, "feature_context", None)
-        if context is not None:
-            (path / "feature-replay.json").write_text(json.dumps(context.contract(), indent=2, sort_keys=True), encoding="utf-8")
+        if not admitted:
+            # Preserve the legacy opt-out contract: exact historical layout,
+            # overwrite behavior, and no lock sidecar.
+            manifest = self.manifest()
+            joblib.dump(self, path / "model.joblib")
+            (path / "manifest.json").write_text(
+                json.dumps(asdict(manifest), indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            (path / "recipe.json").write_text(
+                json.dumps(self.recipe.canonical_payload(), indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            context = getattr(self, "feature_context", None)
+            if context is not None:
+                (path / "feature-replay.json").write_text(
+                    json.dumps(context.contract(), indent=2, sort_keys=True), encoding="utf-8")
+            return path
+
+        with _package_lock(path, exclusive=True, create=True, admitted=admitted):
+            manifest_path = path/'manifest.json'
+            if private_retry:
+                _validate_private_package_payloads(path)
+            try:
+                marker = manifest_path.lstat()
+            except FileNotFoundError:
+                marker = None
+            if marker is not None:
+                if not stat.S_ISREG(marker.st_mode) or marker.st_uid != os.getuid() or marker.st_nlink != 1:
+                    raise ValueError('Unsafe model package acceptance marker')
+                if not private_retry:
+                    raise FileExistsError('Refusing to overwrite an accepted model package')
+                manifest_path.unlink()
+                _fsync_directory(path)
+            if private_retry:
+                _clear_private_package_payloads(path)
+
+            manifest = self.manifest()
+            with reserved_output_file(path/'model.joblib') as stream:
+                joblib.dump(self,stream)
+                if admitted:
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            with reserved_output_file(path/'recipe.json','w') as stream:
+                json.dump(self.recipe.canonical_payload(),stream,indent=2,sort_keys=True)
+                if admitted:
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            context = getattr(self, "feature_context", None)
+            if context is not None:
+                with reserved_output_file(path/'feature-replay.json','w') as stream:
+                    json.dump(context.contract(),stream,indent=2,sort_keys=True)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            from .research_controller import _write_json_atomic
+            _write_json_atomic(manifest_path, asdict(manifest))
         return path
 
 
 def load_research_package(path: Path) -> ResearchModelPackage:
-    package = joblib.load(path / "model.joblib")
-    if not isinstance(package, ResearchModelPackage):
-        raise TypeError("Loaded artifact is not a ResearchModelPackage")
-    manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
-    if manifest["package_id"] != package.manifest().package_id:
-        raise ValueError("Package manifest does not match loaded model")
-    if package.recipe.schema_version == 3 and getattr(package, "feature_context", None) is not None:
-        stored = json.loads((path / "feature-replay.json").read_text())
-        if stored != json.loads(json.dumps(package.feature_context.contract())):
-            raise ValueError("Package feature replay contract does not match loaded state")
-    return package
+    path = Path(path)
+    # Existing sidecars coordinate with writers; old packages remain read-only
+    # loadable without creating a lock file beside them.
+    with _package_lock(path, exclusive=False):
+        manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+        package = joblib.load(path / "model.joblib")
+        if not isinstance(package, ResearchModelPackage):
+            raise TypeError("Loaded artifact is not a ResearchModelPackage")
+        if manifest["package_id"] != package.manifest().package_id:
+            raise ValueError("Package manifest does not match loaded model")
+        if package.recipe.schema_version == 3 and getattr(package, "feature_context", None) is not None:
+            stored = json.loads((path / "feature-replay.json").read_text())
+            if stored != json.loads(json.dumps(package.feature_context.contract())):
+                raise ValueError("Package feature replay contract does not match loaded state")
+        return package
 
 
 def prediction_readback(package_path: Path, frame: pd.DataFrame) -> dict[str, Any]:

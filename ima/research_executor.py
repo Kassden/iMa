@@ -671,7 +671,7 @@ def _execute_frame(
         portfolio_version=request.portfolio_version,
         feature_context=_feature_replay_context(request, fold_schema, score, dataset_hash=dataset_hash) if recipe.schema_version == 3 else None,
     )
-    package.save(package_path)
+    package.save(package_path, private_retry=True)
     conditional = getattr(final_model.model,"conditional",None)
     if conditional is not None and conditional.preprocessor is not None:
         weights = pd.DataFrame({
@@ -958,7 +958,7 @@ def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, star
     _write_json_atomic(graph_report_path, {"folds": reports, "physical_fits": sum(r["physical_fits"] for r in reports),
         "component_execution": "sequential; no nested worker pool"})
     ResearchModelPackage(final_model, recipe, protocol.protocol_id, request.code_revision, request.portfolio_version,
-        _feature_replay_context(request, replay_schema, score, dataset_hash=dataset_hash)).save(package_path)
+        _feature_replay_context(request, replay_schema, score, dataset_hash=dataset_hash)).save(package_path, private_retry=True)
     result = RecipeExecutionResult(RESULT_SCHEMA_VERSION, request.attempt_id, request.proposal_id,
         request.trial_number, recipe.recipe_hash(), recipe.target.kind, "completed",
         "development_fundamental_race_log_loss" if fundamental_first and contract.kind == "win_probability" else _objective_name(contract.kind),
@@ -1192,7 +1192,7 @@ def _execute_secondary_frame(
         code_revision=request.code_revision,
         portfolio_version=request.portfolio_version,
         feature_context=_feature_replay_context(request, fold_schema, score, dataset_hash=dataset_hash) if recipe.schema_version == 3 else None,
-    ).save(package_path)
+    ).save(package_path, private_retry=True)
     result = RecipeExecutionResult(
         schema_version=RESULT_SCHEMA_VERSION,
         attempt_id=request.attempt_id,
