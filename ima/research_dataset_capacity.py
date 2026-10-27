@@ -66,3 +66,36 @@ def dataset_storage_estimate(path, *, _seen=None, parquet=False):
     if _digest(delta) != descriptor["delta_sha256"]:
         raise ValueError("Delta content changed")
     return dataset_storage_estimate(table, _seen=seen) + dataset_storage_estimate(delta, _seen=seen)
+
+
+def snapshot_storage_estimate(snapshot):
+    """Estimate a source snapshot from metadata without creating storage paths.
+
+    Object snapshots are qualified from their declared sibling object root and
+    every referenced object's digest and byte count. This intentionally avoids
+    constructing ObjectStore, whose constructor creates its root.
+    """
+    snapshot = Path(snapshot).resolve()
+    manifest_path = snapshot / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if manifest.get("storage_format") == "ima.snapshot.objects.v2":
+        table = manifest["tables"]["runners.parquet"]
+        root = Path(table["object_root"]).absolute()
+        expected_root = snapshot.parent / "objects"
+        if root.resolve() != root or root != expected_root or not root.is_dir():
+            raise ValueError("Snapshot object root outside qualified acquisition output")
+        numeric = 0
+        for reference in table["partitions"]:
+            digest = reference.get("sha256")
+            if (not isinstance(digest, str) or len(digest) != 64
+                    or set(digest) - set("0123456789abcdef")):
+                raise ValueError("Invalid snapshot object identity")
+            path = root / digest[:2] / digest
+            if path.resolve() != path or not path.is_file():
+                raise ValueError("Missing or escaped snapshot object")
+            if path.stat().st_size != reference.get("size") or _digest(path) != digest:
+                raise ValueError("Snapshot object checksum or size mismatch")
+            numeric += dataset_storage_estimate(path, parquet=True)
+    else:
+        numeric = dataset_storage_estimate(snapshot / "runners.parquet")
+    return numeric + (snapshot / "events.jsonl").stat().st_size

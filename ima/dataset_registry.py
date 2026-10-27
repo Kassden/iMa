@@ -26,6 +26,38 @@ from .rich_features import prepare_rich_runner_dataset
 from .speed_features import build_speed_features, finish_seconds, speed_feature_catalog
 
 
+from .research_storage import storage_writer,reserved_output_file,admitted_output,as_storage_blocked
+from .research_dataset_capacity import snapshot_storage_estimate
+
+
+def _missing_path_inodes(path):
+    path = Path(path).absolute()
+    missing = 0
+    current = path
+    while not current.exists():
+        missing += 1
+        current = current.parent
+    return missing
+
+
+def _registry_init_inodes(arguments):
+    root = Path(arguments['root']).absolute()
+    return _missing_path_inodes(root) + sum(not (root / name).exists()
+                                             for name in ('requests', 'datasets', 'locks', 'staging'))
+
+
+def _registry_init_estimate(arguments):
+    return 64 * 1024 * _registry_init_inodes(arguments)
+
+
+def _dataset_build_estimate(arguments):
+    raw_manifest = Path(arguments['raw_manifest']).resolve()
+    if not raw_manifest.is_file():
+        raise FileNotFoundError(raw_manifest)
+    return max(64 * 1024**2, 6 * snapshot_storage_estimate(arguments['source_snapshot']))
+
+
+
 def file_sha256(path):
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
@@ -47,7 +79,7 @@ def _write_json(path, payload):
         _write_bytes_atomic(path, encoded, stage='dataset_metadata')
         return
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
-    with temporary.open("w") as handle:
+    with reserved_output_file(temporary,'w') as handle:
         json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False, default=str)
         handle.flush()
         os.fsync(handle.fileno())
@@ -193,12 +225,22 @@ class DatasetRegistry:
     def __init__(self, root, *, feature_registry=None):
         self.root = Path(root).resolve()
         self.feature_registry = Path(feature_registry) if feature_registry else self.root / "feature-definitions"
-        for name in ("requests", "datasets", "locks", "staging"):
-            (self.root / name).mkdir(parents=True, exist_ok=True)
+        with admitted_output(self.root, estimated_bytes=_registry_init_estimate({'root': self.root}), stage='dataset_registry_init',
+                             inodes=_registry_init_inodes({'root': self.root})):
+            for name in ("requests", "datasets", "locks", "staging"):
+                (self.root / name).mkdir(parents=True, exist_ok=True)
 
     @contextmanager
     def _lock(self, request_id):
-        with (self.root / "locks" / f"{request_id}.lock").open("a+") as handle:
+        path = self.root / "locks" / f"{request_id}.lock"
+        missing_directories = _missing_path_inodes(path.parent)
+        new_lock = int(not path.exists())
+        inodes = missing_directories + new_lock
+        estimate = 64 * 1024 * inodes
+        with admitted_output(path, estimated_bytes=estimate, stage='dataset_lock', inodes=inodes):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            handle = path.open("a+")
+        with handle:
             fcntl.flock(handle, fcntl.LOCK_EX)
             yield
 
@@ -290,6 +332,8 @@ class DatasetRegistry:
                 _write_json(path, {"race_ids": sorted(protected), "policy": "operator seed; never released by dataset requests"})
         return protected | requested
 
+    @storage_writer(stage='dataset_build',output=lambda a:a['self'].root.resolve(),
+        estimate=_dataset_build_estimate)
     def build(self, request_id, *, source_snapshot, raw_manifest):
         """Resume a submitted request. Failures never overwrite a verified artifact.
 
@@ -340,6 +384,7 @@ class DatasetRegistry:
                     # This is our lock-owned incomplete build, never a published candidate.
                     shutil.rmtree(staging)
                 staging.mkdir()
+                staging = staging.resolve()
                 confirmation_keys = _keys(source.loc[source["race_id"].isin(protected_races)])
                 clean, exclusions = audit_races(source)
                 population = request.race_population_spec
@@ -438,8 +483,10 @@ class DatasetRegistry:
                     "score_population_sha256": _digest(score_keys), "probability_basis": "fundamental_pre_race", "targets": list(request.target_contracts)}
                 if request.budget.get("wall_seconds") and time.monotonic() - started > request.budget["wall_seconds"]:
                     raise ValueError("Dataset build exceeded explicit wall_seconds budget")
-                clean.to_parquet(staging / "runners.parquet", index=False)
-                features.to_parquet(staging / "features.parquet", index=False)
+                with reserved_output_file(staging/'runners.parquet') as stream:
+                    clean.to_parquet(stream,index=False)
+                with reserved_output_file(staging/'features.parquet') as stream:
+                    features.to_parquet(stream,index=False)
                 # Parquet can canonicalize NaN bit patterns without changing values.
                 persisted_features = pd.read_parquet(staging / "features.parquet")
                 ordered_row_keys_sha256 = _digest(_keys(persisted_features))
@@ -447,11 +494,15 @@ class DatasetRegistry:
                 del persisted_features
                 persisted_events = events.copy()
                 persisted_events["typed_values"] = persisted_events["typed_values"].map(lambda x: json.dumps(x, sort_keys=True, default=str))
-                persisted_events.to_parquet(staging / "events.parquet", index=False)
-                pd.DataFrame(coverage).to_parquet(staging / "coverage.parquet", index=False)
+                with reserved_output_file(staging/'events.parquet') as stream:
+                    persisted_events.to_parquet(stream,index=False)
+                with reserved_output_file(staging/'coverage.parquet') as stream:
+                    pd.DataFrame(coverage).to_parquet(stream,index=False)
                 _write_json(staging / "request.json", request.model_dump(mode="json"))
-                shutil.copyfile(raw_path, staging / "raw_manifest.json")
-                shutil.copyfile(snapshot / "manifest.json", staging / "source_manifest.json")
+                for source_path, output_name in ((raw_path, "raw_manifest.json"),
+                                                 (snapshot / "manifest.json", "source_manifest.json")):
+                    with source_path.open('rb') as source_stream, reserved_output_file(staging / output_name) as target:
+                        shutil.copyfileobj(source_stream, target, length=1024 * 1024)
                 _write_json(staging / "exclusions.json", exclusions)
                 _write_json(staging / "confirmation_keys.json", confirmation_keys)
                 _write_json(staging / "formula-report.json", formula_report)
@@ -499,12 +550,30 @@ class DatasetRegistry:
                     "unsupported_requirements": ["raw blobs are not locally replayed by this registry", "source rating/profile publication is unverified; dependent predictors excluded", "condition residuals require parent train-only fitted transforms", "explicit delayed race-result publication excludes that race from development history; delayed-label asof rebuild not yet supported", "dead-heat races excluded by the current single-winner training contract; original tied outcomes preserved upstream"],
                     "files": {path.name: file_sha256(path) for path in staging.iterdir() if path.is_file()}}
                 _write_json(staging / "manifest.json", manifest)
-                (staging / "manifest.sha256").write_text(file_sha256(staging / "manifest.json") + "\n")
+                with reserved_output_file(staging/'manifest.sha256','w') as stream:
+                    stream.write(file_sha256(staging/'manifest.json')+'\n')
                 # A complete manifest and every payload become visible together.
                 os.rename(staging, destination)
                 manifest = self.verify(dataset_id)
                 self._transition(state, "verified", dataset_id=dataset_id, artifact_path=str(destination))
                 return manifest
             except Exception as exc:
+                storage=as_storage_blocked(exc,stage='dataset_build',output=self.root)
+                if storage is not None:
+                    primary = storage
+                    partial = locals().get('staging')
+                    if partial is not None and partial.exists():
+                        try:
+                            shutil.rmtree(partial)
+                        except Exception as cleanup_error:
+                            if hasattr(primary, 'add_note'):
+                                primary.add_note(f"Partial dataset cleanup also failed: {cleanup_error!r}")
+                    try:
+                        self._transition(state,'blocked_storage',error=str(storage))
+                    except Exception as publication_error:
+                        if hasattr(primary, 'add_note'):
+                            primary.add_note(f"Storage block state publication also failed: {publication_error!r}")
+                    if primary is exc:raise
+                    raise primary from exc
                 self._transition(state, "rejected", error=f"{type(exc).__name__}: {exc}")
                 raise

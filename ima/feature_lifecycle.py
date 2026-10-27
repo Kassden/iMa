@@ -6,6 +6,7 @@ planner calls, raw acquisition, population selection, or fitted transforms here.
 from __future__ import annotations
 
 import ast
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from importlib.metadata import version
@@ -24,7 +25,7 @@ import pandas as pd
 import pyarrow.parquet as parquet
 
 from .dataset_registry import (
-    DatasetRegistry, _digest, _keys, _ordered_row_hashes_sha256, _write_json, file_sha256,
+    DatasetRegistry, _digest, _keys, _missing_path_inodes, _ordered_row_hashes_sha256, _write_json, file_sha256,
 )
 from .feature_definitions import (
     FeatureDefinition, FeatureRegistry, evaluate_formulas, validate_definition,
@@ -33,12 +34,31 @@ from .feature_expressions import InputMetadata, NumericExpression, unit_dimensio
 from .research_targets import SUPPORTED_TARGETS, target_contract, validate_no_forbidden_label_features
 
 
+from .research_storage import admitted_output,reserved_output_file,storage_writer,as_storage_blocked
+
 EXPERIMENT_NAME = "ima-feature-builds"
 _METADATA_KEYS = set(InputMetadata.model_fields)
 _UNIT_NAMES = {
     "m", "km", "s", "sec", "seconds", "ms", "day", "days", "kg", "g", "lb",
     "mps", "lengths", "rating",
 }
+
+
+@contextmanager
+def _temporary_directory_preserving_error(**kwargs):
+    temporary = tempfile.TemporaryDirectory(**kwargs)
+    try:
+        yield temporary.name
+    except BaseException as primary:
+        try:
+            temporary.cleanup()
+        except BaseException as cleanup_error:
+            if hasattr(primary, 'add_note'):
+                primary.add_note(f"Feature staging cleanup also failed: {cleanup_error!r}")
+        raise
+    else:
+        temporary.cleanup()
+
 
 
 def _known_unit(unit: str) -> bool:
@@ -235,8 +255,12 @@ class FeatureLifecycle:
     def __init__(self, registry_root):
         self.registry = registry_root if isinstance(registry_root, DatasetRegistry) else DatasetRegistry(registry_root)
         self.root = self.registry.root / "feature-lifecycle"
-        for name in ("builds", "outcomes"):
-            (self.root / name).mkdir(parents=True, exist_ok=True)
+        inodes = _missing_path_inodes(self.root) + sum(
+            not (self.root / name).exists() for name in ("builds", "outcomes"))
+        with admitted_output(self.root, estimated_bytes=64 * 1024 * inodes,
+                             stage='feature_lifecycle_init', inodes=inodes):
+            for name in ("builds", "outcomes"):
+                (self.root / name).mkdir(parents=True, exist_ok=True)
 
     def _path(self, build_id):
         if not isinstance(build_id, str) or not re.fullmatch(r"feature-build-[0-9a-f]{64}", build_id):
@@ -324,6 +348,8 @@ class FeatureLifecycle:
                     raise ValueError(f"Supplied metadata differs from verified catalog: {name}")
         return metadata
 
+    @storage_writer(stage='feature_dataset',output=lambda a:a['self'].registry.root.resolve(),
+                    estimate=lambda a:2*1024**3)
     def build(self, build_id, *, tracking_uri=None, experiment_name=EXPERIMENT_NAME) -> dict:
         with self.registry._lock(build_id):
             receipt = self.receipt(build_id)
@@ -340,13 +366,26 @@ class FeatureLifecycle:
                                    diagnostics=manifest["feature_build"]["diagnostics"])
                     receipt.pop("error", None)
                     self._save(receipt)
-            except ValueError as exc:
-                receipt.update(status="rejected", error=f"{type(exc).__name__}: {exc}")
-                self._save(receipt)
-                raise
-            except OSError as exc:
-                receipt.update(status="pending", error=f"{type(exc).__name__}: {exc}")
-                self._save(receipt)
+            except Exception as exc:
+                storage = as_storage_blocked(exc, stage='feature_dataset', output=self.registry.root)
+                if storage is not None:
+                    try:
+                        receipt.update(status='blocked_storage', error=str(storage))
+                        self._save(receipt)
+                    except Exception as publication_error:
+                        if hasattr(storage, 'add_note'):
+                            storage.add_note(f"Storage block state publication also failed: {publication_error!r}")
+                    if storage is exc:
+                        raise
+                    raise storage from exc
+                if isinstance(exc, ValueError):
+                    receipt.update(status="rejected", error=f"{type(exc).__name__}: {exc}")
+                    self._save(receipt)
+                    raise
+                if isinstance(exc, OSError):
+                    receipt.update(status="pending", error=f"{type(exc).__name__}: {exc}")
+                    self._save(receipt)
+                    raise
                 raise
             if tracking_uri:
                 self._track(receipt, manifest, tracking_uri, experiment_name)
@@ -416,14 +455,17 @@ class FeatureLifecycle:
         if destination.exists():
             return self.registry.verify(dataset_id)
         # Copy protected artifacts, never link mutable inode contents or replay raw history.
-        with tempfile.TemporaryDirectory(dir=self.registry.root / "staging", prefix="feature-build-") as temporary:
-            staging = Path(temporary) / "datasets" / dataset_id
+        with _temporary_directory_preserving_error(dir=self.registry.root / "staging", prefix="feature-build-") as temporary:
+            staging = Path(temporary).resolve() / "datasets" / dataset_id
             staging.mkdir(parents=True)
             replaced = {"features.parquet", "feature-build.json", "feature-catalog.json"}
             for name in parent["files"]:
                 if name not in replaced:
-                    shutil.copyfile(Path(receipt["parent_manifest_path"]).parent / name, staging / name)
-            output.to_parquet(staging / "features.parquet", index=False)
+                    with (Path(receipt['parent_manifest_path']).parent/name).open('rb') as source, \
+                         reserved_output_file(staging/name) as target:
+                        shutil.copyfileobj(source,target,length=8*1024**2)
+            with reserved_output_file(staging/'features.parquet') as stream:
+                output.to_parquet(stream,index=False)
             persisted = pd.read_parquet(staging / "features.parquet")
             pd.testing.assert_frame_equal(persisted.loc[:, frame.columns], frame, check_exact=True)
             for name in names:
@@ -455,7 +497,8 @@ class FeatureLifecycle:
             if manifest["ordered_row_keys_sha256"] != parent["ordered_row_keys_sha256"]:
                 raise ValueError("Successor changed ordered parent row keys")
             _write_json(staging / "manifest.json", manifest)
-            (staging / "manifest.sha256").write_text(file_sha256(staging / "manifest.json") + "\n")
+            with reserved_output_file(staging/'manifest.sha256','w') as stream:
+                stream.write(file_sha256(staging/'manifest.json')+'\n')
             for name, digest in payload["preserved_parent_files"].items():
                 if file_sha256(staging / name) != digest:
                     raise ValueError(f"Parent artifact changed during successor build: {name}")
