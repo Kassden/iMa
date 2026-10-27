@@ -7,6 +7,8 @@ import json
 import math
 import re
 import sqlite3
+import os
+import stat
 from io import BytesIO
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -19,6 +21,9 @@ from scrapy.exceptions import IgnoreRequest
 
 from scrapper.historical.results import parse_race
 from scrapper.horse_pages import parse_profile_and_form, _finish_seconds
+from ima.research_storage import StorageBlocked,admitted_output,storage_writer,reserved_output_file,as_storage_blocked
+from ima.research_sqlite import native_sqlite_connection
+from scrapper.research_storage_io import atomic_native_bytes, cleanup_owned_temporary, validate_owned_temporary
 
 ROOT = "https://racing.hkjc.com/en-us/local/information/"
 HOST = "racing.hkjc.com"
@@ -43,6 +48,47 @@ WITHDRAWN = {"WX", "WV", "WX-A", "WV-A", "WXNR", "W", "SCR", "WD"}
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def _reject_wal_database(path):
+    """Refuse an existing WAL database without opening it writable."""
+    try:
+        with Path(path).open("rb") as stream:
+            stream.seek(18)
+            header = stream.read(2)
+    except FileNotFoundError:
+        return
+    if header == b"\x02\x02":
+        raise RuntimeError("SQLite WAL mode is unsupported by official corpus storage")
+
+
+def _validate_corpus_storage_paths(output, database):
+    output = Path(output).absolute()
+    for selected in (output, Path(database).absolute()):
+        current = Path(selected.anchor)
+        for part in selected.parts[1:]:
+            current /= part
+            if current.is_symlink() and current.lstat().st_uid == os.getuid():
+                raise ValueError("Corpus storage paths must not traverse user-owned symlinks")
+    output = output.resolve(strict=False)
+    database = output / Path(database).name
+    existing_parent = output
+    while not existing_parent.exists():
+        existing_parent = existing_parent.parent
+    parent_info = existing_parent.lstat()
+    if (stat.S_ISLNK(parent_info.st_mode) or parent_info.st_uid != os.getuid()
+            or not stat.S_ISDIR(parent_info.st_mode)):
+        raise ValueError("Corpus output parent must be an own-user directory")
+    if output.exists():
+        output_info = output.lstat()
+        if not stat.S_ISDIR(output_info.st_mode) or output_info.st_uid != os.getuid():
+            raise ValueError("Corpus output must be an own-user directory")
+    if database.exists() or database.is_symlink():
+        database_info = database.lstat()
+        if (not stat.S_ISREG(database_info.st_mode) or database_info.st_nlink != 1
+                or database_info.st_uid != os.getuid()):
+            raise ValueError("Corpus inventory must be an own-user regular file")
+    return output
 
 
 def canonical_url(value: str, base: str = ROOT) -> str | None:
@@ -596,20 +642,31 @@ class CorpusSpider(scrapy.Spider):
         self.seed_urls = seeds
         self.retry_scope_errors = retry_scope_errors
         self.collector_revision = collector_revision
-        self.output = Path(output)
-        self.output.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(self.output / "inventory.sqlite")
-        self.db.executescript("""
-            CREATE TABLE IF NOT EXISTS pages (
-              url TEXT PRIMARY KEY, status TEXT, family TEXT, body_hash TEXT,
-              fetched_at TEXT, metadata_json TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS links (
-              source TEXT, destination TEXT, method TEXT,
-              PRIMARY KEY(source,destination,method));
-            CREATE TABLE IF NOT EXISTS captures (
-              id INTEGER PRIMARY KEY AUTOINCREMENT, requested_url TEXT, source_url TEXT,
-              status TEXT, body_hash TEXT, fetched_at TEXT, metadata_json TEXT);
-        """)
+        database = Path(output) / "inventory.sqlite"
+        self.output = _validate_corpus_storage_paths(output, database)
+        database = self.output / "inventory.sqlite"
+        _reject_wal_database(database)
+        if os.environ.get("IMA_STORAGE_ROOT"):
+            self.db = native_sqlite_connection(database, estimated_growth_bytes=16 * 1024**2,
+                                               stage="official_corpus_inventory")
+        else:
+            self.output.mkdir(parents=True, exist_ok=True)
+            self.db = sqlite3.connect(database)
+        try:
+            with self.db:
+                self.db.execute("""CREATE TABLE IF NOT EXISTS pages (
+                  url TEXT PRIMARY KEY, status TEXT, family TEXT, body_hash TEXT,
+                  fetched_at TEXT, metadata_json TEXT NOT NULL)""")
+                self.db.execute("""CREATE TABLE IF NOT EXISTS links (
+                  source TEXT, destination TEXT, method TEXT,
+                  PRIMARY KEY(source,destination,method))""")
+                self.db.execute("""CREATE TABLE IF NOT EXISTS captures (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT, requested_url TEXT, source_url TEXT,
+                  status TEXT, body_hash TEXT, fetched_at TEXT, metadata_json TEXT)""")
+        except BaseException as primary:
+            try:self.db.close()
+            except BaseException as cleanup:primary.add_note(f"SQLite close after schema failure also failed: {cleanup!r}")
+            raise
 
     async def start(self):
         pending_streams = self.db.execute("""
@@ -645,8 +702,20 @@ class CorpusSpider(scrapy.Spider):
         url = failure.request.url
         record = {"source_url": url, "status": "scope_denied" if isinstance(failure.value, IgnoreRequest) else "request_error", "error": str(failure.value),
                   "family": family(url), "fetched_at": now()}
-        self.store(record)
+        try:self.store(record)
+        except StorageBlocked as exc:self._storage_hold(exc)
 
+    def _storage_hold(self,error):
+        self.storage_error={**error.diagnostic,'error':str(error)}
+        crawler=getattr(self,'crawler',None)
+        if crawler is not None and getattr(crawler,'engine',None) is not None:
+            crawler.engine.close_spider(self,reason='blocked_storage')
+
+    def _store_estimate(self,record):
+        return 1024**2+8*len(json.dumps(record).encode())
+
+    @storage_writer(stage='corpus_inventory',output=lambda a:a['self'].output,
+                    estimate=lambda a:a['self']._store_estimate(a['record']))
     def store(self, record):
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO pages VALUES (?,?,?,?,?,?)",
@@ -658,11 +727,15 @@ class CorpusSpider(scrapy.Spider):
         counts = dict(self.db.execute("SELECT status,count(*) FROM pages GROUP BY status"))
         report = {"updated_at": now(), "pages": sum(counts.values()), "statuses": counts,
                   "families": dict(self.db.execute("SELECT family,count(*) FROM pages GROUP BY family"))}
-        temporary = self.output / "status.json.tmp"
-        temporary.write_text(json.dumps(report, indent=2))
-        temporary.replace(self.output / "status.json")
+        atomic_native_bytes(self.output / "status.json", json.dumps(report, indent=2).encode())
 
     def parse(self, response):
+        try:yield from self._parse_discovered(response)
+        except StorageBlocked as exc:self._storage_hold(exc)
+
+    @storage_writer(stage='official_capture',output=lambda a:a['self'].output,
+                    estimate=lambda a:1024**2+4*len(a['response'].body))
+    def _capture_response(self, response):
         if canonical_url(response.url) is None:
             return
         digest = hashlib.sha256(response.body).hexdigest()
@@ -670,9 +743,23 @@ class CorpusSpider(scrapy.Spider):
         blob.parent.mkdir(exist_ok=True)
         if not blob.exists():
             temporary = blob.with_suffix(".tmp")
-            with gzip.open(temporary, "wb") as handle:
-                handle.write(response.body)
-            temporary.replace(blob)
+            identity = None
+            try:
+                with reserved_output_file(temporary) as stream:
+                    opened = os.fstat(stream.fileno())
+                    identity = (opened.st_dev, opened.st_ino)
+                    with gzip.GzipFile(filename=str(temporary),fileobj=stream,mode='wb') as handle:
+                        handle.write(response.body)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                validate_owned_temporary(temporary, identity)
+                temporary.replace(blob)
+                directory = os.open(blob.parent, os.O_RDONLY)
+                try:os.fsync(directory)
+                finally:os.close(directory)
+            except BaseException as primary:
+                cleanup_owned_temporary(temporary, identity, primary)
+                raise
         original_url = response.meta.get("redirect_urls", [response.request.url])[0]
         record = {"source_url": response.url, "requested_url": original_url,
                   "requested_family": family(original_url),
@@ -710,10 +797,20 @@ class CorpusSpider(scrapy.Spider):
             (response.url, digest)).fetchone()[0]
         if first_capture:
             record["first_fetched_at"] = min(record["first_fetched_at"], first_capture)
-        temporary = normalized.with_suffix(".tmp")
-        temporary.write_text(json.dumps(record, indent=2))
-        temporary.replace(normalized)
+        atomic_native_bytes(normalized, json.dumps(record, indent=2).encode())
         self.store(record)
+        return record,allowed_pdf
+
+    @storage_writer(stage='official_frontier',output=lambda a:a['self'].output,
+        estimate=lambda a:64*1024+16*(len(a['source'].encode())+len(a['target'].encode())+len(a['method'].encode())))
+    def _store_link(self,source,target,method):
+        with self.db:
+            self.db.execute('INSERT OR IGNORE INTO links VALUES (?,?,?)',(source,target,method))
+
+    def _parse_discovered(self,response):
+        captured=self._capture_response(response)
+        if captured is None:return
+        record,allowed_pdf=captured
         if allowed_pdf:
             return
         if urlsplit(response.url).path == DATE_LIST:
@@ -723,8 +820,7 @@ class CorpusSpider(scrapy.Spider):
                 for venue in entry["venues"]:
                     target = ROOT + "localresults?" + urlencode({"RaceDate": entry["date"].replace("-", "/"),
                         "Racecourse": venue, "RaceNo": 1})
-                    with self.db:
-                        self.db.execute("INSERT OR IGNORE INTO links VALUES (?,?,?)", (response.url,target,"official_date_venue"))
+                    self._store_link(response.url,target,'official_date_venue')
                     yield scrapy.Request(target, callback=self.parse, errback=self.failed,
                         meta={"discovered_from": response.url})
             return
@@ -732,8 +828,7 @@ class CorpusSpider(scrapy.Spider):
             if record.get("next_page"):
                 parts = urlsplit(response.url)
                 target = urlunsplit(parts._replace(query=urlencode({"PageNum": record["next_page"]})))
-                with self.db:
-                    self.db.execute("INSERT OR IGNORE INTO links VALUES (?,?,?)", (response.url,target,"official_json_next"))
+                self._store_link(response.url,target,'official_json_next')
                 yield scrapy.Request(target, callback=self.parse, errback=self.failed,
                                      priority=200000, meta={"discovered_from":response.url})
             return
@@ -761,8 +856,7 @@ class CorpusSpider(scrapy.Spider):
             target = canonical_url(target,response.url)
             if target is None:
                 continue
-            with self.db:
-                self.db.execute("INSERT OR IGNORE INTO links VALUES (?,?,?)", (response.url,target,method))
+            self._store_link(response.url,target,method)
             target_query = {k.lower(): v for k, v in parse_qsl(urlsplit(target).query)}
             meeting = record.get("race", {}).get("race_date")
             sibling = meeting and event_date(target_query.get("racedate", "")) == meeting and family(target) in {"results", "sectionals"}
@@ -771,6 +865,24 @@ class CorpusSpider(scrapy.Spider):
                                  meta={"discovered_from":response.url})
 
     def closed(self, reason):
-        summary = json.loads((self.output / "status.json").read_text()) if (self.output / "status.json").exists() else {}
-        (self.output / "closed.json").write_text(json.dumps(summary | {"reason":reason,"closed_at":now()},indent=2))
-        self.db.close()
+        primary=None
+        try:
+            with admitted_output(self.output,estimated_bytes=1024**2,stage='corpus_close'):
+                summary = json.loads((self.output / "status.json").read_text()) if (self.output / "status.json").exists() else {}
+                if getattr(self,'storage_error',None):
+                    reason='blocked_storage'
+                    summary['storage_error']=self.storage_error
+                atomic_native_bytes(self.output/'closed.json', json.dumps(
+                    summary|{'reason':reason,'closed_at':now()},indent=2).encode())
+        except BaseException as exc:
+            primary=exc
+        try:self.db.close()
+        except BaseException as cleanup:
+            if primary is None:primary=cleanup
+            else:primary.add_note(f"SQLite close cleanup also failed: {cleanup!r}")
+        if primary is not None:
+            blocked=as_storage_blocked(primary,stage='corpus_close',output=self.output)
+            if blocked is not None:
+                self.storage_error={**blocked.diagnostic,'error':str(blocked)}
+                if blocked is not primary:raise blocked from primary
+            raise primary
