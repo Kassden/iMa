@@ -27,12 +27,29 @@ class FeatureQueueTests(unittest.TestCase):
         assert not budget.partition_safe(status, 90_000_000_000)
         status["resources"]["reserved_ram_gib"] = 90
         assert not budget.partition_safe(status, 1_000_000_000)
-        with patch.object(budget, "manager", side_effect=["running", "frozen"]), patch.object(budget.subprocess, "run") as run:
+        with patch.object(budget, "manager", side_effect=["active", "running", "frozen"]), patch.object(budget.subprocess, "run") as run:
             with self.assertRaisesRegex(RuntimeError, "synthetic"):
                 with budget.frozen_model():
                     raise RuntimeError("synthetic")
             self.assertEqual(run.call_args_list[0].args[0][-2:], ["freeze", budget.MODEL_UNIT])
             self.assertEqual(run.call_args_list[-1].args[0][-2:], ["thaw", budget.MODEL_UNIT])
+
+    def test_inactive_main_needs_no_cgroup_or_freeze_and_rejects_racing_start(self):
+        path = Path(__file__).resolve().parents[1]/"deploy/systemd/ima-feature-exploration-budget.py"
+        spec = importlib.util.spec_from_file_location("feature_budget_inactive_test", path)
+        budget = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(budget)
+        with patch.object(budget, "manager", side_effect=["inactive", "0", "inactive"]), \
+             patch.object(budget.subprocess, "run") as run:
+            with budget.frozen_model():
+                pass
+            run.assert_not_called()
+        with patch.object(budget, "manager", side_effect=["inactive", "0", "active"]), \
+             patch.object(budget.subprocess, "run") as run:
+            with self.assertRaisesRegex(RuntimeError, "Main started"):
+                with budget.frozen_model():
+                    pass
+            run.assert_not_called()
 
     def test_restart_deduplication_and_context_isolation(self):
         with tempfile.TemporaryDirectory() as directory:

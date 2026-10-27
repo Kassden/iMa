@@ -40,6 +40,12 @@ def _digest(value):
 
 def _write_json(path, payload):
     path = Path(path)
+    if os.environ.get('IMA_STORAGE_ROOT'):
+        from .research_controller import _write_bytes_atomic
+        encoded = json.dumps(payload, indent=2, sort_keys=True,
+                             allow_nan=False, default=str).encode('utf-8')
+        _write_bytes_atomic(path, encoded, stage='dataset_metadata')
+        return
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     with temporary.open("w") as handle:
         json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False, default=str)

@@ -1,11 +1,13 @@
 """Durable, paired feature experiments sharing the research dataset registry."""
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 import fcntl
 import json
 import math
+import os
+import stat
 from pathlib import Path
 import shutil
 import sqlite3
@@ -18,6 +20,30 @@ from .feature_studies import paired_feature_report
 from .research_controller import protocol_spec_parameters
 from .research_executor import RecipeExecutionRequest, execute_recipe
 from .research_specs import PipelineRecipe, V6_PORTFOLIO_VERSION
+
+
+_QUEUE_SCHEMA = """CREATE TABLE IF NOT EXISTS entries (
+  id TEXT PRIMARY KEY, status TEXT NOT NULL, source TEXT NOT NULL,
+  definitions TEXT NOT NULL, result TEXT NOT NULL DEFAULT '{}',
+  error TEXT, created REAL NOT NULL, updated REAL NOT NULL)"""
+
+
+def _queue_growth_bytes(*fields):
+    """Conservative per-transaction bound from every bound UTF-8 value."""
+    return 128 * 1024 + 3 * sum(len(value.encode("utf-8")) for value in fields
+                                if isinstance(value, str))
+
+
+def _missing_directories(path):
+    path = Path(path).absolute()
+    count = 0
+    current = path
+    while not current.exists():
+        if current.is_symlink():
+            raise ValueError("Symlink directory rejected")
+        count += 1
+        current = current.parent
+    return count
 
 
 EXPERIMENT = "ima-feature-exploration"
@@ -55,20 +81,55 @@ class ExplorationQueue:
     def __init__(self, path, context_id=""):
         self.path = Path(path)
         self.context_id = context_id
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as connection:
-            connection.executescript("""
-                PRAGMA journal_mode=WAL;
-                CREATE TABLE IF NOT EXISTS entries (
-                  id TEXT PRIMARY KEY, status TEXT NOT NULL, source TEXT NOT NULL,
-                  definitions TEXT NOT NULL, result TEXT NOT NULL DEFAULT '{}',
-                  error TEXT, created REAL NOT NULL, updated REAL NOT NULL);
-            """)
+        if self._admission_enabled():
+            from .research_sqlite import _peek_journal_mode, admitted_sqlite
+            if _peek_journal_mode(self.path) == "wal":
+                raise RuntimeError("SQLite WAL mode is unsupported for admitted feature queue writes")
+            with admitted_sqlite(self.path, estimated_growth_bytes=_queue_growth_bytes(_QUEUE_SCHEMA),
+                                 stage="feature_exploration_queue_schema") as connection:
+                connection.execute(_QUEUE_SCHEMA)
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with closing(self.connect()) as connection, connection:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute(_QUEUE_SCHEMA)
+
+    @staticmethod
+    def _admission_enabled():
+        import os
+        return bool(os.environ.get("IMA_STORAGE_ROOT"))
 
     def connect(self):
+        if self._admission_enabled():
+            if self.path.absolute().resolve() != self.path.absolute():
+                raise ValueError('Feature queue path must be canonical')
+            if not self.path.is_file():
+                raise FileNotFoundError(self.path)
+            # Refuse WAL before opening SQLite so reads cannot create -shm/-wal
+            # sidecars or perform recovery against a legacy queue.
+            from .research_sqlite import _peek_journal_mode
+            if _peek_journal_mode(self.path) == "wal":
+                raise RuntimeError("SQLite WAL mode is unsupported for admitted feature queue reads")
+            connection = sqlite3.connect(
+                self.path.resolve().as_uri() + '?mode=ro', uri=True, timeout=30)
+            connection.row_factory = sqlite3.Row
+            return connection
         connection = sqlite3.connect(self.path, timeout=30)
         connection.row_factory = sqlite3.Row
         return connection
+
+    @contextmanager
+    def _write(self, *fields):
+        if self._admission_enabled():
+            from .research_sqlite import _peek_journal_mode, admitted_sqlite
+            if _peek_journal_mode(self.path) == "wal":
+                raise RuntimeError("SQLite WAL mode is unsupported for admitted feature queue writes")
+            with admitted_sqlite(self.path, estimated_growth_bytes=_queue_growth_bytes(*fields),
+                                 stage="feature_exploration_queue_write") as connection:
+                yield connection
+        else:
+            with closing(self.connect()) as connection, connection:
+                yield connection
 
     def enqueue(self, definitions, source="deterministic"):
         definitions = [d if isinstance(d, FeatureDefinition) else FeatureDefinition.model_validate(d) for d in definitions]
@@ -80,41 +141,88 @@ class ExplorationQueue:
         identifier = "feature-test-" + _digest({"definitions": [d.content_id() for d in definitions],
                                               "context_id": self.context_id})
         now = time.time()
-        with self.connect() as connection:
+        encoded_definitions = json.dumps([d.model_dump(mode="json") for d in definitions],
+                                         ensure_ascii=False, allow_nan=False)
+        with self._write(identifier, "queued", source, encoded_definitions, now) as connection:
             connection.execute("INSERT OR IGNORE INTO entries(id,status,source,definitions,created,updated) VALUES (?, 'queued', ?, ?, ?, ?)",
-                               (identifier, source, json.dumps([d.model_dump(mode="json") for d in definitions]), now, now))
+                               (identifier, source, encoded_definitions, now, now))
         return identifier
 
     def rows(self):
-        with self.connect() as connection:
+        with closing(self.connect()) as connection:
             rows = connection.execute("SELECT * FROM entries ORDER BY CASE source WHEN 'orchestrator' THEN 0 WHEN 'adaptive_bundle' THEN 1 ELSE 2 END,created,id").fetchall()
         return [dict(row) | {"definitions": json.loads(row["definitions"]), "result": json.loads(row["result"])} for row in rows]
 
     def update(self, identifier, status, result=None, error=None):
-        with self.connect() as connection:
+        with self._write(status, json.dumps(result, ensure_ascii=False, allow_nan=False) if result is not None else "",
+                          error or "", identifier) as connection:
             changed = connection.execute("UPDATE entries SET status=?,result=COALESCE(?,result),error=?,updated=? WHERE id=?",
-                (status, json.dumps(result, allow_nan=False) if result is not None else None, error, time.time(), identifier)).rowcount
+                (status, json.dumps(result, ensure_ascii=False, allow_nan=False) if result is not None else None,
+                 error, time.time(), identifier)).rowcount
         if changed != 1:
             raise KeyError(identifier)
 
     def recover(self):
-        with self.connect() as connection:
+        with self._write("queued", "Recovered interrupted feature work", "running") as connection:
             connection.execute("UPDATE entries SET status='queued',error='Recovered interrupted feature work',updated=? WHERE status='running'", (time.time(),))
 
 
 @contextmanager
 def exploration_lock(root):
     path = Path(root)
-    path.mkdir(parents=True, exist_ok=True)
-    with (path/"loop.lock").open("a") as stream:
+    if not os.environ.get('IMA_STORAGE_ROOT'):
+        path.mkdir(parents=True, exist_ok=True)
+        with (path/'loop.lock').open('a') as stream:
+            try:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise RuntimeError('Another feature exploration loop owns this queue') from exc
+            try:
+                yield
+            finally:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        return
+    lock_path = path/"loop.lock"
+    from .research_storage import admitted_output, reserved_output_file, as_storage_blocked
+    # Admit root creation and the stable lock inode only. The reservation is
+    # released before yielding so it never spans a campaign.
+    inodes = _missing_directories(path) + (0 if lock_path.exists() else 1)
+    retained = None
+    try:
+        with admitted_output(lock_path, estimated_bytes=max(4096, inodes*65536),
+                             stage='feature_exploration_loop_lock', inodes=inodes):
+            path.mkdir(parents=True, exist_ok=True)
+            with reserved_output_file(lock_path, 'ab') as stream:
+                info = os.fstat(stream.fileno())
+                try:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError as exc:
+                    raise RuntimeError('Another feature exploration loop owns this queue') from exc
+                current = lock_path.lstat()
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid()
+                        or not os.path.samestat(info, current)):
+                    raise ValueError('Unsafe or changed feature exploration loop lock')
+                retained = os.dup(stream.fileno())
+    except BaseException as exc:
+        if retained is not None:
+            os.close(retained)
+        converted = as_storage_blocked(exc, stage='feature_exploration_loop_lock', output=lock_path)
+        if converted is not None and converted is not exc:
+            raise converted from exc
+        raise
+    primary = None
+    try:
+        yield
+    except BaseException as exc:
+        primary = exc
+        raise
+    finally:
         try:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise RuntimeError("Another feature exploration loop owns this queue") from exc
-        try:
-            yield
-        finally:
-            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+            os.close(retained)
+        except BaseException as cleanup:
+            if primary is None:
+                raise
+            primary.add_note(f'Feature exploration lock cleanup also failed: {cleanup!r}')
 
 
 def feature_screen_worker(request, native_threads):
@@ -128,7 +236,11 @@ class FeatureExplorer:
         from . import feature_lifecycle, modeling, research_evaluation, research_executor
         self.config = config
         self.root = Path(config.root)
-        self.root.mkdir(parents=True, exist_ok=True)
+        from .research_storage import admitted_output
+        with admitted_output(self.root, estimated_bytes=max(4096,_missing_directories(self.root)*65536),
+                             stage="feature_exploration_root",
+                             inodes=_missing_directories(self.root)):
+            self.root.mkdir(parents=True, exist_ok=True)
         self.parent = _parent(config.parent_features, config.parent_features.parent/"manifest.json")
         self.protocol = protocol_spec_parameters(json.loads((config.parent_features.parent/"protocol.json").read_text()))
         context = {"parent_dataset_id": self.parent["dataset_id"],
@@ -211,7 +323,11 @@ class FeatureExplorer:
             return feature_screen_worker(request, self.config.native_threads)
         # Scientific identity is stable; each failed execution gets a fresh deadline.
         executions = request.output_dir/"executions"
-        executions.mkdir(parents=True, exist_ok=True)
+        from .research_storage import admitted_output
+        with admitted_output(executions, estimated_bytes=max(4096,_missing_directories(executions)*65536),
+                             stage="feature_exploration_executions",
+                             inodes=_missing_directories(executions)):
+            executions.mkdir(parents=True, exist_ok=True)
         attempt = len(list(executions.glob("execution-*.json")))+1
         future = executor.submit(feature_screen_worker, request, self.config.native_threads,
                                  runtime_path=executions/f"execution-{attempt:06d}.json", timeout=self.config.fit_timeout)
