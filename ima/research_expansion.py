@@ -8,6 +8,7 @@ import os
 import sqlite3
 import time
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -68,18 +69,70 @@ class PlannerDecision(BaseModel):
 class DecisionStore:
     def __init__(self, path: Path):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, payload TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0)")
-            conn.execute("CREATE TABLE IF NOT EXISTS receipts (decision_id TEXT NOT NULL, action TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(decision_id,action))")
+        if os.environ.get("IMA_STORAGE_ROOT"):
+            with self._transaction(self._growth_bytes()) as conn:
+                self._create_schema(conn)
+        else:
+            # Keep the historical WAL behavior for stores outside admission.
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(self.path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                self._create_schema(conn)
+
+    @staticmethod
+    def _growth_bytes(*fields):
+        return 1024 * 1024 + 3 * sum(len(field.encode("utf-8")) for field in fields)
+
+    def _refuse_wal(self):
+        try:
+            with self.path.open("rb") as stream:
+                header = stream.read(20)
+        except FileNotFoundError:
+            return
+        if len(header) >= 20 and 2 in header[18:20]:
+            raise RuntimeError("SQLite WAL mode is unsupported for admitted DecisionStore operations")
+
+    @staticmethod
+    def _create_schema(conn):
+        conn.execute("CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, payload TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0)")
+        conn.execute("CREATE TABLE IF NOT EXISTS receipts (decision_id TEXT NOT NULL, action TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(decision_id,action))")
+
+    @contextmanager
+    def _transaction(self, estimated_growth_bytes):
+        if os.environ.get("IMA_STORAGE_ROOT"):
+            self._refuse_wal()
+            from .research_sqlite import admitted_sqlite
+            with admitted_sqlite(self.path, estimated_growth_bytes=estimated_growth_bytes,
+                                 stage="decision_store") as conn:
+                yield conn
+            return
+
+        conn = sqlite3.connect(self.path, timeout=30)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            yield conn
+            conn.commit()
+        except BaseException:
+            if conn.in_transaction:
+                conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    @contextmanager
+    def _read(self):
+        if os.environ.get("IMA_STORAGE_ROOT"):
+            self._refuse_wal()
+        from contextlib import closing
+        uri = self.path.absolute().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True, timeout=30)) as conn:
+            yield conn
 
     def record(self, decision: PlannerDecision, ceiling: int = 260) -> bool:
         if decision.trial_budget > ceiling:
             raise ValueError("Chosen trial budget exceeds the operator ceiling")
         payload = json.dumps(decision.model_dump(mode="json"), sort_keys=True)
-        with sqlite3.connect(self.path) as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        with self._transaction(self._growth_bytes(decision.decision_id, payload)) as conn:
             old = conn.execute("SELECT payload FROM decisions WHERE id=?", (decision.decision_id,)).fetchone()
             if old:
                 if old[0] != payload:
@@ -89,14 +142,13 @@ class DecisionStore:
             return True
 
     def pending(self) -> list[PlannerDecision]:
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             rows = conn.execute("SELECT payload FROM decisions WHERE applied=0 ORDER BY rowid").fetchall()
         return [PlannerDecision.model_validate_json(r[0]) for r in rows]
 
     def receipt(self, decision_id: str, action: str, payload: dict) -> dict:
         encoded = json.dumps(payload, sort_keys=True)
-        with sqlite3.connect(self.path) as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        with self._transaction(self._growth_bytes(decision_id, action, encoded)) as conn:
             if conn.execute("SELECT id FROM decisions WHERE id=?", (decision_id,)).fetchone() is None:
                 raise ValueError("Receipt references an unknown decision")
             old = conn.execute("SELECT payload FROM receipts WHERE decision_id=? AND action=?", (decision_id, action)).fetchone()
@@ -108,12 +160,12 @@ class DecisionStore:
         return payload
 
     def action(self, decision_id: str, action: str) -> dict | None:
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             row = conn.execute("SELECT payload FROM receipts WHERE decision_id=? AND action=?", (decision_id, action)).fetchone()
         return json.loads(row[0]) if row else None
 
     def complete(self, decision_id: str):
-        with sqlite3.connect(self.path) as conn:
+        with self._transaction(self._growth_bytes(decision_id)) as conn:
             if conn.execute("UPDATE decisions SET applied=1 WHERE id=?", (decision_id,)).rowcount != 1:
                 raise ValueError("Cannot complete an unknown decision")
 
@@ -121,7 +173,7 @@ class DecisionStore:
         return set(self.authorized_budgets())
 
     def authorized_budgets(self):
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             rows = conn.execute("SELECT r.action,r.payload FROM receipts r JOIN decisions d ON d.id=r.decision_id WHERE d.applied=1 ORDER BY d.rowid,r.rowid").fetchall()
         budgets = {}
         for action,encoded in rows:
@@ -133,12 +185,12 @@ class DecisionStore:
         return budgets
 
     def dataset_actions(self):
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             rows = conn.execute("SELECT r.payload FROM receipts r JOIN decisions d ON d.id=r.decision_id WHERE d.applied=1 AND r.action LIKE 'dataset:%' ORDER BY d.rowid,r.rowid").fetchall()
         return [json.loads(row[0])["request"] for row in rows]
 
     def betting_actions(self, *, pending_only=False):
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             rows = conn.execute("SELECT r.decision_id,r.action,r.payload FROM receipts r JOIN decisions d ON d.id=r.decision_id WHERE d.applied=1 AND r.action LIKE 'betting:%' ORDER BY d.rowid,r.rowid").fetchall()
         actions = []
         for decision_id,action,encoded in rows:
