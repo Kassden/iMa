@@ -26,6 +26,13 @@ from .research_storage import admitted_output, as_storage_blocked
 
 _METADATA_BYTES = 128 * 1024
 _ALLOWED_JOURNAL_MODES = {"delete", "truncate", "persist"}
+_MAX_SQLITE_PAGE_BYTES = 64 * 1024
+
+
+def _rounded_growth_bytes(estimated_growth_bytes: int) -> int:
+    if estimated_growth_bytes == 0:
+        return 0
+    return math.ceil(estimated_growth_bytes / _MAX_SQLITE_PAGE_BYTES) * _MAX_SQLITE_PAGE_BYTES
 
 
 def _existing_bytes(path: Path) -> int:
@@ -51,6 +58,19 @@ def _check_rollback_journal(path: Path) -> None:
     # header could be a hot journal; never let SQLite repair it implicitly.
     if header and any(header):
         raise RuntimeError("Unexpected rollback journal; preserving database without recovery")
+
+
+def _peek_journal_mode(path: Path) -> str | None:
+    """Return WAL from the SQLite header without opening or changing the DB."""
+    try:
+        with path.open("rb") as stream:
+            stream.seek(18)
+            header = stream.read(2)
+    except FileNotFoundError:
+        return None
+    if len(header) == 2 and header == b"\x02\x02":
+        return "wal"
+    return None
 
 
 def _missing_parent_count(parent: Path) -> int:
@@ -110,6 +130,220 @@ def _legacy_authorizer(action, arg1, arg2, database, trigger):
     if action == sqlite3.SQLITE_TRANSACTION:
         return sqlite3.SQLITE_OK
     return _authorizer(action, arg1, arg2, database, trigger)
+
+
+def _native_authorizer(action, arg1, arg2, database, trigger):
+    # Transaction control is used only through the trusted connection API;
+    # all caller-visible PRAGMAs, ATTACH, temp objects, and other databases
+    # remain denied by the shared authorizer.
+    if action == sqlite3.SQLITE_TRANSACTION:
+        return sqlite3.SQLITE_OK
+    return _authorizer(action, arg1, arg2, database, trigger)
+
+
+class _LeasedConnection(sqlite3.Connection):
+    """Native outbox connection whose capacity lease follows its lifetime."""
+
+    def __init__(self, *args, authority=None, token=None, db_path=None,
+                 estimated_growth_bytes=0, lease_bytes=0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._lease_authority = authority
+        self._lease_token = token
+        self._lease_db_path = Path(db_path) if db_path is not None else None
+        self._lease_growth_bytes = _rounded_growth_bytes(estimated_growth_bytes)
+        self._lease_bytes = lease_bytes
+        self._native_ready = False
+
+    def execute(self, sql, parameters=(), /):
+        if isinstance(sql, str):
+            keyword = _leading_keyword(sql)
+            statement = sql.strip().lower().rstrip(";").strip()
+            if keyword == "begin":
+                if statement not in {"begin", "begin immediate"}:
+                    raise ValueError("Native outbox transactions must use BEGIN IMMEDIATE")
+                return self._begin_bounded()
+            if keyword in {"commit", "end", "rollback", "savepoint", "release"}:
+                raise ValueError("Use the native commit() or rollback() API")
+            self._ensure_bounded_write(sql)
+        return super().execute(sql, parameters)
+
+    def executemany(self, sql, seq_of_parameters, /):
+        self._ensure_bounded_write(sql)
+        return super().executemany(sql, seq_of_parameters)
+
+    def _ensure_bounded_write(self, sql):
+        if (isinstance(sql, str) and self._native_ready and not self.in_transaction and
+                _leading_keyword(sql) not in {"select", "pragma"}):
+            self._begin_bounded()
+
+    def cursor(self, *args, **kwargs):
+        raise RuntimeError("Native outbox connections require bounded execute() methods")
+
+    def executescript(self, sql_script, /):
+        raise RuntimeError("executescript is unsupported by native outbox connections")
+
+    def set_authorizer(self, callback):
+        if self._native_ready:
+            raise RuntimeError("Native outbox authorization cannot be replaced")
+        return super().set_authorizer(callback)
+
+    def blobopen(self, *args, **kwargs):
+        raise RuntimeError("blobopen is unsupported by native outbox connections")
+
+    def deserialize(self, *args, **kwargs):
+        raise RuntimeError("deserialize is unsupported by native outbox connections")
+
+    def _begin_bounded(self):
+        if (not self._native_ready or self._lease_token is None or
+                self._lease_db_path is None):
+            return super().execute("BEGIN IMMEDIATE")
+        begin_cursor = super().execute("BEGIN IMMEDIATE")
+        try:
+            # Reconcile after SQLite has serialized writers, then extend before
+            # any DML. This charges the current main-file journal peak even if
+            # another short transaction grew the database since this handle
+            # was opened.
+            main_size = _existing_bytes(self._lease_db_path)
+            required = (_journal_peak_bytes(main_size + self._lease_growth_bytes) +
+                        self._lease_growth_bytes + _METADATA_BYTES)
+            if required > self._lease_bytes:
+                self._lease_authority.extend(self._lease_token,
+                                             extra_bytes=required-self._lease_bytes)
+                self._lease_bytes = required
+            super().set_authorizer(None)
+            try:
+                page_size = int(super().execute("PRAGMA page_size").fetchone()[0])
+                current_pages = int(super().execute("PRAGMA page_count").fetchone()[0])
+                target = max(1, current_pages,
+                             current_pages + math.ceil(self._lease_growth_bytes/page_size))
+                returned = int(super().execute(
+                    f"PRAGMA max_page_count={target}").fetchone()[0])
+                readback = int(super().execute(
+                    "PRAGMA max_page_count").fetchone()[0])
+                if returned != target or readback != target:
+                    raise RuntimeError("SQLite max_page_count did not accept the refreshed bound")
+            finally:
+                super().set_authorizer(_native_authorizer)
+            return begin_cursor
+        except BaseException:
+            if self.in_transaction:
+                super().rollback()
+            raise
+
+    def close(self):
+        # sqlite3.close() is idempotent. Release only after it confirms that
+        # the native handle has closed; failed closes retain a retryable lease.
+        super().close()
+        if self._lease_token is not None:
+            self._lease_authority.release(self._lease_token)
+            self._lease_token = None
+
+
+def native_sqlite_connection(path, *, estimated_growth_bytes, stage,
+                             row_factory=None):
+    """Open bounded native SQLite storage and retain its lease until close.
+
+    This is deliberately separate from ``admitted_sqlite``: outbox code owns
+    several short transactions around an external flush, and its connection
+    remains open while the flush runs. No admission flock or SQLite write
+    transaction is held across that external work.
+    """
+    if isinstance(estimated_growth_bytes, bool) or not isinstance(estimated_growth_bytes, int) or estimated_growth_bytes < 0:
+        raise ValueError("estimated_growth_bytes must be a nonnegative integer")
+    if not os.environ.get("IMA_STORAGE_ROOT"):
+        raise RuntimeError("Native leased SQLite requires enabled storage admission")
+
+    db = Path(path).absolute()
+    parent = db.parent
+    if db.resolve() != db or db.name in {"", ".", ".."}:
+        raise ValueError("SQLite path must be canonical")
+    missing_dirs = _missing_parent_count(parent)
+    main_size = _existing_bytes(db)
+    rounded_growth = _rounded_growth_bytes(estimated_growth_bytes)
+    reserve_bytes = (_journal_peak_bytes(main_size + rounded_growth) +
+                     rounded_growth + _METADATA_BYTES)
+    reserve_inodes = missing_dirs + (2 if main_size == 0 else 1)
+    from . import research_storage
+    authority = research_storage.StorageAuthority(os.environ["IMA_STORAGE_ROOT"])
+    token = authority.reserve(bytes_required=reserve_bytes,
+                             inodes_required=reserve_inodes,
+                             stage=stage, output=db)
+    connection = None
+    try:
+        if missing_dirs:
+            parent.mkdir(parents=True, exist_ok=True)
+        if parent.resolve() != parent or parent.is_symlink():
+            raise ValueError("SQLite parent changed or became a symlink")
+
+        journal = Path(str(db) + "-journal")
+        _check_rollback_journal(journal)
+        if db.exists():
+            # Existing WAL is rejected before opening a writable handle. This
+            # header peek avoids SQLite's read-only WAL open creating sidecars.
+            mode = _peek_journal_mode(db)
+            if mode is None:
+                with closing(sqlite3.connect(_uri(db, "ro"), uri=True,
+                                              isolation_level=None)) as probe:
+                    mode = probe.execute("PRAGMA journal_mode").fetchone()[0].lower()
+            if mode == "wal":
+                raise RuntimeError("SQLite WAL mode is unsupported by native outbox storage")
+            if mode not in _ALLOWED_JOURNAL_MODES:
+                raise RuntimeError(f"Unsupported SQLite journal mode: {mode}")
+
+        connection = sqlite3.connect(db, timeout=30, isolation_level=None,
+                                      factory=lambda *args, **kwargs: _LeasedConnection(
+                                          *args, authority=authority, token=token,
+                                          db_path=db,
+                                          estimated_growth_bytes=rounded_growth,
+                                          lease_bytes=reserve_bytes,
+                                          **kwargs))
+        connection.row_factory = row_factory
+        mode = connection.execute("PRAGMA journal_mode").fetchone()[0].lower()
+        if mode == "wal":
+            raise RuntimeError("SQLite WAL mode is unsupported by native outbox storage")
+        if mode not in _ALLOWED_JOURNAL_MODES:
+            raise RuntimeError(f"Unsupported SQLite journal mode: {mode}")
+        connection.execute("PRAGMA synchronous=FULL")
+        connection.execute("PRAGMA temp_store=MEMORY")
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            fresh_size = _existing_bytes(db)
+            fresh_required = (_journal_peak_bytes(fresh_size + rounded_growth) +
+                              rounded_growth + _METADATA_BYTES)
+            if fresh_required > reserve_bytes:
+                authority.extend(token, extra_bytes=fresh_required - reserve_bytes)
+                reserve_bytes = fresh_required
+                connection._lease_bytes = reserve_bytes
+            page_size = int(connection.execute("PRAGMA page_size").fetchone()[0])
+            current_pages = int(connection.execute("PRAGMA page_count").fetchone()[0])
+            target_cap = max(1, current_pages,
+                             current_pages + math.ceil(rounded_growth / page_size))
+            returned_cap = int(connection.execute(
+                f"PRAGMA max_page_count={target_cap}").fetchone()[0])
+            readback_cap = int(connection.execute(
+                "PRAGMA max_page_count").fetchone()[0])
+            if returned_cap != target_cap or readback_cap != target_cap:
+                raise RuntimeError("SQLite max_page_count did not accept the requested bound")
+            connection.commit()
+        except BaseException:
+            if connection.in_transaction:
+                connection.rollback()
+            raise
+        connection.set_authorizer(_native_authorizer)
+        connection._native_ready = True
+        return connection
+    except BaseException as primary:
+        if connection is not None:
+            try:
+                connection.close()
+            except BaseException as cleanup:
+                primary.add_note(f"SQLite close cleanup also failed: {cleanup!r}")
+        else:
+            try:
+                authority.release(token)
+            except BaseException as cleanup:
+                primary.add_note(f"SQLite reservation cleanup also failed: {cleanup!r}")
+        raise
 
 
 def _leading_keyword(sql):
