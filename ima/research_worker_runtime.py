@@ -215,7 +215,8 @@ def extend_attempt_deadline(path, progress_path=None, *, now=None, task_nonce=No
     """
     from .probit_runtime_policy import normalize_progress_policy, observe_optimizer_progress
     now = time.time() if now is None else now
-    progress_path = Path(progress_path) if progress_path else Path(path).parent/"progress.json"
+    progress_path = Path(progress_path) if progress_path else Path(
+        read_runtime(path).get('progress_path',Path(path).parent/'progress.json'))
     try:
         progress = read_runtime(progress_path)
     except (OSError, ValueError):
@@ -505,6 +506,17 @@ def cleanup_attempt_group(path):
     psutil.wait_procs(killed,timeout=1)
 
 
+class _CompletionFuture(Future):
+    """Cancellation and supervisor acceptance have one shared decision boundary."""
+    def __init__(self,completion_lock):
+        super().__init__()
+        self._completion_lock=completion_lock
+
+    def cancel(self):
+        with self._completion_lock:
+            return super().cancel()
+
+
 class BoundedFitExecutor:
     def __init__(self,max_workers,*,max_tasks_per_child=1):
         from pebble import ProcessPool
@@ -561,6 +573,14 @@ class BoundedFitExecutor:
             return changes
 
         admitted = _update_runtime(runtime_path,admission)
+        managed=None
+        if args and getattr(args[0],'supervised_fit',False):
+            from .research_publication import stage_arguments
+            args,managed=stage_arguments(args,runtime_path,admitted['task_nonce'])
+        if managed:
+            progress_path=managed[1].output_dir/'progress.json'
+            _update_runtime(runtime_path,{'episode_path':str(managed[1].output_dir),
+                                          'progress_path':str(progress_path)})
         remaining = remaining_deadline(runtime_path,timeout)
         if not remaining:
             _update_runtime(runtime_path,{"status":"timed_out"})
@@ -570,8 +590,8 @@ class BoundedFitExecutor:
         hard_remaining = max(0., datetime.fromisoformat(admitted["hard_deadline_at"]).timestamp()-time.time()) if policy else remaining
         raw = self.pool.schedule(_timed_call,
             args=(function,args,kwargs,str(runtime_path),remaining,admitted['task_nonce']),timeout=hard_remaining)
-        future = Future()
-        completion_lock = threading.Lock()
+        completion_lock = threading.RLock()
+        future = _CompletionFuture(completion_lock)
 
         def expire(force=False):
             try:
@@ -608,24 +628,42 @@ class BoundedFitExecutor:
             timer.start()
 
         def finish(completed):
-            try:
-                result = completed.result()
-                if remaining_deadline(runtime_path,timeout) <= 0:
-                    expire(force=True)
-                else:
-                    with completion_lock:
-                        if not future.done():
-                            future.set_result(result)
-            except BaseException as exc:
-                if policy and isinstance(exc, TimeoutError):
-                    _update_runtime(runtime_path, lambda state: {"status":"timed_out"}
-                                    if state.get("task_nonce") == admitted["task_nonce"]
-                                    and state.get("status") != "cancelled" else {})
-                if not future.done():
-                    try:
-                        future.set_exception(exc)
-                    except InvalidStateError:
-                        pass
+            with completion_lock:
+                try:
+                    result = completed.result()
+                    if not future.done():
+                        def accept(state):
+                            if state.get('task_nonce') != admitted['task_nonce']:
+                                raise RuntimeError('Worker assignment changed before completion')
+                            if state.get('status') != 'finished':
+                                raise RuntimeError('Worker completion is not finished')
+                            deadline=datetime.fromisoformat(state['deadline_at']).timestamp()
+                            if state.get('hard_deadline_at'):
+                                deadline=min(deadline,datetime.fromisoformat(state['hard_deadline_at']).timestamp())
+                            now=time.time()
+                            if now>=deadline:
+                                raise TimeoutError('Persisted attempt deadline expired before completion acceptance')
+                            changes={'supervisor_accepted_at':datetime.fromtimestamp(now,timezone.utc).isoformat()}
+                            if managed:
+                                from .research_publication import publish_accepted
+                                changes['execution_acceptance']=publish_accepted(managed,result,state,now)
+                            return changes
+                        _update_runtime(runtime_path,accept)
+                        future.set_result(result)
+                except BaseException as exc:
+                    if isinstance(exc, TimeoutError):
+                        try:
+                            _update_runtime(runtime_path, lambda state: {"status":"timed_out"}
+                                            if state.get("task_nonce") == admitted["task_nonce"]
+                                            and state.get("status") != "cancelled" else {})
+                        except Exception as persistence_error:
+                            # A full control filesystem must not strand the future.
+                            exc=persistence_error
+                    if not future.done():
+                        try:
+                            future.set_exception(exc)
+                        except InvalidStateError:
+                            pass
 
         def stop_timer(completed):
             if timer is not None:
@@ -634,9 +672,8 @@ class BoundedFitExecutor:
                     self._timers.discard(timer)
             if completed.cancelled():
                 raw.cancel()
-                if policy:
-                    _update_runtime(runtime_path, lambda state: {"status":"cancelled"}
-                                    if state.get("task_nonce") == admitted["task_nonce"] else {})
+                _update_runtime(runtime_path, lambda state: {"status":"cancelled"}
+                                if state.get("task_nonce") == admitted["task_nonce"] else {})
 
         raw.add_done_callback(finish)
         future.add_done_callback(stop_timer)
@@ -654,7 +691,7 @@ def active_attempt_summary(directory, rows):
             continue
         path = Path(directory)/"trials"/row["attempt_id"]
         runtime = read_runtime(path/"runtime.json")
-        progress = read_runtime(path/"progress.json")
+        progress = read_runtime(runtime.get('progress_path',path/'progress.json'))
         started = runtime.get("started_at")
         recipe = row["payload"]["recipe"]
         result.append({"attempt_id":row["attempt_id"],"status":row["status"],

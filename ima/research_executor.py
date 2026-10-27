@@ -73,6 +73,8 @@ class RecipeExecutionRequest:
     code_revision: str = "unknown"
     environment_hash: str = "unknown"
     portfolio_version: str | None = None
+    managed_episode_nonce: str | None = None
+    supervised_fit: bool = False
 
 
 @dataclass(frozen=True)

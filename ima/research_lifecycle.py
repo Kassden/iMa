@@ -163,7 +163,12 @@ def lifecycle_worker(request, workload, threads):
         if profiles:
             result.metrics["probit_fits"] = {f"fit_{index:03d}": profile for index, profile in enumerate(profiles)}
             result.artifacts["probit_profiles"] = str(request.output_dir/"probit-profiles.json")
-        if result.status == "completed":
+        if result.status == 'completed' and getattr(request,'managed_episode_nonce',None):
+            # The controller delivers this intent only after supervisor acceptance.
+            from .research_controller import _write_json_atomic
+            _write_json_atomic(request.output_dir/'feature-feedback-intent.json',
+                {'attempt_id':request.attempt_id,'task_nonce':request.managed_episode_nonce})
+        elif result.status == "completed":
             try:
                 link_feature_outcome(request, result)
             except (ValueError, OSError, KeyError, TypeError) as exc:
