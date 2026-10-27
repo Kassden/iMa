@@ -1683,9 +1683,7 @@ def _prepared_fold(request, train, calibration, score, schema, fold_id, label, *
         return PreparedFold(arrays,tuple(effective.numeric),keys,
             fitted_state={"transforms":transforms,"schema":effective,"residual":residual,
                           "reports":reports, "selector":joblib.load(selector_path) if selector_path.exists() else None})
-    artifact = cache.prepare_fold(key, builder, owner={"attempt_id": request.attempt_id, "fold_id": fold_id})
-    if pins is not None:
-        pins.enter_context(cache.pin(artifact))
+    artifact = cache.prepare_fold(key, builder, owner={"attempt_id": request.attempt_id, "fold_id": fold_id},pins=pins)
     if artifact_only:
         _write_json_atomic(request.output_dir/f"preparation-{fold_id}.json", {
             **asdict(artifact), "path": str(artifact.path), "key": key.model_dump(mode="json"),

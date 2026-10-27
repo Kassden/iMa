@@ -245,17 +245,21 @@ class PreparationCache:
             def retain():
                 nonlocal transferred
                 if pins is None or transferred: return
-                descriptor=os.dup(stream.fileno())
                 pin=open(self.root/(identity+'.pin.lock'),'a+b')
+                descriptor=None
                 try:
+                    descriptor=os.dup(stream.fileno())
                     fcntl.flock(pin,fcntl.LOCK_SH)
                     fcntl.flock(stream,fcntl.LOCK_SH)
                     pins.callback(pin.close)
                     pins.callback(os.close,descriptor)
                     transferred=True
-                except BaseException:
-                    pin.close()
-                    os.close(descriptor)
+                except BaseException as primary:
+                    for close in (pin.close, lambda: os.close(descriptor) if descriptor is not None else None):
+                        try:
+                            close()
+                        except BaseException as cleanup:
+                            primary.add_note(f'Preparation pin setup cleanup also failed: {cleanup!r}')
                     raise
             try:
                 if shared:
@@ -271,6 +275,7 @@ class PreparationCache:
         if not control:
             return self._prepare_fold(key,builder,owner=owner,pins=pins)
         from .research_storage import StorageAuthority
+        from .research_cache_capacity import trim_for_capacity
         authority=StorageAuthority(control)
         key=key if isinstance(key,PreparationKey) else PreparationKey.model_validate(key)
         columns=max((len(d.get('numeric',())) for d in key.feature_definitions),default=32)
@@ -282,11 +287,12 @@ class PreparationCache:
                 authority.record_cache(self.root,key.cache_id(),allocated,enforce_limit=False)
             except FileNotFoundError:
                 pass
-            authority.trim_caches(0)
+            trim_for_capacity(authority, required_bytes=1024**2, required_inodes=8,
+                              cache_growth_bytes=0)
         exists=path.exists()
         estimate=1024**2 if exists else max(16*1024**2,rows*max(columns,1)*16+16*1024**2)
         if not exists:
-            authority.trim_caches(estimate)
+            trim_for_capacity(authority, required_bytes=estimate)
         with authority.admitted(bytes_required=estimate,inodes_required=8,
                                 stage='fold_preparation',output=self.root,
                                 cache_bytes=0 if exists else estimate) as token:
