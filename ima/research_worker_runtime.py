@@ -28,31 +28,166 @@ def read_runtime(path):
 def _update_runtime(path, updates):
     """Serialize read/merge/write and durably publish before execution admission."""
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(str(path)+".lock", "a+b") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            state = read_runtime(path)
-            changes = updates(state) if callable(updates) else updates
-            state.update(changes)
-            fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name+"-")
+    # Keep the bootstrap path byte-for-byte equivalent when storage admission is
+    # disabled. In particular, minimal workers must not import research_storage.
+    if not os.environ.get("IMA_STORAGE_ROOT"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(path)+".lock", "a+b") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
             try:
-                with os.fdopen(fd, "w") as stream:
-                    json.dump(state, stream, sort_keys=True, allow_nan=False)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                os.replace(temporary, path)
-                directory = os.open(path.parent, os.O_RDONLY)
+                state = read_runtime(path)
+                changes = updates(state) if callable(updates) else updates
+                state.update(changes)
+                fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name+"-")
                 try:
-                    os.fsync(directory)
+                    with os.fdopen(fd, "w") as stream:
+                        json.dump(state, stream, sort_keys=True, allow_nan=False)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temporary, path)
+                    directory = os.open(path.parent, os.O_RDONLY)
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
                 finally:
-                    os.close(directory)
+                    if os.path.exists(temporary):
+                        os.unlink(temporary)
+                return state
             finally:
-                if os.path.exists(temporary):
-                    os.unlink(temporary)
-            return state
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+    # Local import avoids pulling controller/storage initialization into the
+    # lightweight worker bootstrap unless the shared authority is enabled.
+    from . import research_storage
+    import stat
+
+    lock_path = Path(str(path)+".lock")
+    stage_path = path.with_name(path.name+".tmp")
+    parent = path.parent.absolute()
+    missing = []
+    current = parent
+    while not current.exists():
+        missing.append(current)
+        current = current.parent
+    missing_dirs = len(missing)
+    try:
+        prior_size = path.stat().st_size if path.exists() else 0
+    except OSError:
+        prior_size = 0  # Admission still precedes all runtime-path mutations.
+    # Directory metadata has filesystem-dependent cost; reserve 64 KiB for each
+    # new directory in addition to JSON growth and the lock/stage/target inodes.
+    estimated_bytes = max(64 * 1024, prior_size + 64 * 1024) + missing_dirs * 64 * 1024
+    inodes = missing_dirs + 2 + (0 if path.exists() else 1)
+    primary = None
+    stage_identity = None
+    published = False
+    try:
+        with research_storage.admitted_output(parent, estimated_bytes=estimated_bytes,
+                stage="worker_runtime", inodes=inodes):
+            parent.mkdir(parents=True, exist_ok=True)
+            lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            with os.fdopen(lock_fd, "a+b") as lock:
+                lock_info = os.fstat(lock.fileno())
+                if (not stat.S_ISREG(lock_info.st_mode) or lock_info.st_nlink != 1
+                        or lock_info.st_uid != os.getuid()):
+                    raise ValueError("Unsafe runtime lock")
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                try:
+                    lock_path_info = lock_path.lstat()
+                    if (lock_path_info.st_dev, lock_path_info.st_ino) != (lock_info.st_dev, lock_info.st_ino):
+                        raise ValueError("Runtime lock path changed")
+
+                    prior_identity = None
+                    try:
+                        prior_fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+                    except FileNotFoundError:
+                        state = {}
+                    else:
+                        with os.fdopen(prior_fd, "r") as prior_stream:
+                            prior_info = os.fstat(prior_stream.fileno())
+                            prior_path_info = path.lstat()
+                            if (not stat.S_ISREG(prior_info.st_mode) or prior_info.st_nlink != 1
+                                    or prior_info.st_uid != os.getuid()
+                                    or (prior_info.st_dev, prior_info.st_ino) !=
+                                       (prior_path_info.st_dev, prior_path_info.st_ino)):
+                                raise ValueError("Unsafe runtime state file")
+                            prior_identity = (prior_info.st_dev, prior_info.st_ino)
+                            state = json.load(prior_stream)
+
+                    changes = updates(state) if callable(updates) else updates
+                    state.update(changes)
+
+                    # The fixed staging slot is protected by the stable lock.
+                    # Existing crash leftovers are reused only after validating
+                    # that they are an own-user, single-link regular file.
+                    with research_storage.reserved_output_file(stage_path, "w") as stream:
+                        staged = stream.buffer.stream
+                        staged_info = os.fstat(staged.fileno())
+                        staged_path_info = stage_path.lstat()
+                        if (not stat.S_ISREG(staged_info.st_mode) or staged_info.st_nlink != 1
+                                or staged_info.st_uid != os.getuid()
+                                or (staged_info.st_dev, staged_info.st_ino) !=
+                                   (staged_path_info.st_dev, staged_path_info.st_ino)):
+                            raise ValueError("Unsafe runtime staging file")
+                        stage_identity = (staged_info.st_dev, staged_info.st_ino)
+                        json.dump(state, stream, sort_keys=True, allow_nan=False)
+                        stream.flush()
+                        os.fsync(staged.fileno())
+
+                    stage_now = stage_path.lstat()
+                    if (stage_now.st_dev, stage_now.st_ino) != stage_identity:
+                        raise ValueError("Runtime staging path changed")
+                    lock_now = lock_path.lstat()
+                    if (lock_now.st_dev, lock_now.st_ino) != (lock_info.st_dev, lock_info.st_ino):
+                        raise ValueError("Runtime lock path changed")
+                    try:
+                        target_now = path.lstat()
+                    except FileNotFoundError:
+                        target_identity = None
+                    else:
+                        target_identity = (target_now.st_dev, target_now.st_ino)
+                    if target_identity != prior_identity:
+                        raise ValueError("Runtime state path changed")
+
+                    os.replace(stage_path, path)
+                    published = True
+                    directory = os.open(parent, os.O_RDONLY)
+                    try:
+                        os.fsync(directory)
+                    finally:
+                        os.close(directory)
+                    return state
+                except BaseException as exc:
+                    primary = research_storage.as_storage_blocked(
+                        exc, stage="worker_runtime", output=parent) or exc
+                    if primary is not exc:
+                        primary.__cause__ = exc
+                    raise primary
+                finally:
+                    # Cleanup belongs to the same stable-lock interval as the
+                    # write: another updater may otherwise reuse this inode.
+                    try:
+                        if not published and stage_identity is not None:
+                            try:
+                                stage_now = stage_path.lstat()
+                                if (stage_now.st_dev, stage_now.st_ino) == stage_identity:
+                                    stage_path.unlink()
+                            except FileNotFoundError:
+                                pass
+                            except BaseException as cleanup:
+                                if primary is None:
+                                    raise
+                                primary.add_note(f"Runtime staging cleanup also failed: {cleanup!r}")
+                    finally:
+                        fcntl.flock(lock, fcntl.LOCK_UN)
+    except BaseException as exc:
+        primary = exc
+        converted = research_storage.as_storage_blocked(exc, stage="worker_runtime", output=parent)
+        if converted is not None and converted is not exc:
+            primary = converted
+            primary.__cause__ = exc
+        raise primary
 
 
 def _validate_timeout(seconds):
