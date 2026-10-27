@@ -862,6 +862,9 @@ def _build_dataset(registry_root,request_id,source_snapshot,raw_manifest,feature
 
 def _recover_orphan_asks(search,ledger,contexts,authorized,revision,environment):
     """Bridge Optuna's durable ask to the execution ledger after an interrupted reserve."""
+    # A partial native ask is not an executable recipe. Reconcile its durable
+    # journal state before recovering fully materialized asks into the ledger.
+    search._reconcile_incomplete_asks()
     known = {(row["payload"]["program_id"],row["payload"]["trial_number"]) for row in ledger.reserved_attempts()}
     recovered = 0
     for pid in authorized:
@@ -873,10 +876,12 @@ def _recover_orphan_asks(search,ledger,contexts,authorized,revision,environment)
             if trial.state.name != "RUNNING" or (pid,trial.number) in known:
                 continue
             value = trial.user_attrs.get("recipe")
-            if value is None:
-                model = proposal.recipe.model.model_copy(update={"parameters":dict(proposal.recipe.model.parameters)|trial.params})
-                value = proposal.recipe.model_copy(update={"model":model}).model_dump(mode="json")
+            if (value is None or trial.user_attrs.get('program_id') != pid
+                    or 'recipe_hash' not in trial.user_attrs):
+                continue
             recipe = PipelineRecipe.model_validate(value)
+            if recipe.recipe_hash() != trial.user_attrs['recipe_hash']:
+                raise ValueError('Recovered Optuna recipe hash mismatch')
             from .research_search import RecipeSuggestion
             suggestion = RecipeSuggestion(f"{pid}-{trial.number:06d}",trial.number,recipe,proposal.hypothesis,proposal.changed_axes,pid,proposal.proposal_id)
             signature = core._execution_signature(recipe,context["digest"],context["protocol"],revision,environment)

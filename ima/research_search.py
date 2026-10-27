@@ -65,10 +65,13 @@ class RecipeSearchController:
         self.seed = seed
         self.search_space_version = search_space_version
         self.search_dir = self.campaign_dir / "search"
-        self.search_dir.mkdir(parents=True, exist_ok=True)
         self.study = None
         if optuna is not None:
-            storage = JournalStorage(JournalFileBackend(str(self.search_dir / "optuna-journal.log")))
+            # Keep the optional-dependency fallback import-free. The adapter
+            # must run before JournalFileBackend creates either path component.
+            from .research_journal import admitted_journal_backend
+
+            storage = JournalStorage(admitted_journal_backend(self.search_dir / "optuna-journal.log"))
             self.study = optuna.create_study(
                 study_name=study_name,
                 storage=storage,
@@ -76,6 +79,12 @@ class RecipeSearchController:
                 direction="minimize",
                 load_if_exists=True,
             )
+        else:
+            if os.environ.get("IMA_STORAGE_ROOT"):
+                from .research_controller import _prepare_campaign_directory
+                _prepare_campaign_directory(self.search_dir)
+            else:
+                self.search_dir.mkdir(parents=True, exist_ok=True)
 
     def ask(self, count: int) -> list[RecipeSuggestion]:
         if count <= 0:
@@ -283,10 +292,11 @@ class RecipeSearchController:
                 break
         if len(suggestions) < count:
             raise RuntimeError("Fallback recipe search exhausted seeded recipes")
+        from .research_controller import _append_jsonl
+
         path = self.search_dir / "fallback-recipes.jsonl"
-        with path.open("a", encoding="utf-8") as handle:
-            for suggestion in suggestions:
-                handle.write(json.dumps(suggestion.serializable(), sort_keys=True) + "\n")
+        for suggestion in suggestions:
+            _append_jsonl(path, suggestion.serializable())
         return suggestions
 
     def _fallback_rows(self) -> list[dict[str, Any]]:
@@ -304,11 +314,15 @@ class ProgramSearchController:
             raise RuntimeError("Executable research programs require Optuna")
         self.campaign_dir = Path(campaign_dir)
         self.search_dir = self.campaign_dir / "search"
-        self.search_dir.mkdir(parents=True, exist_ok=True)
         self.index_path = self.search_dir / "programs.jsonl"
+        from .research_journal import admitted_journal_backend
+
         self.storage = JournalStorage(
-            JournalFileBackend(str(self.search_dir / "program-journal.log"))
+            admitted_journal_backend(self.search_dir / "program-journal.log")
         )
+        from .research_controller import _prepare_campaign_directory
+
+        _prepare_campaign_directory(self.search_dir)
         self.seed = seed
         self.programs: dict[str, ResearchProposal] = {}
         self.studies: dict[str, Any] = {}
@@ -323,6 +337,7 @@ class ProgramSearchController:
                 if program_id not in self.programs:
                     raise ValueError("Budget override references an unknown program")
                 self.programs[program_id] = self.programs[program_id].model_copy(update={"max_trials": budget})
+        self._reconcile_incomplete_asks()
 
     def set_budget(self, program_id: str, budget: int) -> None:
         """Idempotent absolute budgets; controller persists the allocation first."""
@@ -332,9 +347,9 @@ class ProgramSearchController:
             raise ValueError("Fixed controls cannot be extended")
         old = json.loads(self.budget_path.read_text()) if self.budget_path.exists() else {}
         old[program_id] = budget
-        temporary = self.budget_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(old, sort_keys=True))
-        os.replace(temporary, self.budget_path)
+        from .research_controller import _write_json_atomic
+
+        _write_json_atomic(self.budget_path, old)
         self.programs[program_id] = self.programs[program_id].model_copy(update={"max_trials": budget})
 
     def _open(self, program_id: str, proposal: ResearchProposal) -> None:
@@ -363,13 +378,12 @@ class ProgramSearchController:
         ).hexdigest()[:16]
         if program_id in self.programs:
             return program_id
-        with self.index_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps({
-                "program_id": program_id,
-                "proposal": proposal.model_dump(mode="json"),
-            }, sort_keys=True) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
+        from .research_controller import _append_jsonl
+
+        _append_jsonl(self.index_path, {
+            "program_id": program_id,
+            "proposal": proposal.model_dump(mode="json"),
+        })
         self._open(program_id, proposal)
         return program_id
 
@@ -402,6 +416,47 @@ class ProgramSearchController:
             for program_id, proposal in self.programs.items()
         )
 
+    def _reconcile_incomplete_asks(self) -> None:
+        """Durably retire native RUNNING trials whose ask envelope never completed."""
+        from .research_journal import program_ask_lock
+
+        with program_ask_lock(self.search_dir.resolve() / "program-ask.lock"):
+            self._reconcile_incomplete_asks_locked()
+
+
+    def _reconcile_incomplete_asks_locked(self) -> None:
+        for program_id, study in self.studies.items():
+            for trial in study.get_trials(deepcopy=True):
+                if trial.state != TrialState.RUNNING:
+                    continue
+                attrs = trial.user_attrs
+                complete = (
+                    "recipe" in attrs
+                    and "recipe_hash" in attrs
+                    and attrs.get("program_id") == program_id
+                )
+                if complete:
+                    recipe = PipelineRecipe.model_validate(attrs["recipe"])
+                    if attrs["recipe_hash"] != recipe.recipe_hash():
+                        raise ValueError(
+                            f"Optuna trial {trial.number} has a recipe hash mismatch"
+                        )
+                if not complete:
+                    storage = study._storage
+                    if attrs.get("recovered_incomplete") is not True:
+                        storage.set_trial_user_attr(
+                            trial._trial_id, "recovered_incomplete", True
+                        )
+                    if attrs.get("reason") != "infrastructure_storage/incomplete_ask":
+                        storage.set_trial_user_attr(
+                            trial._trial_id, "reason",
+                            "infrastructure_storage/incomplete_ask",
+                        )
+                    # Persist the recovery classification before the durable,
+                    # idempotent terminal transition. PRUNED does not consume budget.
+                    study.tell(trial.number, state=TrialState.PRUNED)
+
+
     def ask(
         self, count: int, *, preferred_program_ids: list[str] | None = None,
         allowed_program_ids: list[str] | None = None,
@@ -416,12 +471,58 @@ class ProgramSearchController:
             program_id for program_id in self.programs
             if program_id in allowed and program_id not in program_order
         ]
-        seen = {
-            str(trial.user_attrs["recipe_hash"])
-            for study in self.studies.values()
-            for trial in study.get_trials(deepcopy=False)
-            if "recipe_hash" in trial.user_attrs
-        }
+        if not program_order:
+            return []
+        from .research_journal import admitted_program_ask, program_ask_lock
+
+        per_attempt = max(
+            65536 + 2 * len(json.dumps(
+                proposal.recipe.canonical_payload(), sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")) + 4096 * len(proposal.search_space)
+            for program_id, proposal in self.programs.items()
+            if program_id in program_order
+        )
+        estimate = max(65536, count * 20 * per_attempt)
+        with program_ask_lock(self.search_dir.resolve() / "program-ask.lock"):
+            self._reconcile_incomplete_asks_locked()
+            try:
+                with admitted_program_ask(
+                    self.search_dir / "program-journal.log", estimated_bytes=estimate
+                ):
+                    return self._ask_admitted(count, program_order)
+            except Exception as primary:
+                try:
+                    self._reconcile_incomplete_asks_locked()
+                except Exception as recovery_error:
+                    primary.add_note(
+                        "Immediate incomplete-ask recovery also failed: "
+                        f"{type(recovery_error).__name__}: {recovery_error}"
+                    )
+                raise
+
+
+    def _ask_admitted(
+        self, count: int, program_order: list[str]
+    ) -> list[RecipeSuggestion]:
+        suggestions: list[RecipeSuggestion] = []
+        seen: set[str] = set()
+        for program_id, study in self.studies.items():
+            for trial in study.get_trials(deepcopy=False):
+                attrs = trial.user_attrs
+                if attrs.get("recovered_incomplete") is True:
+                    continue
+                if (
+                    attrs.get("program_id") != program_id
+                    or "recipe" not in attrs
+                    or "recipe_hash" not in attrs
+                ):
+                    continue
+                try:
+                    recipe_hash = PipelineRecipe.model_validate(attrs["recipe"]).recipe_hash()
+                except Exception:
+                    continue
+                if attrs["recipe_hash"] == recipe_hash:
+                    seen.add(recipe_hash)
         attempts = 0
         while len(suggestions) < count and any(
             sum(trial.state != TrialState.PRUNED for trial in self.studies[program_id].get_trials(deepcopy=False))
