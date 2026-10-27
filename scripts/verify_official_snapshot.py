@@ -10,6 +10,22 @@ import pandas as pd
 from parsel import Selector
 
 from scrapper.official_corpus import HORSE_ID, WITHDRAWN, canonical_url
+from ima.research_storage import storage_writer
+from scrapper.research_storage_io import admitted_native_growth, atomic_native_bytes
+
+
+@storage_writer(stage='snapshot_verify_report',output=lambda a:Path(a['output']).parent,
+    estimate=lambda a:64*1024+len(json.dumps(a['report'],indent=2).encode('utf-8')))
+def publish_report(output,report):
+    output=Path(output)
+    current=output.parent
+    missing=0
+    while not current.exists():
+        missing+=1
+        current=current.parent
+    with admitted_native_growth(output.parent,bytes_required=0,inodes_required=missing):
+        output.parent.mkdir(parents=True,exist_ok=True)
+    atomic_native_bytes(output,json.dumps(report,indent=2).encode())
 
 
 def check_baseline_roster(runners, baseline_runners, baseline_manifest):
@@ -114,8 +130,7 @@ def main():
     parser.add_argument("--baseline-manifest", type=Path)
     args = parser.parse_args()
     report = verify(args.snapshot, args.baseline_runners, args.baseline_manifest)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2))
+    publish_report(args.output,report)
     print(json.dumps(report, indent=2))
 
 

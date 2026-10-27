@@ -11,12 +11,60 @@ from importlib.metadata import version, PackageNotFoundError
 from collections import Counter
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
+from uuid import uuid4
 
 import pandas as pd
+from filelock import FileLock
 from scrapy.http import HtmlResponse
 
 from ima.rich_features import prepare_rich_runner_dataset
+from ima.research_storage import storage_writer,reserved_output_file
+from scrapper.research_storage_io import admitted_native_growth, cleanup_owned_temporary, validate_owned_temporary
 from scrapper.official_corpus import HORSE_ID, NONFINISHERS, PARSER_VERSION, ROOT, WITHDRAWN, canonical_url, event_date, now, parse_document
+
+
+def _fsync_directory(path):
+    directory_fd=os.open(path,os.O_RDONLY)
+    try:os.fsync(directory_fd)
+    finally:os.close(directory_fd)
+
+
+def _mkdir_admitted(path):
+    path=Path(path)
+    current=path
+    missing=0
+    while not current.exists():
+        missing+=1
+        current=current.parent
+    with admitted_native_growth(path,bytes_required=0,inodes_required=missing):
+        path.mkdir(parents=True,exist_ok=True)
+
+
+def _sha256_file(path):
+    digest=hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        for block in iter(lambda:stream.read(8*1024**2),b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _sha256_gzip_content(path):
+    digest=hashlib.sha256()
+    with gzip.open(path,'rb') as stream:
+        for block in iter(lambda:stream.read(8*1024**2),b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _fsync_tree(root):
+    directories=[]
+    for path in root.rglob('*'):
+        if path.is_file():
+            with path.open('rb') as stream:os.fsync(stream.fileno())
+        elif path.is_dir():
+            directories.append(path)
+    for path in reversed(directories):_fsync_directory(path)
+    _fsync_directory(root)
 
 
 def read_verified(path, url):
@@ -149,23 +197,32 @@ def merge_country(countries, horse, country, document):
         countries[horse] = value
 
 
+@storage_writer(stage='official_snapshot_build',output=lambda a:a['args'].output.parent,
+                estimate=lambda a:64*1024**2)
 def build(args):
+    _mkdir_admitted(args.output.parent)
+    with FileLock(args.output.parent/'snapshot-build.lock',timeout=0):
+        return _build_locked(args)
+
+
+def _build_locked(args):
     if args.output.exists():
         raise ValueError("Immutable snapshot already exists; choose a new output path")
     staging = args.output.with_name(args.output.name + ".building")
     if staging.exists():
         raise ValueError(f"Preserved unfinished build exists: {staging}")
-    staging.mkdir(parents=True)
+    _mkdir_admitted(staging)
     exclusions, counts, records, lineage, identities, ratings, events = [], Counter(), {}, {}, set(), {}, {}
     profiles, countries = {}, {}
     code_hashes = {}
-    (staging / "code").mkdir()
+    _mkdir_admitted(staging / "code")
     for path in (Path(__file__), Path("scrapper/official_corpus.py"), Path("ima/rich_features.py"),
+                 Path("scrapper/research_storage_io.py"), Path("ima/research_storage.py"), Path("ima/research_sqlite.py"),
                  Path("ima/data.py"), Path("ima/feature_sets.py"),
                  Path("scrapper/historical/results.py"), Path("scrapper/horse_pages.py")):
         body = path.read_bytes()
         code_hashes[str(path)] = hashlib.sha256(body).hexdigest()
-        (staging / "code" / path.name).write_bytes(body)
+        with reserved_output_file(staging/'code'/path.name) as stream:stream.write(body)
     if args.base_snapshot:
         manifest = json.loads((args.base_snapshot / "manifest.json").read_text())
         if manifest.get("parser_version") != PARSER_VERSION:
@@ -287,9 +344,10 @@ def build(args):
     if not rows:
         raise ValueError("No verified official races; refusing empty snapshot")
     source = pd.DataFrame(rows).sort_values(["date", "race_id", "horse_no"]).reset_index(drop=True)
-    source.to_parquet(staging / "runners.parquet", index=False)
-    source.to_csv(staging / "runners.csv", index=False)
-    pd.DataFrame(profiles.values()).to_json(staging / "profiles.jsonl", orient="records", lines=True)
+    with reserved_output_file(staging/'runners.parquet') as stream:source.to_parquet(stream,index=False)
+    with reserved_output_file(staging/'runners.csv','w') as stream:source.to_csv(stream,index=False)
+    with reserved_output_file(staging/'profiles.jsonl','w') as stream:
+        pd.DataFrame(profiles.values()).to_json(stream,orient='records',lines=True)
     print(f"Preparing rich historical features for {len(source)} official runners", flush=True)
     features = prepare_rich_runner_dataset(source)
     # No publication-verified event inputs exist yet. Preserve unknown, not zero workouts.
@@ -299,30 +357,46 @@ def build(args):
     for column in set(unknown):
         if not column.endswith("_available"):
             features[column] = float("nan")
-    features.to_parquet(staging / "features.parquet", index=False)
-    features.to_csv(staging / "features.csv", index=False)
+    with reserved_output_file(staging/'features.parquet') as stream:features.to_parquet(stream,index=False)
+    with reserved_output_file(staging/'features.csv','w') as stream:features.to_csv(stream,index=False)
     newly_resolved_workouts = resolve_workout_identities(list(events.values()))
     workout_groups = group_workout_observations(list(events.values()))
-    pd.DataFrame(events.values()).to_json(staging / "events.jsonl", orient="records", lines=True)
+    with reserved_output_file(staging/'events.jsonl','w') as stream:
+        pd.DataFrame(events.values()).to_json(stream,orient='records',lines=True)
     imported = args.output.parent / "raw-import"
-    imported.mkdir(exist_ok=True)
+    _mkdir_admitted(imported)
     for digest, record in lineage.items():
         destination = imported / f"{digest}.html.gz"
         if not destination.exists():
-            temporary = destination.with_suffix(".tmp")
-            shutil.copyfile(record["raw_path"], temporary)
-            if hashlib.sha256(gzip.open(temporary, "rb").read()).hexdigest() != digest:
-                raise ValueError(f"Source changed while preserving raw blob: {record['raw_path']}")
-            temporary.replace(destination)
-        elif hashlib.sha256(gzip.open(destination, "rb").read()).hexdigest() != digest:
+            temporary=destination.with_name(destination.name+'.'+uuid4().hex+'.tmp')
+            identity=None
+            try:
+                with Path(record['raw_path']).open('rb') as source_stream,reserved_output_file(temporary,'xb') as target:
+                    opened=os.fstat(target.fileno())
+                    identity=(opened.st_dev,opened.st_ino)
+                    shutil.copyfileobj(source_stream,target,length=8*1024**2)
+                    target.flush();os.fsync(target.fileno())
+                content_hash=hashlib.sha256()
+                with gzip.open(temporary,'rb') as copied:
+                    for block in iter(lambda:copied.read(8*1024**2),b''):
+                        content_hash.update(block)
+                if content_hash.hexdigest()!=digest:
+                    raise ValueError(f"Source changed while preserving raw blob: {record['raw_path']}")
+                validate_owned_temporary(temporary,identity)
+                os.replace(temporary,destination)
+                _fsync_directory(imported)
+            except BaseException as primary:
+                cleanup_owned_temporary(temporary,identity,primary)
+                raise
+        elif _sha256_gzip_content(destination) != digest:
             raise ValueError(f"Corrupt imported raw blob: {destination}")
         record["original_raw_path"] = record["raw_path"]
         record["raw_path"] = str(destination.resolve())
         record["capture_time_status"] = "recorded_public_capture; not historical publication proof" if record.get("fetched_at") else "unknown_legacy_capture_time; replay is not publication proof"
-    (staging / "lineage.json").write_text(json.dumps(list(lineage.values()), indent=2))
-    (staging / "exclusions.json").write_text(json.dumps(exclusions, indent=2))
+    with reserved_output_file(staging/'lineage.json','w') as stream:json.dump(list(lineage.values()),stream,indent=2)
+    with reserved_output_file(staging/'exclusions.json','w') as stream:json.dump(exclusions,stream,indent=2)
     seeds = [ROOT + "otherhorse?horseid=" + h for h in sorted(identities)]
-    (staging / "horse_seeds.json").write_text(json.dumps(seeds, indent=2))
+    with reserved_output_file(staging/'horse_seeds.json','w') as stream:json.dump(seeds,stream,indent=2)
     coverage = {c: {"nonmissing": int(features[c].notna().sum()), "total": len(features),
                     "distinct": int(features[c].nunique(dropna=True))} for c in features}
     event_counts = Counter(event["family"] for event in events.values())
@@ -355,9 +429,14 @@ def build(args):
         "features": coverage, "by_year": source.groupby(source["date"].str[:4]).size().to_dict(),
         "benter_gaps": ["proprietary adjustments not reproduced", "historical workout/trial/vet publication unverified",
             "current profile age not substituted into history", "no exhaustive official fixture denominator yet"],
-        "files": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in staging.iterdir() if p.is_file()}}
-    (staging / "manifest.json").write_text(json.dumps(manifest, indent=2))
+        "files": {p.name: _sha256_file(p) for p in staging.iterdir() if p.is_file()}}
+    _fsync_tree(staging)
+    with reserved_output_file(staging/'manifest.json','x') as stream:
+        json.dump(manifest,stream,indent=2)
+        stream.flush();os.fsync(stream.fileno())
+    _fsync_directory(staging)
     os.rename(staging, args.output)
+    _fsync_directory(args.output.parent)
     print(json.dumps({k: v for k, v in manifest.items() if k not in ("features", "files")}, indent=2), flush=True)
 
 

@@ -11,6 +11,9 @@ from urllib.parse import parse_qsl, urlsplit
 
 from scrapy.http import HtmlResponse
 
+from ima.research_storage import storage_writer
+from scrapper.research_storage_io import admitted_native_growth, atomic_native_bytes
+
 from scrapper.official_corpus import DAILY_JSON, PARSER_VERSION, canonical_url, event_date, family, now, parse_document
 
 
@@ -162,6 +165,20 @@ def audit(documents, snapshot=None):
             "gaps": gaps}
 
 
+@storage_writer(stage='coverage_report',output=lambda a:Path(a['output']).parent,
+    estimate=lambda a:64*1024+len(json.dumps(a['report'],indent=2).encode('utf-8')))
+def publish_report(output,report):
+    output=Path(output)
+    current=output.parent
+    missing=0
+    while not current.exists():
+        missing+=1
+        current=current.parent
+    with admitted_native_growth(output.parent,bytes_required=0,inodes_required=missing):
+        output.parent.mkdir(parents=True,exist_ok=True)
+    atomic_native_bytes(output,json.dumps(report,indent=2).encode())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, action="append", required=True)
@@ -171,10 +188,7 @@ def main():
     args = parser.parse_args()
     documents = load_documents(args.corpus, args.reparse_cached)
     report = audit(documents, args.snapshot)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = args.output.with_suffix(".tmp")
-    temporary.write_text(json.dumps(report, indent=2))
-    temporary.replace(args.output)
+    publish_report(args.output,report)
     print(json.dumps({"output": str(args.output), "groups": len(report["coverage"]),
                       "gaps": len(report["gaps"]), "daily_streams": report["daily_streams"]}, indent=2))
 

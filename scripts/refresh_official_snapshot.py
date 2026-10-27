@@ -12,8 +12,14 @@ from uuid import uuid4
 from filelock import FileLock
 
 from scrapper.official_corpus import PARSER_VERSION
-from scripts.build_official_dataset import build
+from scripts.build_official_dataset import build, _mkdir_admitted
 from scripts.verify_official_snapshot import verify
+from ima.research_storage import storage_writer
+from scrapper.research_storage_io import atomic_native_bytes
+
+
+def _publish_json(output,value):
+    atomic_native_bytes(Path(output),json.dumps(value,indent=2).encode())
 
 
 def input_digest(archive, profiles, corpora):
@@ -33,6 +39,7 @@ def input_digest(archive, profiles, corpora):
             digest.update(json.dumps([str(path.relative_to(root)), content.hexdigest()]).encode())
     for name in ("scripts/build_official_dataset.py", "scripts/verify_official_snapshot.py",
                  "scripts/refresh_official_snapshot.py", "scrapper/official_corpus.py",
+                 "scrapper/research_storage_io.py", "ima/research_storage.py", "ima/research_sqlite.py",
                  "scrapper/historical/results.py", "scrapper/horse_pages.py",
                  "ima/rich_features.py", "ima/data.py", "ima/feature_sets.py"):
         digest.update(json.dumps([name, hashlib.sha256(Path(name).read_bytes()).hexdigest()]).encode())
@@ -46,10 +53,11 @@ def input_digest(archive, profiles, corpora):
     return digest.hexdigest()
 
 
+@storage_writer(stage='official_snapshot_refresh',output=lambda a:a['output'],estimate=lambda a:64*1024**2)
 def refresh(archive, profiles, corpora, output, baseline_runners=None, baseline_manifest=None):
     if bool(baseline_runners) != bool(baseline_manifest):
         raise ValueError("Baseline runners and manifest must be supplied together")
-    output.mkdir(parents=True, exist_ok=True)
+    _mkdir_admitted(output)
     with FileLock(output / "refresh.lock", timeout=0):
         fingerprint = input_digest(archive, profiles, corpora)
         if baseline_runners:
@@ -76,7 +84,7 @@ def refresh(archive, profiles, corpora, output, baseline_runners=None, baseline_
                               base_snapshot=base, output=snapshot))
         report = verify(snapshot, baseline_runners, baseline_manifest)
         report_path = snapshot.with_suffix(".readback.json")
-        report_path.write_text(json.dumps(report, indent=2))
+        _publish_json(report_path,report)
         receipt = {"snapshot": str(snapshot.resolve()), "parser_version": PARSER_VERSION,
                    "input_digest": fingerprint, "verified_at": datetime.now(timezone.utc).isoformat(),
                    "readback": str(report_path.resolve()), "races": report["races"],
@@ -87,9 +95,7 @@ def refresh(archive, profiles, corpora, output, baseline_runners=None, baseline_
             receipt.update(baseline_runners=str(baseline_runners.resolve()),
                            baseline_manifest=str(baseline_manifest.resolve()),
                            baseline_runner_keys_retained=report["baseline_runner_keys_retained"])
-        temporary = receipt_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(receipt, indent=2))
-        temporary.replace(receipt_path)
+        _publish_json(receipt_path,receipt)
         return receipt | {"action": "built_and_verified"}
 
 
