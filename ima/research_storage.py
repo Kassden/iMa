@@ -461,6 +461,11 @@ def payload_identity(path, allowed_root):
 
 def reclaim_payload(record, *, authority, canary_receipt):
     """Require independently qualified scope, stable key lock and exact identity."""
+    return _reclaim_payload(record,authority=authority,canary_receipt=canary_receipt)
+
+
+def _reclaim_payload(record, *, authority, canary_receipt, reference_check=None):
+    """Private sealed-operator adapter; ordinary callers cannot skip inspection."""
     if not authority or not canary_receipt.get('qualified') or not canary_receipt.get('package_id'):
         raise ValueError('Explicit authority and qualified real-package receipt required')
     path=Path(record['path']); root=Path(record['root'])
@@ -472,24 +477,47 @@ def reclaim_payload(record, *, authority, canary_receipt):
         if os.fstat(stream.fileno()).st_uid!=os.getuid(): raise ValueError('Foreign lock')
         fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
         with ExitStack() as pins:
+            retained=[(stream,lock)]
             companion=path.parent/(path.name+'.pin.lock')
             if companion.exists() or companion.is_symlink():
                 pin=pins.enter_context(os.fdopen(os.open(companion,os.O_RDWR|os.O_NOFOLLOW),'r+b'))
                 if os.fstat(pin.fileno()).st_uid!=os.getuid(): raise ValueError('Foreign companion pin')
                 fcntl.flock(pin,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                retained.append((pin,companion))
+            def check_locks():
+                for handle,path in retained:
+                    held=os.fstat(handle.fileno()); current=path.lstat()
+                    if (not stat.S_ISREG(current.st_mode) or current.st_nlink!=1
+                            or current.st_uid!=os.getuid() or held.st_nlink!=1
+                            or (current.st_dev,current.st_ino)!=(held.st_dev,held.st_ino)):
+                        raise ValueError('Stable reclaim lock was replaced or changed')
+            check_locks()
             try:
-                return _reclaim_locked_payload(path,root,record,authority,stream,lock)
+                return _reclaim_locked_payload(path,root,record,authority,stream,lock,reference_check,check_locks)
             finally: fcntl.flock(stream,fcntl.LOCK_UN)
 
 
-def _reclaim_locked_payload(path,root,record,authority,stream,lock):
+def _reclaim_locked_payload(path,root,record,authority,stream,lock,reference_check=None,check_locks=None):
     """Both existing stable key and any companion pin are held by the caller."""
     actual=payload_identity(path,root)
     if actual!=record: raise ValueError('Candidate changed since approval')
-    assert_no_own_open_files(path)
+    # The sealed emergency adapter can request a privileged read-only scan
+    # while this permanently unprivileged process retains the stable locks.
+    # Ordinary callers retain the existing fail-closed own-process check.
+    (assert_no_own_open_files if reference_check is None else reference_check)(path)
+    if payload_identity(path,root)!=record:
+        raise ValueError('Candidate changed during reference inspection')
+    if check_locks:check_locks()
     before=os.statvfs(root)
     # The invoking controller must prove quiescence and rebuild prerequisites.
     for item in actual['files']:
+        if check_locks:check_locks()
+        directory=path.lstat(); current=(path/item['name']).lstat()
+        if ((directory.st_dev,directory.st_ino,directory.st_uid)!=(record['dev'],record['ino'],record['uid'])
+                or not stat.S_ISREG(current.st_mode) or current.st_nlink!=1
+                or (current.st_dev,current.st_ino,current.st_uid,current.st_size,current.st_mtime_ns)
+                !=(item['dev'],item['ino'],item['uid'],item['size'],item['mtime_ns'])):
+            raise ValueError('Selected file or directory changed immediately before unlink')
         (path/item['name']).unlink()
     path.rmdir()
     after=os.statvfs(root)
