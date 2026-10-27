@@ -89,6 +89,12 @@ def _authorizer(action, arg1, arg2, database, trigger):
         sqlite3.SQLITE_DROP_TEMP_INDEX, sqlite3.SQLITE_DROP_TEMP_TABLE,
         sqlite3.SQLITE_DROP_TEMP_TRIGGER, sqlite3.SQLITE_DROP_TEMP_VIEW,
     }
+    if action == sqlite3.SQLITE_PRAGMA:
+        # Schema introspection is the sole caller-visible PRAGMA. In
+        # particular, do not permit callers to alter journal/page settings.
+        if (arg1 or "").lower() == "table_info" and database in (None, "main"):
+            return sqlite3.SQLITE_OK
+        return sqlite3.SQLITE_DENY
     if action in forbidden:
         return sqlite3.SQLITE_DENY
     if database not in (None, "main"):
@@ -205,7 +211,7 @@ def _managed_transaction(conn):
 
 
 @contextmanager
-def admitted_sqlite(path, *, estimated_growth_bytes: int, stage="research_sqlite"):
+def admitted_sqlite(path, *, estimated_growth_bytes: int, stage="research_sqlite", row_factory=None):
     """Yield a restricted main-database SQL surface inside an admitted transaction.
 
     With ``IMA_STORAGE_ROOT`` enabled, admission precedes creation of missing
@@ -227,6 +233,7 @@ def admitted_sqlite(path, *, estimated_growth_bytes: int, stage="research_sqlite
         # default SQLite transaction, with no lease, page cap, or lock inode.
         parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(db, timeout=30)
+        connection.row_factory = row_factory
         with _managed_transaction(connection) as conn:
             yield conn
         return
@@ -280,6 +287,7 @@ def admitted_sqlite(path, *, estimated_growth_bytes: int, stage="research_sqlite
                             raise RuntimeError(f"Unsupported SQLite journal mode: {mode}")
 
                     conn = sqlite3.connect(db, timeout=30, isolation_level=None)
+                    conn.row_factory = row_factory
                     managed = False
                     try:
                         # Do not change journal mode. A new database defaults

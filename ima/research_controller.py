@@ -400,7 +400,7 @@ def campaign_status(campaign_dir: Path) -> dict[str, Any]:
     ledger_path = campaign_dir / "ledger.sqlite"
     status = _read_json(campaign_dir / "status.json")
     if ledger_path.exists():
-        status["ledger"] = ResearchLedger(ledger_path).snapshot()
+        status["ledger"] = ResearchLedger(ledger_path, read_only=True).snapshot()
     status["controller_online"] = _controller_lock_held(campaign_dir / "controller.lock")
     status["controller_lock"] = _read_lock_metadata(campaign_dir / "controller.lock")
     status["campaign_dir"] = str(campaign_dir)
