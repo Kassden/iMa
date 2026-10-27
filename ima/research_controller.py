@@ -411,7 +411,7 @@ def request_campaign_stop(campaign_dir: Path) -> Path:
     if not campaign_dir.exists():
         raise FileNotFoundError(campaign_dir)
     marker = campaign_dir / "STOP"
-    marker.write_text(utc_now() + "\n", encoding="utf-8")
+    _write_text_atomic(marker, utc_now() + "\n")
     return marker
 
 

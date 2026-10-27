@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
+import io
 import json
 import math
 import os
@@ -132,7 +133,23 @@ class PreparationCache:
     """
     def __init__(self, root, *, lock_timeout=120):
         self.root = Path(root).absolute()
-        self.root.mkdir(parents=True,exist_ok=True,mode=0o700)
+        if os.environ.get('IMA_STORAGE_ROOT') and not self.root.exists():
+            from .research_storage import admitted_output, as_storage_blocked
+            missing, parent = 0, self.root
+            while not parent.exists():
+                missing += 1
+                parent = parent.parent
+            try:
+                with admitted_output(self.root, estimated_bytes=missing*65536,
+                                     stage='preparation_directory', inodes=missing):
+                    self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            except Exception as exc:
+                converted = as_storage_blocked(exc, stage='preparation_directory', output=self.root)
+                if converted is None or converted is exc:
+                    raise
+                raise converted from exc
+        else:
+            self.root.mkdir(parents=True,exist_ok=True,mode=0o700)
         if self.root.stat().st_uid != os.getuid() or self.root.stat().st_mode & 0o022:
             raise ValueError("Preparation cache must be owned by this user and not writable by others")
         if not isinstance(lock_timeout, (int, float)) or not math.isfinite(lock_timeout) or lock_timeout < 0:
@@ -155,30 +172,50 @@ class PreparationCache:
                   "stage": "validating", "acquired_at_epoch": time.time()}
         stopped = threading.Event()
         guard = threading.Lock()
+        heartbeat_errors = []
 
         def update(stage=None):
             with guard:
+                if heartbeat_errors:
+                    raise heartbeat_errors[0]
                 if stage is not None:
                     status["stage"] = stage
                 status["heartbeat_at_epoch"] = time.time()
                 path = self.root/(identity+".owner.json")
-                temporary = path.with_suffix(".tmp")
-                temporary.write_text(json.dumps(status, sort_keys=True))
-                os.replace(temporary, path)
+                if os.environ.get('IMA_STORAGE_ROOT'):
+                    from .research_controller import _write_json_atomic
+                    _write_json_atomic(path, status)
+                else:
+                    temporary = path.with_suffix(".tmp")
+                    temporary.write_text(json.dumps(status, sort_keys=True))
+                    os.replace(temporary, path)
 
         def heartbeat():
             while not stopped.wait(1):
-                update()
+                try:
+                    update()
+                except BaseException as exc:
+                    heartbeat_errors.append(exc)
+                    stopped.set()
 
         update()
         thread = threading.Thread(target=heartbeat, daemon=True)
         thread.start()
+        primary = None
         try:
             yield update
+        except BaseException as exc:
+            primary = exc
+            raise
         finally:
             stopped.set()
             thread.join()
-            update("released")
+            try:
+                update("released")
+            except BaseException as cleanup:
+                if primary is None:
+                    raise
+                primary.add_note(f"Preparation owner finalization also failed: {cleanup!r}")
 
     @contextmanager
     def _lock(self, identity, *, shared=False, owner=None, stage="preparing", pins=None):
@@ -253,7 +290,7 @@ class PreparationCache:
         with authority.admitted(bytes_required=estimate,inodes_required=8,
                                 stage='fold_preparation',output=self.root,
                                 cache_bytes=0 if exists else estimate) as token:
-            budget={'authority':authority,'token':token,'limit':estimate,'written':0,'cache':True}
+            budget={'authority':authority,'token':token,'limit':estimate,'written':0,'cache':True,'consume':True}
             def bounded_builder():
                 prepared=builder()
                 if not isinstance(prepared,PreparedFold):
@@ -267,8 +304,15 @@ class PreparationCache:
             def ready(artifact):
                 allocated=sum(p.stat().st_blocks*512 for p in artifact.path.iterdir())
                 authority.commit_cache(token,self.root,artifact.artifact_id,allocated)
-            return self._prepare_fold(key,bounded_builder,owner=owner,write_budget=budget,
-                                      pins=pins,on_ready=ready)
+            try:
+                return self._prepare_fold(key,bounded_builder,owner=owner,write_budget=budget,
+                                          pins=pins,on_ready=ready)
+            except Exception as exc:
+                from .research_storage import as_storage_blocked
+                converted = as_storage_blocked(exc, stage='fold_preparation', output=self.root)
+                if converted is None or converted is exc:
+                    raise
+                raise converted from exc
 
     def _prepare_fold(self, key: PreparationKey, builder, *, owner=None,write_budget=None,
                       pins=None,on_ready=None) -> PreparationArtifact:
@@ -304,6 +348,7 @@ class PreparationCache:
             if destination.exists():
                 shutil.rmtree(destination)
             temporary = Path(tempfile.mkdtemp(prefix=identity+"-",dir=self.root))
+            primary = None
             try:
                 update("building")
                 prepared = builder()
@@ -317,17 +362,24 @@ class PreparationCache:
                         return joblib.dump(value,path,compress=0)
                     from .research_storage import ReservedFile
                     with open(path,'wb') as stream:
-                        return joblib.dump(value,ReservedFile(stream,write_budget),compress=0)
+                        bounded=ReservedFile(stream,write_budget)
+                        result=joblib.dump(value,bounded,compress=0)
+                        bounded.flush()
+                        return result
                 dump(arrays,temporary/"arrays.joblib")
                 checksums = {"arrays.joblib":_checksum(temporary/"arrays.joblib")}
                 if prepared.fitted_state is not None:
                     dump(prepared.fitted_state,temporary/"fitted.joblib")
                     checksums["fitted.joblib"] = _checksum(temporary/"fitted.joblib")
                 manifest = {"schema_version":1,"artifact_id":identity,"key":key.model_dump(mode="json"),"feature_names":prepared.feature_names,"row_keys":prepared.row_keys,"category_vocabulary":prepared.category_vocabulary,"arrays":{name:{"dtype":str(a.dtype),"shape":list(a.shape),"nbytes":a.nbytes} for name,a in arrays.items()},"checksums":checksums}
-                with open(temporary/"manifest.json","w") as stream:
-                    json.dump(manifest,stream,sort_keys=True,allow_nan=False)
-                    stream.flush()
-                    os.fsync(stream.fileno())
+                with open(temporary/'manifest.json','wb') as raw:
+                    if write_budget is not None:
+                        from .research_storage import ReservedFile
+                    buffer=raw if write_budget is None else ReservedFile(raw,write_budget)
+                    with io.TextIOWrapper(buffer,encoding='utf-8') as stream:
+                        json.dump(manifest,stream,sort_keys=True,allow_nan=False)
+                        stream.flush()
+                        os.fsync(stream.fileno())
                 for name in checksums:
                     with open(temporary/name,"rb") as stream:
                         os.fsync(stream.fileno())
@@ -345,9 +397,17 @@ class PreparationCache:
                 if on_ready: on_ready(result)
                 retain()
                 return result
+            except BaseException as exc:
+                primary = exc
+                raise
             finally:
-                if temporary.exists():
-                    shutil.rmtree(temporary)
+                try:
+                    if temporary.exists():
+                        shutil.rmtree(temporary)
+                except BaseException as cleanup:
+                    if primary is None:
+                        raise
+                    primary.add_note(f"Preparation staging cleanup also failed: {cleanup!r}")
 
     prepare = prepare_fold
 

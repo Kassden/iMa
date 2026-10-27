@@ -12,6 +12,8 @@ import tempfile
 import numpy as np
 import pandas as pd
 
+from .research_storage import admitted_output, as_storage_blocked, storage_writer, reserved_output_file
+
 
 def frame_fingerprint(frame: pd.DataFrame) -> str:
     digest = hashlib.sha256()
@@ -49,14 +51,32 @@ class PredictionStore:
 
     def __init__(self, root: str | Path):
         self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=True)
+        missing, parent = 0, self.root
+        while not parent.exists():
+            missing += 1
+            parent = parent.parent
+        try:
+            with admitted_output(self.root, estimated_bytes=max(4096, missing * 65536),
+                                 stage='forward_oof_directory', inodes=missing):
+                self.root.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            converted = as_storage_blocked(exc, stage='forward_oof_directory', output=self.root)
+            if converted is None or converted is exc:
+                raise
+            raise converted from exc
 
+    @storage_writer(stage='forward_oof',output=lambda a:a['self'].root,
+        estimate=lambda a:max(1024**2,2*np.asarray(a['artifact'].values).nbytes+
+            8*len(json.dumps(a['artifact'].row_keys).encode())+
+            4*len(json.dumps(a['artifact'].metadata,allow_nan=False).encode())))
     def put(self, key: str, artifact: PredictionArtifact) -> None:
         artifact.validate()
         path = self._path(key)
         fd, temporary = tempfile.mkstemp(dir=self.root, suffix=".npz")
+        primary = None
         try:
-            with os.fdopen(fd, "wb") as handle:
+            os.close(fd)
+            with reserved_output_file(temporary, "wb") as handle:
                 np.savez(handle, values=np.asarray(artifact.values),
                          row_keys=np.asarray(artifact.row_keys, dtype=str),
                          metadata=json.dumps(artifact.metadata, sort_keys=True, allow_nan=False))
@@ -69,8 +89,21 @@ class PredictionStore:
                 canonical = json.loads(json.dumps(artifact.metadata, sort_keys=True, allow_nan=False))
                 if existing.metadata != canonical or not np.array_equal(existing.values, artifact.values):
                     raise ValueError("Immutable prediction key collision")
+            directory_fd=os.open(self.root,os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except BaseException as exc:
+            primary = exc
+            raise
         finally:
-            os.unlink(temporary)
+            try:
+                os.unlink(temporary)
+            except BaseException as cleanup:
+                if primary is None:
+                    raise
+                primary.add_note(f"Prediction staging cleanup also failed: {cleanup!r}")
 
     def get(self, key: str, row_keys=None) -> PredictionArtifact | None:
         path = self._path(key)
