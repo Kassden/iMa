@@ -28,6 +28,8 @@ from .research_model_package import FeatureReplayContext, ResearchModelPackage, 
 from .research_models import ResearchClassifier, ResearchRegressor, secondary_target_diagnostics
 from .research_preparation import PreparationArtifact, PreparationCacheWaitTimeout
 from .research_specs import PerformanceDistributionSpec, PipelineRecipe, is_fundamental_first_portfolio
+from .research_storage import StorageBlocked, as_storage_blocked, storage_writer, reserved_output_file
+from .research_dataset_capacity import dataset_storage_estimate
 from .research_targets import apply_target_contract, target_contract
 from .research_transforms import (
     FittedResearchTransforms,
@@ -294,6 +296,8 @@ def _load_recipe_features(request):
     return frame, observed_hash, manifest
 
 
+@storage_writer(stage='fold_dependency',output=lambda a:a['request'].output_dir,
+    estimate=lambda a:max(64*1024**2,6*dataset_storage_estimate(a['request'].dataset_path)))
 def prepare_recipe_folds(request: RecipeExecutionRequest) -> dict[str, PreparationArtifact]:
     """Prewarm all flat V3 folds without fitting the target estimator.
 
@@ -306,6 +310,7 @@ def prepare_recipe_folds(request: RecipeExecutionRequest) -> dict[str, Preparati
     dependency_id = preparation_dependency_id(request)
     if dependency_id is None:
         return {}
+    _prepare_fit_output_directory(request.output_dir)
     try:
         frame, observed_hash, _ = _load_recipe_features(request)
         labelled, schema, protocol, _ = _recipe_fold_inputs(request, frame)
@@ -331,10 +336,13 @@ def prepare_recipe_folds(request: RecipeExecutionRequest) -> dict[str, Preparati
         raise
 
 
+@storage_writer(stage='model_fit',output=lambda a:a['request'].output_dir,
+    estimate=lambda a:max(64*1024**2,6*dataset_storage_estimate(a['request'].dataset_path)))
 def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
     """Train/evaluate one recipe and atomically persist its accepted artifacts."""
     started = time.perf_counter()
     try:
+        _prepare_fit_output_directory(request.output_dir)
         frame, observed_hash, manifest = _load_recipe_features(request)
         _write_json_atomic(request.output_dir/"stage.json",{"phase":"training","started_at_epoch":time.time()})
         with ExitStack() as pins:
@@ -346,7 +354,11 @@ def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
             result.lineage["matrix_id"] = manifest["matrix_id"]
             result.lineage["discovery_id"] = manifest["discovery_id"]
         _write_json_atomic(request.output_dir / "result.json", result.serializable())
+    except StorageBlocked:
+        raise
     except Exception as exc:
+        converted=as_storage_blocked(exc,stage='model_fit',output=request.output_dir)
+        if converted is not None:raise converted from exc
         result = RecipeExecutionResult(
             schema_version=RESULT_SCHEMA_VERSION,
             attempt_id=request.attempt_id,
@@ -371,6 +383,14 @@ def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
     _execution_progress(request, result.status, failure_kind=(
         "infrastructure_cache_wait" if result.metrics.get("infrastructure_failure") else None))
     return result
+
+
+def _prepare_fit_output_directory(output_dir: Path) -> None:
+    # Runtime import avoids the controller/executor import cycle.
+    from .research_controller import _prepare_campaign_directory
+
+    _prepare_campaign_directory(output_dir)
+
 
 
 def _v6_result_lineage(request, frame, result, dataset_hash):
@@ -678,7 +698,7 @@ def _execute_frame(
             "feature": conditional.preprocessor.get_feature_names_out(),
             "coefficient": conditional.coefficients,
         })
-        weights.to_csv(package_path / "feature-weights.csv", index=False)
+        _write_csv_atomic(package_path/'feature-weights.csv',weights)
     feature_program_id = recipe.feature_program_id(dataset_hash)
     feature_program_path = request.output_dir / "feature-program.json"
     _write_json_atomic(feature_program_path, {
@@ -1410,7 +1430,8 @@ def _discovery_schema(train, schema, recipe, label, output, fold_id):
     selection.report["effective_columns"] = columns
     _write_json_atomic(output / f"discovery-selection-{fold_id}.json", selection.report)
     import joblib
-    joblib.dump(selection,output / f"discovery-selector-{fold_id}.joblib")
+    with reserved_output_file(output/f'discovery-selector-{fold_id}.joblib') as stream:
+        joblib.dump(selection,stream)
     return FeatureSchema(schema.name, tuple(dict.fromkeys((*schema.numeric, *columns))), schema.categorical)
 
 
@@ -1695,7 +1716,8 @@ def _prepared_fold(request, train, calibration, score, schema, fold_id, label, *
         _write_json_atomic(request.output_dir/f"discovery-{suffix}-{fold_id}.json",report)
     if state.get("selector") is not None:
         import joblib
-        joblib.dump(state["selector"],request.output_dir/f"discovery-selector-{fold_id}.joblib")
+        with reserved_output_file(request.output_dir/f'discovery-selector-{fold_id}.joblib') as stream:
+            joblib.dump(state['selector'],stream)
     effective = state["schema"]
     reconstructed = []
     for name,frame in zip(("train","calibration","score"),(train,calibration,score)):
@@ -1807,14 +1829,52 @@ def _hash_file(path: Path) -> str:
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    if os.environ.get('IMA_STORAGE_ROOT'):
+        from .research_controller import _write_bytes_atomic
+        _write_bytes_atomic(path, json.dumps(payload, indent=2, sort_keys=True).encode('utf-8'),
+                            stage='fit_metadata')
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    with reserved_output_file(temporary,'w') as stream:
+        json.dump(payload,stream,indent=2,sort_keys=True)
     os.replace(temporary, path)
 
 
+@storage_writer(stage='fit_csv',output=lambda a:a['path'].parent,
+    estimate=lambda a:max(65536,2*int(a['frame'].memory_usage(deep=True).sum())))
 def _write_csv_atomic(path: Path, frame: pd.DataFrame) -> None:
+    if os.environ.get('IMA_STORAGE_ROOT'):
+        from .research_controller import _cleanup_export_staging
+        _prepare_fit_output_directory(path.parent)
+        temporary = path.with_suffix(path.suffix + '.tmp')
+        identity, primary = None, None
+        try:
+            with reserved_output_file(temporary, 'w') as stream:
+                opened = os.fstat(stream.fileno())
+                identity = (opened.st_dev, opened.st_ino)
+                frame.to_csv(stream, index=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            current = temporary.lstat()
+            if ((current.st_dev,current.st_ino) != identity or current.st_nlink != 1
+                    or current.st_uid != os.getuid()):
+                raise ValueError('CSV staging identity changed before publication')
+            os.replace(temporary, path)
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except BaseException as exc:
+            primary = exc
+            raise
+        finally:
+            if identity is not None:
+                _cleanup_export_staging(temporary, primary, expected_identity=identity)
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    frame.to_csv(temporary, index=False)
+    with reserved_output_file(temporary,'w') as stream:
+        frame.to_csv(stream,index=False)
     os.replace(temporary, path)
