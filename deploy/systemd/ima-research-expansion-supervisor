@@ -108,6 +108,12 @@ if [[ $# -gt 1 || ( $# -eq 1 && $1 != --check ) ]]; then
     exit 64
 fi
 
+: "${IMA_STORAGE_ROOT:?Set shared iMa storage authority root}"
+if [[ "$IMA_STORAGE_ROOT" != "/home/imaopt/research-v2/storage-control" ]]; then
+    printf 'IMA_STORAGE_ROOT must use the canonical own-user research-v2 storage-control root\n' >&2
+    exit 78
+fi
+
 : "${IMA_V6_RELEASE:?Set immutable V6 release path}"
 : "${IMA_V6_REVISION:?Set expected immutable source revision}"
 : "${IMA_V6_PYTHON:?Set isolated V6 interpreter}"
