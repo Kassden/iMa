@@ -314,6 +314,8 @@ def prepare_recipe_folds(request: RecipeExecutionRequest) -> dict[str, Preparati
         return {}
     _prepare_fit_output_directory(request.output_dir)
     try:
+        if _supports_direct_parquet_fold_pushdown(request):
+            return _prepare_direct_parquet_folds(request, dependency_id)
         frame, observed_hash, _ = _load_recipe_features(request)
         labelled, schema, protocol, _ = _recipe_fold_inputs(request, frame)
         contract = target_contract(request.recipe.target.kind, request.recipe.target.parameters)
@@ -336,6 +338,127 @@ def prepare_recipe_folds(request: RecipeExecutionRequest) -> dict[str, Preparati
     except PreparationCacheWaitTimeout as exc:
         _execution_progress(request, "preparation_wait_timeout", cache_wait=exc.diagnostic)
         raise
+
+
+def _supports_direct_parquet_fold_pushdown(request):
+    recipe = request.recipe
+    return (recipe.schema_version == 3
+        and recipe.target.kind == "win_probability"
+        and Path(request.dataset_path).suffix == ".parquet"
+        and Path(request.dataset_path).is_file()
+        and not (recipe.feature_discovery or recipe.transforms or recipe.feature_definitions
+                 or recipe.pipeline_graph or recipe.performance_distribution
+                 or recipe.extra_numeric_features))
+
+
+def _prepare_direct_parquet_folds(request, dependency_id):
+    """Prepare flat win folds from a narrow full population and filtered payload reads.
+
+    The population pass intentionally contains every row and every eligibility/protocol
+    field. Predictor payload reads happen only after protocol race IDs are fixed. The
+    complete source hash and schema-3 manifest validation remain in force.
+    """
+    path = Path(request.dataset_path)
+    observed_hash = _hash_file(path)
+    if request.dataset_hash is not None and request.dataset_hash != observed_hash:
+        raise ValueError("dataset hash does not match execution request")
+    population_columns = _fold_population_columns(path)
+    population = pd.read_parquet(path, columns=population_columns)
+    population = _sort_fold_rows(population)
+    # This purpose-specific frame carries no predictors. Keep schema-3 manifest/catalog
+    # validation and metadata construction, while deferring value availability checks to
+    # each projected payload where predictor and binding columns are present.
+    population = _v6_feature_frame(population, request)
+    # _recipe_fold_inputs adds schema placeholders while retaining full target eligibility
+    # and protocol rows; no predictors are used to choose fold membership.
+    labelled, _, protocol, _ = _recipe_fold_inputs(request, population)
+    artifacts = {}
+    for index, fold in enumerate(protocol.folds, 1):
+        _execution_progress(request, "preparing", fold_id=fold.fold_id,
+                            fold_index=index, fold_count=len(protocol.folds))
+        race_ids = tuple(dict.fromkeys((*fold.train_race_ids, *fold.calibration_race_ids,
+                                        *fold.score_race_ids)))
+        payload = _read_direct_parquet_fold(request, race_ids)
+        fold_labelled, exclusions = _exclude_non_single_winner_races(payload)
+        fold_labelled = apply_target_contract(
+            fold_labelled, target_contract(request.recipe.target.kind, request.recipe.target.parameters))
+        fold_labelled.attrs["dataset_exclusions"] = exclusions
+        schema = _effective_frame_schema(request.recipe, payload)
+        fold_labelled = _ensure_feature_columns(fold_labelled, schema)
+        required_population_columns = set(schema.features) | {"race_id", "date", "race_no", "horse_no",
+            "horse_id", "target_win", "target_probability", "market_probability", "result",
+            "field_size", "win_odds", "finishing_status"}
+        fold_labelled = fold_labelled.loc[:, [name for name in fold_labelled if name in required_population_columns]]
+        # Trust the full population's fold membership and row order. Verify the filtered
+        # read contains precisely those rows before handing it to the existing preparer.
+        expected = select_fold(labelled, race_ids)
+        actual_keys = list(zip(fold_labelled.race_id.astype(str), fold_labelled.horse_no.astype(str)))
+        expected_keys = list(zip(expected.race_id.astype(str), expected.horse_no.astype(str)))
+        if actual_keys != expected_keys:
+            raise ValueError("Filtered Parquet fold population/order differs from protocol population")
+        calibration = select_fold(fold_labelled, fold.calibration_race_ids)
+        train = _apply_training_window(select_fold(fold_labelled, fold.train_race_ids),
+                                       calibration, request.recipe.train_window)
+        score = select_fold(fold_labelled, fold.score_race_ids)
+        artifacts[fold.fold_id] = _prepared_fold(
+            request, train, calibration, score, schema, fold.fold_id, "target_win", artifact_only=True)
+    if _hash_file(path) != observed_hash:
+        raise ValueError("Dataset changed during fold preparation")
+    _write_json_atomic(request.output_dir/"preparation-dependencies.json", {
+        "dependency_id": dependency_id, "dataset_hash": observed_hash,
+        "folds": {name: asdict(artifact) for name, artifact in artifacts.items()},
+    })
+    _execution_progress(request, "prepared", fold_count=len(artifacts))
+    return artifacts
+
+
+def _fold_population_columns(path):
+    import pyarrow.parquet as pq
+    available = set(pq.read_schema(path).names)
+    required = {"date", "race_no", "race_id", "horse_no", "target_win", "target_probability"}
+    missing = required - available
+    if missing:
+        raise ValueError("Direct Parquet population is missing required columns: " + ", ".join(sorted(missing)))
+    return sorted(required)
+
+
+def _sort_fold_rows(frame):
+    frame = frame.copy()
+    frame["date"] = pd.to_datetime(frame["date"], errors="raise")
+    return frame.sort_values(["date", "race_no", "race_id", "horse_no"], kind="stable").reset_index(drop=True)
+
+
+def _read_direct_parquet_fold(request, race_ids):
+    import pyarrow.parquet as pq
+    path = Path(request.dataset_path)
+    available = set(pq.read_schema(path).names)
+    # _v6_feature_frame validates all catalog metadata and required source fields. Keep
+    # that established validation intact while projecting only its declared closure.
+    required = set(_effective_schema(request.recipe).features) | {
+        "date", "race_id", "race_no", "horse_no", "horse_id", "field_size", "target_win",
+        "target_probability", "result", "finishing_status", "market_probability", "win_odds",
+        "finish_seconds", "finish_time", "distance", "actual_weight", "lengths_raw", "source",
+        "jockey_id", "jockey_key", "trainer_id", "trainer_key", "observed_at", "venue",
+        "course", "surface", "horse_rating", "odds_snapshot_at", "forecast_at",
+        "future_market_probability",
+    }
+    manifest_path = path.parent / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    catalog = manifest.get("predictor_catalog", manifest.get("eligible_predictors", manifest.get("feature_catalog", {})))
+    if isinstance(catalog, list):
+        catalog = {row["name"]: row for row in catalog if isinstance(row, dict) and "name" in row}
+    if isinstance(catalog, dict):
+        for name, row in catalog.items():
+            if name in required and isinstance(row, dict) and isinstance(row.get("available_at_column"), str):
+                required.add(row["available_at_column"])
+    columns = sorted(required & available)
+    filters = [[("race_id", "in", list(race_ids))]]
+    frame = pd.read_parquet(path, columns=columns, filters=filters)
+    frame = _sort_fold_rows(frame)
+    observed_hash = _hash_file(path)
+    if request.dataset_hash is not None and observed_hash != request.dataset_hash:
+        raise ValueError("dataset hash does not match execution request")
+    return _v6_feature_frame(frame, request)
 
 
 @storage_writer(stage='model_fit',output=lambda a:a['request'].output_dir,
