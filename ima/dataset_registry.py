@@ -24,8 +24,6 @@ from .feature_sets import RICH_SCHEMA, NOTEBOOK_RICH_SCHEMA
 from .historical_events import HORSE_ID, FAMILY_WINDOWS, build_event_features, normalize_events, official_source
 from .rich_features import prepare_rich_runner_dataset
 from .speed_features import build_speed_features, finish_seconds, speed_feature_catalog
-
-
 from .research_storage import storage_writer,reserved_output_file,admitted_output,as_storage_blocked
 from .research_dataset_capacity import snapshot_storage_estimate
 
@@ -55,7 +53,6 @@ def _dataset_build_estimate(arguments):
     if not raw_manifest.is_file():
         raise FileNotFoundError(raw_manifest)
     return max(64 * 1024**2, 6 * snapshot_storage_estimate(arguments['source_snapshot']))
-
 
 
 def file_sha256(path):
@@ -297,7 +294,8 @@ class DatasetRegistry:
                 raise ValueError(f"Dataset provenance manifest must be an object: {name}")
             if file_sha256(path / name) != manifest["identity"][identity_key]:
                 raise ValueError(f"Dataset provenance identity mismatch: {name}")
-        features = pd.read_parquet(path / "features.parquet")
+        from .dataset_delta import read_feature_table
+        features = read_feature_table(path / Path(manifest.get('features_path','features.parquet')).name)
         if manifest.get("ordered_row_keys_sha256") != _digest(_keys(features)):
             raise ValueError("Dataset ordered row key hash mismatch")
         if manifest.get("ordered_row_hashes_sha256") != _ordered_row_hashes_sha256(features):
@@ -361,11 +359,14 @@ class DatasetRegistry:
                     raise ValueError("Source snapshot is not official-only")
                 source_hashes = {}
                 for name in ("runners.parquet", "events.jsonl"):
+                    if name=='runners.parquet' and source_manifest.get('storage_format')=='ima.snapshot.objects.v2':
+                        continue  # read_snapshot_table verifies every immutable partition.
                     expected = source_manifest.get("files", {}).get(name)
                     if not expected or file_sha256(snapshot / name) != expected:
                         raise ValueError(f"Source snapshot checksum mismatch: {name}")
                     source_hashes[name] = expected
-                source = pd.read_parquet(snapshot / "runners.parquet")
+                from .research_objects import read_snapshot_table
+                source = read_snapshot_table(snapshot,'runners.parquet')
                 if len(source) != source_manifest.get("rows") or source["race_id"].nunique() != source_manifest.get("races"):
                     raise ValueError("Source snapshot row/race inventory mismatch")
                 protected_races = self._confirmation_races(source, request)

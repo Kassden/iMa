@@ -32,9 +32,8 @@ from .feature_definitions import (
 )
 from .feature_expressions import InputMetadata, NumericExpression, unit_dimensions, unit_scale
 from .research_targets import SUPPORTED_TARGETS, target_contract, validate_no_forbidden_label_features
-
-
 from .research_storage import admitted_output,reserved_output_file,storage_writer,as_storage_blocked
+
 
 EXPERIMENT_NAME = "ima-feature-builds"
 _METADATA_KEYS = set(InputMetadata.model_fields)
@@ -58,7 +57,6 @@ def _temporary_directory_preserving_error(**kwargs):
         raise
     else:
         temporary.cleanup()
-
 
 
 def _known_unit(unit: str) -> bool:
@@ -183,7 +181,7 @@ def deterministic_candidate_definitions(catalog: dict, *, limit: int = 4) -> lis
 
 def _parent(features_path, manifest_path):
     features_path, manifest_path = Path(features_path).resolve(), Path(manifest_path).resolve()
-    if manifest_path.name != "manifest.json" or features_path != manifest_path.parent / "features.parquet":
+    if manifest_path.name != "manifest.json" or features_path.name not in {'features.parquet','features.delta.json'} or features_path.parent!=manifest_path.parent:
         raise ValueError("Parent paths must identify the same registered dataset")
     if manifest_path.parent.parent.name != "datasets":
         raise ValueError("Parent must be an existing registered dataset")
@@ -191,7 +189,7 @@ def _parent(features_path, manifest_path):
     manifest = registry.verify(manifest_path.parent.name)
     if manifest.get("features_path") and Path(manifest["features_path"]).resolve() != features_path:
         raise ValueError("Registered parent features_path does not match")
-    required = {"protocol.json", "confirmation_keys.json", "raw_manifest.json", "source_manifest.json", "features.parquet"}
+    required = {"protocol.json", "confirmation_keys.json", "raw_manifest.json", "source_manifest.json", features_path.name}
     if not required <= manifest["files"].keys():
         raise ValueError("Parent lacks protected protocol/provenance artifacts")
     if not manifest.get("comparison_contract_id") or not manifest.get("comparison_contract"):
@@ -306,12 +304,15 @@ class FeatureLifecycle:
         spec = {
             "parent_dataset_id": parent["dataset_id"],
             "parent_manifest_sha256": file_sha256(parent_manifest_path),
-            "parent_features_sha256": parent["files"]["features.parquet"],
+            "parent_features_sha256": parent["files"][Path(parent_features_path).name],
             "definitions": sorted([{"definition_id": d.content_id(), "name": d.name} for d in definitions], key=lambda d: d["name"]),
             "min_coverage": min_coverage,
             "code": {name: file_sha256(Path(__file__).parent / name) for name in ("feature_lifecycle.py", "feature_definitions.py", "feature_expressions.py")},
             "dependencies": {name: version(name) for name in ("numpy", "pandas", "pyarrow", "pydantic")},
         }
+        if os.environ.get('IMA_DATASET_STORAGE_FORMAT')=='delta-v2':
+            spec['storage_format']='delta-v2'
+            spec['delta_implementation_sha256']=file_sha256(Path(__file__).parent/'dataset_delta.py')
         build_id = "feature-build-" + _digest(spec)
         with self.registry._lock(build_id):
             if self._path(build_id).exists():
@@ -328,7 +329,9 @@ class FeatureLifecycle:
             }
             try:
                 trusted = self._metadata(parent, metadata)
-                columns = parquet.read_schema(parent_features_path).names
+                columns = (json.loads(Path(parent_features_path).read_text())['columns']
+                           if Path(parent_features_path).name=='features.delta.json'
+                           else parquet.read_schema(parent_features_path).names)
                 _validate_definitions(definitions, trusted, columns)
             except ValueError as exc:
                 receipt.update(status="rejected", error=f"{type(exc).__name__}: {exc}")
@@ -399,7 +402,8 @@ class FeatureLifecycle:
         parent = _parent(receipt["parent_features_path"], receipt["parent_manifest_path"])
         if file_sha256(receipt["parent_manifest_path"]) != receipt["spec"]["parent_manifest_sha256"]:
             raise ValueError("Parent manifest changed since submission")
-        frame = pd.read_parquet(receipt["parent_features_path"])
+        from .dataset_delta import read_feature_table, write_feature_delta
+        frame = read_feature_table(receipt["parent_features_path"])
         if len(frame) != parent["rows"] or frame.race_id.nunique() != parent["races"] or frame.empty:
             raise ValueError("Parent row/race inventory mismatch")
         metadata = self._metadata(parent, None)
@@ -458,15 +462,25 @@ class FeatureLifecycle:
         with _temporary_directory_preserving_error(dir=self.registry.root / "staging", prefix="feature-build-") as temporary:
             staging = Path(temporary).resolve() / "datasets" / dataset_id
             staging.mkdir(parents=True)
-            replaced = {"features.parquet", "feature-build.json", "feature-catalog.json"}
+            delta_format=receipt['spec'].get('storage_format')=='delta-v2'
+            replaced = {"features.parquet", "feature-build.json", "feature-catalog.json",
+                        "features.delta.json","feature-delta.parquet"}
+            if delta_format:
+                replaced.update({'runners.parquet','runners.csv','features.csv'})
             for name in parent["files"]:
                 if name not in replaced:
                     with (Path(receipt['parent_manifest_path']).parent/name).open('rb') as source, \
                          reserved_output_file(staging/name) as target:
                         shutil.copyfileobj(source,target,length=8*1024**2)
-            with reserved_output_file(staging/'features.parquet') as stream:
-                output.to_parquet(stream,index=False)
-            persisted = pd.read_parquet(staging / "features.parquet")
+            if delta_format:
+                write_feature_delta(receipt['parent_manifest_path'],staging,output,
+                    registry_root=self.registry.root,columns=[c for c in output if c not in frame],catalog=catalog)
+                feature_name='features.delta.json'
+            else:
+                with reserved_output_file(staging/'features.parquet') as stream:
+                    output.to_parquet(stream,index=False)
+                feature_name='features.parquet'
+            persisted = read_feature_table(staging / feature_name)
             pd.testing.assert_frame_equal(persisted.loc[:, frame.columns], frame, check_exact=True)
             for name in names:
                 np.testing.assert_equal(persisted[name].to_numpy(), output[name].to_numpy())
@@ -485,8 +499,9 @@ class FeatureLifecycle:
             manifest = deepcopy(parent)
             manifest.update(
                 dataset_id=dataset_id, identity=identity, parent_dataset_id=parent["dataset_id"],
+                storage_format='ima.dataset.delta.v2' if delta_format else 'ima.dataset.parquet.v1',
                 feature_build_id=receipt["build_id"], feature_definition_ids=report["definition_ids"],
-                feature_build=payload, features_path=str(destination / "features.parquet"),
+                feature_build=payload, features_path=str(destination / feature_name),
                 protocol_path=str(destination / "protocol.json"),
                 predictor_catalog=catalog, feature_catalog=catalog, predictor_catalog_id="catalog-" + _digest(catalog),
                 eligible_numeric_predictors=sorted(catalog), eligible_predictors=sorted(catalog),
@@ -542,7 +557,7 @@ class FeatureLifecycle:
                 "stage": "feature_build", "ima.stage": "feature_build", "ima.role": "feature_build",
                 "ima.feature_build_id": receipt["build_id"], "ima.dataset_id": manifest["dataset_id"],
                 "ima.parent_dataset_id": manifest["parent_dataset_id"],
-                "ima.dataset_sha256": manifest["files"]["features.parquet"],
+                "ima.dataset_sha256": manifest["files"][Path(manifest['features_path']).name],
                 "ima.definition_ids": json.dumps(manifest["feature_definition_ids"]),
                 "ima.comparison_contract_id": manifest["comparison_contract_id"],
                 "mlflow.runName": receipt["build_id"],

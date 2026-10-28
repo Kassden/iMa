@@ -65,8 +65,9 @@ class DatasetFeatureProfile:
         required = {"race_id", "race_no", "date", "target_win", "source", "horse_id", "jockey_id", "jockey_key", "trainer_id", "trainer_key", "finish_seconds", "lengths_raw", "actual_weight"}
         if prepared_frame is not None:
             frame = prepared_frame[[column for column in prepared_frame if column in numeric | required]].copy()
-        elif dataset_path.suffix == ".parquet":
-            frame = pd.read_parquet(dataset_path)
+        elif dataset_path.suffix == ".parquet" or dataset_path.name == 'features.delta.json':
+            from .dataset_delta import read_feature_table
+            frame = read_feature_table(dataset_path)
             frame = frame[[column for column in frame if column in numeric | required]]
         else:
             frame = pd.read_csv(

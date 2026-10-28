@@ -1808,6 +1808,9 @@ def _load_dataset(path: Path) -> pd.DataFrame:
         raise FileNotFoundError(path)
     if path.suffix == ".parquet":
         frame = pd.read_parquet(path)
+    elif path.name=='features.delta.json':
+        from .dataset_delta import read_feature_table
+        frame=read_feature_table(path)
     else:
         frame = pd.read_csv(path, low_memory=False)
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
