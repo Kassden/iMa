@@ -32,7 +32,7 @@ from .research_worker_runtime import BoundedFitExecutor, active_attempt_summary,
 from .research_runtime_history import RuntimeHistory, read_own_unit_journal
 from .research_planning import planning_reason, observe_material_result
 from .research_storage import StorageBlocked, as_storage_blocked, storage_writer
-from .research_dataset_capacity import dataset_storage_estimate
+from .research_dataset_capacity import cooperating_output_reservation
 from .experiment_discipline import admit_decision, lifecycle_snapshot, planner_view, resolve_reused_attempt, reconcile_reused_tells
 
 
@@ -600,7 +600,7 @@ def _worker(request, workload, threads):
 
 
 @storage_writer(stage='program_preparation',output=lambda a:Path(a['root']),
-                estimate=lambda a:max(64*1024**2,6*dataset_storage_estimate(Path(a['dataset']))))
+                estimate=lambda a:cooperating_output_reservation(Path(a['dataset'])))
 def _prepare_program(dataset, recipe, digest, root):
     from .research_resources import JobMonitor
     with JobMonitor() as monitor:

@@ -9,6 +9,17 @@ from pathlib import Path
 DELTA_FORMAT = "ima.dataset.delta.v2"
 
 
+def cooperating_output_reservation(path):
+    """Initial disk allowance for writers that extend leases before every payload.
+
+    Decoded input size is a RAM estimate, not a forecast of output disk growth.
+    Keep the existing representation/checksum preflight; nested caches/packages
+    own their reservations and ReservedFile extends before additional writes.
+    """
+    dataset_storage_estimate(path)
+    return 64 * 1024**2
+
+
 def _digest(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:

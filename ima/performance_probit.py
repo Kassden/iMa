@@ -8,7 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import tempfile
+import uuid
 import time
 from time import perf_counter
 import warnings
@@ -23,6 +23,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from .performance_distributions import PerformanceDistribution, _row_keys
+from .research_storage import reserved_output_file, storage_writer
 
 
 def _array_digest(values):
@@ -80,13 +81,17 @@ def _read_warmstart(path, key, dimension):
         return None
 
 
+@storage_writer(stage="probit_warmstart", output=lambda args: Path(args["path"]).parent,
+                estimate=lambda args: max(64 * 1024, args["coefficients"].size * 64 + 64 * 1024))
 def _write_warmstart(path, key, coefficients):
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     record = {"schema_version": 1, "key": key, "coefficients": coefficients.tolist(),
               "coefficients_hash": _array_digest(coefficients)}
-    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name+"-")
+    temporary = path.parent / (path.name + "-" + uuid.uuid4().hex)
     try:
-        with os.fdopen(fd, "w") as stream:
+        with reserved_output_file(temporary, "x") as stream:
+            os.fchmod(stream.fileno(), 0o600)
             json.dump(record, stream, sort_keys=True, allow_nan=False)
             stream.flush()
             os.fsync(stream.fileno())

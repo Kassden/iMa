@@ -29,7 +29,7 @@ from .research_models import ResearchClassifier, ResearchRegressor, secondary_ta
 from .research_preparation import PreparationArtifact, PreparationCacheWaitTimeout
 from .research_specs import PerformanceDistributionSpec, PipelineRecipe, is_fundamental_first_portfolio
 from .research_storage import StorageBlocked, as_storage_blocked, storage_writer, reserved_output_file
-from .research_dataset_capacity import dataset_storage_estimate
+from .research_dataset_capacity import cooperating_output_reservation
 from .research_targets import apply_target_contract, target_contract
 from .research_transforms import (
     FittedResearchTransforms,
@@ -303,7 +303,7 @@ def _load_recipe_features(request):
 
 
 @storage_writer(stage='fold_dependency',output=lambda a:a['request'].output_dir,
-    estimate=lambda a:max(64*1024**2,6*dataset_storage_estimate(a['request'].dataset_path)))
+    estimate=lambda a:cooperating_output_reservation(a['request'].dataset_path))
 def prepare_recipe_folds(request: RecipeExecutionRequest) -> dict[str, PreparationArtifact]:
     """Prewarm all flat V3 folds without fitting the target estimator.
 
@@ -575,7 +575,7 @@ def _read_direct_parquet_fold(request, race_ids):
 
 
 @storage_writer(stage='model_fit',output=lambda a:a['request'].output_dir,
-    estimate=lambda a:max(64*1024**2,6*dataset_storage_estimate(a['request'].dataset_path)))
+    estimate=lambda a:cooperating_output_reservation(a['request'].dataset_path))
 def execute_recipe(request: RecipeExecutionRequest) -> RecipeExecutionResult:
     """Train/evaluate one recipe and atomically persist its accepted artifacts."""
     started = time.perf_counter()
