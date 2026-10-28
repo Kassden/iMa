@@ -176,6 +176,34 @@ class BoundedWorkers(unittest.TestCase):
             pool.return_value.schedule.assert_not_called()
             self.assertEqual([], list(Path(root).glob('runtime.json-*')))
 
+    def test_supervisor_rejects_a_result_from_a_replaced_assignment(self):
+        with tempfile.TemporaryDirectory() as root, patch('pebble.ProcessPool') as pool:
+            path=Path(root)/'runtime.json'
+            raw=Future()
+            pool.return_value.schedule.return_value=raw
+            with BoundedFitExecutor(1) as executor:
+                future=executor.submit(quick,1,runtime_path=path,timeout=60)
+                replacement=read_runtime(path)|{'task_nonce':'replacement','status':'finished'}
+                path.write_text(json.dumps(replacement))
+                raw.set_result(2)
+                with self.assertRaisesRegex(RuntimeError,'assignment changed'):
+                    future.result()
+                self.assertEqual(replacement,read_runtime(path))
+
+    def test_supervisor_rejects_a_finished_result_past_its_deadline(self):
+        with tempfile.TemporaryDirectory() as root, patch('pebble.ProcessPool') as pool:
+            path=Path(root)/'runtime.json'
+            raw=Future()
+            pool.return_value.schedule.return_value=raw
+            with BoundedFitExecutor(1) as executor:
+                future=executor.submit(quick,1,runtime_path=path,timeout=60)
+                state=read_runtime(path)|{'status':'finished','deadline_at':'2000-01-01T00:00:00+00:00'}
+                path.write_text(json.dumps(state))
+                raw.set_result(2)
+                with self.assertRaises(TimeoutError):future.result()
+                self.assertEqual('timed_out',read_runtime(path)['status'])
+                self.assertNotIn('supervisor_accepted_at',read_runtime(path))
+
     def test_queue_expiry_cancels_without_entering_function(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)
