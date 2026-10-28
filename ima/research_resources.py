@@ -394,14 +394,15 @@ class JobEstimator:
 
 def observe_process_tree(pid=None):
     if psutil is None:
-        return {"supported":False,"reason":"psutil unavailable"}
+        return {"supported":False,"reason":"psutil unavailable","private_processes":{}}
     try:
         root = psutil.Process(pid or os.getpid())
         processes = [root,*root.children(recursive=True)]
     except psutil.Error as exc:
-        return {"supported":False,"reason":f"process tree unavailable: {type(exc).__name__}"}
+        return {"supported":False,"reason":f"process tree unavailable: {type(exc).__name__}","private_processes":{}}
     totals = {"rss_bytes":0,"uss_bytes":0,"pss_bytes":0,"cpu_seconds":0.,"read_bytes":0,"write_bytes":0,"processes":0,"threads":0}
     has_uss, has_pss, has_io = True, True, True
+    private_processes = {}
     for process in processes:
         try:
             try:
@@ -423,10 +424,108 @@ def observe_process_tree(pid=None):
                 totals["write_bytes"] += io.write_bytes
             except (AttributeError,psutil.Error):
                 has_io = False
+            if hasattr(memory, "uss"):
+                try:
+                    private_processes[process.pid] = {
+                        "pid":process.pid,"ppid":process.ppid(),
+                        "create_time":process.create_time(),"private_bytes":memory.uss}
+                except (AttributeError,psutil.Error):
+                    pass
         except (psutil.NoSuchProcess,psutil.AccessDenied):
             continue
     totals.update(supported=totals["processes"]>0,memory_metric="uss" if has_uss else "rss_fallback",private_bytes=totals["uss_bytes"] if has_uss else totals["rss_bytes"],pss_supported=has_pss,io_supported=has_io)
+    totals["private_processes"] = private_processes if has_uss else {}
     return totals
+
+
+def partition_worker_private(sample, worker_runtimes):
+    """Partition one USS observation using parsed runtime records, without I/O.
+
+    worker_runtimes maps reservation keys to runtime.json objects. Only running
+    roots with matching top-level PID and process_identity PID/create_time own
+    sampled descendants. Unknown identities and overlapping roots stay resident.
+    workers[key].private_current_bytes is sampled, never heartbeat/peak bytes.
+    workers[key].private_peak_bytes suggests max(current, trusted runtime peak);
+    callers must also retain their existing JobEstimate floor and RAM guards.
+    """
+    if not isinstance(sample, dict) or not isinstance(worker_runtimes, dict):
+        raise ValueError("Sample and worker runtimes must be objects")
+    if sample.get("supported") is True and "private_bytes" not in sample:
+        raise ValueError("Supported sample requires aggregate private_bytes")
+    aggregate = sample.get("private_bytes", 0)
+    if type(aggregate) is not int or aggregate < 0:
+        raise ValueError("Sample private_bytes must be a nonnegative integer")
+    result = {"resident_private_bytes":aggregate,"workers":{}}
+    raw = sample.get("private_processes")
+    if sample.get("supported") is not True or sample.get("memory_metric") != "uss" or not isinstance(raw, dict):
+        return result
+
+    def pid_value(value):
+        return type(value) is int and value > 0
+
+    def created(value):
+        return type(value) in (int, float) and math.isfinite(value) and value > 0
+
+    nodes, duplicate_pids, seen_pids = {}, set(), set()
+    for key, row in raw.items():
+        if not isinstance(row, dict):
+            continue
+        pid = row.get("pid")
+        if not pid_value(pid) or not (type(key) is int and key == pid or type(key) is str and key == str(pid)):
+            continue
+        if pid in seen_pids:
+            duplicate_pids.add(pid)
+        seen_pids.add(pid)
+        parent, size = row.get("ppid"), row.get("private_bytes")
+        if (type(parent) is not int or parent < 0 or parent == pid
+                or not created(row.get("create_time")) or type(size) is not int or size < 0):
+            continue
+        nodes[pid] = row
+    for pid in duplicate_pids:
+        nodes.pop(pid, None)
+    if sum(row["private_bytes"] for row in nodes.values()) > aggregate:
+        return result
+
+    def ancestors(pid):
+        chain = []
+        while pid in nodes:
+            if pid in chain:
+                return None
+            chain.append(pid)
+            parent = nodes[pid]["ppid"]
+            if parent in nodes and nodes[parent]["create_time"] > nodes[pid]["create_time"]:
+                return None
+            pid = parent
+        return chain
+
+    chains = {pid:ancestors(pid) for pid in nodes}
+    candidates, claims = {}, {}
+    for key, runtime in worker_runtimes.items():
+        if isinstance(runtime, dict):
+            identity = runtime.get("process_identity")
+            identity = identity if isinstance(identity, dict) else {}
+            pid = runtime.get("pid")
+            # Even unverified declared roots block conflicting ownership claims.
+            claims[key] = {value for value in (pid, identity.get("pid")) if pid_value(value)}
+            if (runtime.get("status") == "running" and pid_value(pid)
+                    and identity.get("pid") == pid and type(identity.get("pid")) is int
+                    and created(identity.get("create_time"))):
+                row = nodes.get(pid)
+                if row is not None and identity["create_time"] == row["create_time"] and chains[pid] is not None:
+                    candidates[key] = pid
+    for key, root in candidates.items():
+        if any(other != key and any(pid == root or (
+                chains.get(pid) is not None and root in chains[pid]) or (
+                chains[root] is not None and pid in chains[root]) for pid in roots)
+               for other, roots in claims.items()):
+            continue
+        current = sum(nodes[pid]["private_bytes"] for pid, chain in chains.items()
+                      if chain is not None and root in chain)
+        peak = worker_runtimes[key].get("private_peak_bytes")
+        peak = peak if type(peak) is int and peak >= 0 else 0
+        result["workers"][key] = {"private_current_bytes":current,"private_peak_bytes":max(current, peak)}
+    result["resident_private_bytes"] = aggregate - sum(worker["private_current_bytes"] for worker in result["workers"].values())
+    return result
 
 
 def observe_cgroup():

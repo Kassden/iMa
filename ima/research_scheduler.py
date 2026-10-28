@@ -1,7 +1,7 @@
 """Resource reservations for continuous single-host dispatch."""
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .research_resources import GIB, JobEstimate
 
@@ -18,7 +18,7 @@ class ResourceRequest:
 
 
 class ResourceAdmission:
-    def __init__(self, max_jobs, cpu_threads, ram_gib, *, resident_gib=0, emergency_gib=0, max_preparations=None, max_fits=None, max_expensive_fits=None, aging_seconds=30):
+    def __init__(self, max_jobs, cpu_threads, ram_gib, *, resident_gib=0, emergency_gib=0, max_preparations=None, max_fits=None, max_expensive_fits=None, max_cold_expensive_fits=4, aging_seconds=30):
         if min(max_jobs,cpu_threads,ram_gib) <= 0:
             raise ValueError("Resource budgets must be positive")
         self.max_jobs, self.cpu_threads, self.ram_gib = max_jobs,cpu_threads,ram_gib
@@ -27,6 +27,9 @@ class ResourceAdmission:
         self.max_preparations = max_preparations
         self.max_fits = max_fits
         self.max_expensive_fits = max_expensive_fits
+        if type(max_cold_expensive_fits) is not int or max_cold_expensive_fits < 1:
+            raise ValueError("Positive integer cold expensive fit limit required")
+        self.max_cold_expensive_fits = max_cold_expensive_fits
         self.aging_seconds = aging_seconds
         self.memory_headroom_gib = None
         self.cgroup_headroom_gib = None
@@ -53,9 +56,35 @@ class ResourceAdmission:
         return shared
 
     def set_headroom(self, *, memory_available_gib=None, cgroup_available_gib=None, disk_available_bytes=None):
+        """Replace cached headroom with a fresh observation from the host/cgroup."""
         self.memory_headroom_gib = memory_available_gib
         self.cgroup_headroom_gib = cgroup_available_gib
         self.disk_headroom_bytes = disk_available_bytes
+
+    def observe_private_peak(self, key, private_peak_bytes):
+        """Raise an active reservation's floor and charge cached headroom for growth.
+
+        Headroom deductions are temporary between fresh set_headroom() samples.
+        A fresh sample replaces them; peak growth observed afterward is deducted
+        until the next sample so another reservation cannot use stale headroom.
+        """
+        if key not in self.active or type(private_peak_bytes) is not int or private_peak_bytes < 0:
+            raise ValueError("Known reservation and nonnegative integer peak required")
+        request = self.active[key]
+        previous_private_gib = self._private(request)
+        if isinstance(request, JobEstimate):
+            updated = replace(request, private_peak_bytes=max(request.private_peak_bytes, private_peak_bytes))
+        elif private_peak_bytes > request.ram_gib*GIB:
+            updated = replace(request, ram_gib=private_peak_bytes/GIB)
+        else:
+            updated = request
+        increase_gib = max(0, self._private(updated) - previous_private_gib)
+        self.active[key] = updated
+        if increase_gib:
+            if self.memory_headroom_gib is not None:
+                self.memory_headroom_gib -= increase_gib
+            if self.cgroup_headroom_gib is not None:
+                self.cgroup_headroom_gib -= increase_gib
 
     def blockers(self, request):
         requests = [*self.active.values(),request]
@@ -82,7 +111,7 @@ class ResourceAdmission:
             reasons.append("max_fits")
         if self.max_expensive_fits is not None and expensive_fit(request) and sum(expensive_fit(r) for r in self.active.values()) >= self.max_expensive_fits:
             reasons.append("max_expensive_fits")
-        if expensive_fit(request) and request.confidence!="measured_exact_workload" and any(expensive_fit(r) for r in self.active.values()):
+        if cold_expensive_fit(request) and sum(cold_expensive_fit(r) for r in self.active.values()) >= self.max_cold_expensive_fits:
             reasons.append("cold_expensive_family")
         return reasons
 
@@ -114,6 +143,7 @@ class ResourceAdmission:
         shared = sum(self._shared(self.active.values()).values())/GIB
         result = {"running_jobs":len(self.active),"reserved_cpu_threads":sum(r.cpu_threads for r in self.active.values()),"reserved_ram_gib":private+shared,"max_jobs":self.max_jobs,"cpu_budget":self.cpu_threads,"ram_budget_gib":self.ram_gib}
         result.update(max_fits=self.max_fits,max_expensive_fits=self.max_expensive_fits)
+        result.update(running_cold_expensive_fits=sum(cold_expensive_fit(r) for r in self.active.values()),max_cold_expensive_fits=self.max_cold_expensive_fits)
         if shared or any(isinstance(r,JobEstimate) for r in self.active.values()) or self.resident_gib or self.emergency_gib:
             result.update(private_ram_gib=private,shared_ram_gib=shared,resident_gib=self.resident_gib,emergency_gib=self.emergency_gib,admission_blockers=dict(self.last_blockers))
         return result
@@ -161,6 +191,10 @@ def memory_budget_gib(memory_budget_gb_decimal):
 def expensive_fit(request):
     return isinstance(request,JobEstimate) and request.stage in {"fit","graph_component"} and (
         "gaussian_probit" in request.family or request.family.startswith("graph:"))
+
+
+def cold_expensive_fit(request):
+    return expensive_fit(request) and request.confidence != "measured_exact_workload"
 
 
 def fair_program_order(program_ids, reservations):

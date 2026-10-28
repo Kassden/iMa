@@ -1,7 +1,10 @@
 import unittest
 import tempfile
+import copy
+import json
+from types import SimpleNamespace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from ima.research_resources import (
     AdmissionPolicy,
@@ -15,6 +18,8 @@ from ima.research_resources import (
     ProgressiveCapacity,
     estimate_job,
     observe_cgroup,
+    observe_process_tree,
+    partition_worker_private,
 )
 
 
@@ -185,6 +190,153 @@ class RecoveryCapacityTests(unittest.TestCase):
         for baseline in (-1, 1.5, True):
             with self.assertRaises(ValueError):
                 ProgressiveCapacity(representative_baseline=baseline)
+
+
+def process_sample(rows, total=None, metric="uss"):
+    return {"supported":True,"memory_metric":metric,
+            "private_bytes":sum(row["private_bytes"] for row in rows) if total is None else total,
+            "private_processes":{row["pid"]:row for row in rows}}
+
+
+def private_process(pid, ppid, size, created=None):
+    return {"pid":pid,"ppid":ppid,"create_time":pid if created is None else created,"private_bytes":size}
+
+
+def worker_runtime(pid, created=None, peak=0):
+    return {"status":"running","pid":pid,"private_peak_bytes":peak,
+            "private_current_bytes":999999999999,
+            "process_identity":{"pid":pid,"create_time":pid if created is None else created}}
+
+
+class WorkerPrivatePartitionTests(unittest.TestCase):
+    def test_current_tree_partition_and_peak_floor_without_resampling(self):
+        sample = process_sample([private_process(10, 0, 100), private_process(20, 10, 400),
+                                 private_process(30, 20, 600), private_process(40, 10, 50)])
+        runtimes = {"prep":worker_runtime(20, peak=2000), "fit":worker_runtime(40, peak=10)}
+        before = copy.deepcopy((sample, runtimes))
+        with patch("ima.research_resources.psutil") as ps:
+            result = partition_worker_private(sample, runtimes)
+            ps.Process.assert_not_called()
+        self.assertEqual(result, {"resident_private_bytes":100,"workers":{
+            "prep":{"private_current_bytes":1000,"private_peak_bytes":2000},
+            "fit":{"private_current_bytes":50,"private_peak_bytes":50}}})
+        self.assertEqual((sample, runtimes), before)
+        self.assertEqual(result, partition_worker_private(sample, runtimes))
+        self.assertEqual(result, partition_worker_private(json.loads(json.dumps(sample)), runtimes))
+
+    def test_large_live_prep_is_counted_once_and_never_lowered_to_estimate(self):
+        sample = process_sample([private_process(10, 0, GIB), private_process(20, 10, 61 * GIB)])
+        result = partition_worker_private(sample, {"prep":worker_runtime(20, peak=21 * GIB)})
+        self.assertEqual(result["resident_private_bytes"], GIB)
+        self.assertEqual(result["workers"]["prep"], {"private_current_bytes":61 * GIB,"private_peak_bytes":61 * GIB})
+
+    def test_missing_malformed_stopped_and_reused_pid_remain_resident(self):
+        sample = process_sample([private_process(10, 0, 100), private_process(20, 10, 400)])
+        for runtime in (None, {}, {"pid":20}, worker_runtime(20, created=19),
+                worker_runtime(30), dict(worker_runtime(20), status="completed"),
+                dict(worker_runtime(20), pid=30), dict(worker_runtime(20), process_identity={"pid":20}),
+                worker_runtime(20, created=True), worker_runtime(20, created=float("nan"))):
+            with self.subTest(runtime=runtime):
+                self.assertEqual(partition_worker_private(sample, {"job":runtime}),
+                                 {"resident_private_bytes":500,"workers":{}})
+
+    def test_nested_duplicate_and_unverified_overlapping_roots_do_not_subtract(self):
+        sample = process_sample([private_process(10, 0, 100), private_process(20, 10, 400),
+                                 private_process(30, 20, 600), private_process(40, 10, 50)])
+        for conflicting in (worker_runtime(20), worker_runtime(30), worker_runtime(30, created=29),
+                            dict(worker_runtime(30), status="completed")):
+            runtimes = {"parent":worker_runtime(20), "conflict":conflicting, "other":worker_runtime(40)}
+            self.assertEqual(partition_worker_private(sample, runtimes),
+                             {"resident_private_bytes":1100,"workers":{
+                                 "other":{"private_current_bytes":50,"private_peak_bytes":50}}})
+
+    def test_missing_descendant_identity_or_ancestor_stays_resident(self):
+        rows = [private_process(10, 0, 100), private_process(20, 10, 400),
+                private_process(30, 20, 600), private_process(40, 30, 50)]
+        rows[2].pop("create_time")
+        result = partition_worker_private(process_sample(rows), {"worker":worker_runtime(20)})
+        self.assertEqual(result, {"resident_private_bytes":750,"workers":{
+            "worker":{"private_current_bytes":400,"private_peak_bytes":400}}})
+
+    def test_cycles_parent_pid_reuse_and_duplicate_sample_pid_are_conservative(self):
+        for rows in ([private_process(20, 30, 400), private_process(30, 20, 600)],
+                     [private_process(20, 0, 400, created=50), private_process(30, 20, 600, created=30)]):
+            sample = process_sample(rows)
+            result = partition_worker_private(sample, {"worker":worker_runtime(20)})
+            self.assertEqual(result, {"resident_private_bytes":1000,"workers":{}})
+        sample = process_sample([private_process(20, 0, 400)])
+        sample["private_processes"]["20"] = private_process(20, 0, 400)
+        self.assertEqual(partition_worker_private(sample, {"worker":worker_runtime(20)}),
+                         {"resident_private_bytes":400,"workers":{}})
+
+    def test_fallback_malformed_samples_and_invalid_peak_cannot_reduce_resident(self):
+        for sample in ({}, {"private_bytes":500}, process_sample([private_process(20, 0, 500)], metric="rss_fallback"),
+                       {"supported":True,"memory_metric":"uss","private_bytes":500,"private_processes":[]},
+                       process_sample([private_process(20, 0, 500)], total=100)):
+            self.assertEqual(partition_worker_private(sample, {"worker":worker_runtime(20)}),
+                             {"resident_private_bytes":sample.get("private_bytes", 0),"workers":{}})
+        for sample, runtimes in ((None, {}), ({"private_bytes":-1}, {}),
+                                 ({"private_bytes":float("nan")}, {}), ({}, None),
+                                 ({"supported":True,"memory_metric":"uss","private_processes":{}}, {})):
+            with self.assertRaises(ValueError):
+                partition_worker_private(sample, runtimes)
+        sample = process_sample([private_process(20, 0, 500)])
+        for peak in (None, -1, True, "10000", float("inf")):
+            self.assertEqual(partition_worker_private(sample, {"worker":worker_runtime(20, peak=peak)})["workers"],
+                             {"worker":{"private_current_bytes":500,"private_peak_bytes":500}})
+
+
+class ProcessPrivateSampleTests(unittest.TestCase):
+    def process(self, pid, ppid, uss=100):
+        process = Mock(pid=pid)
+        process.ppid.return_value = ppid
+        process.create_time.return_value = float(pid)
+        process.memory_full_info.return_value = SimpleNamespace(rss=500, uss=uss, pss=200)
+        process.cpu_times.return_value = SimpleNamespace(user=2, system=1)
+        process.num_threads.return_value = 2
+        process.io_counters.return_value = SimpleNamespace(read_bytes=10, write_bytes=20)
+        return process
+
+    def test_observer_map_uses_exactly_once_sampled_uss_and_existing_totals(self):
+        root, child = self.process(10, 0), self.process(20, 10, 300)
+        root.children.return_value = [child]
+        with patch("ima.research_resources.psutil.Process", return_value=root):
+            sample = observe_process_tree(10)
+        self.assertEqual(sample["private_processes"], {10:private_process(10, 0, 100), 20:private_process(20, 10, 300)})
+        self.assertEqual(sample["private_bytes"], 400)
+        self.assertEqual(sample["rss_bytes"], 1000)
+        self.assertEqual(sample["cpu_seconds"], 6)
+        self.assertEqual(sample["processes"], 2)
+        for process in (root, child):
+            process.memory_full_info.assert_called_once_with()
+            process.memory_info.assert_not_called()
+            process.ppid.assert_called_once_with()
+            process.create_time.assert_called_once_with()
+
+    def test_any_rss_fallback_discards_private_map(self):
+        import psutil
+        root, child = self.process(10, 0), self.process(20, 10)
+        root.children.return_value = [child]
+        child.memory_full_info.side_effect = psutil.AccessDenied(20)
+        child.memory_info.return_value = SimpleNamespace(rss=700)
+        with patch("ima.research_resources.psutil.Process", return_value=root):
+            sample = observe_process_tree(10)
+        self.assertEqual(sample["private_processes"], {})
+        self.assertEqual(sample["memory_metric"], "rss_fallback")
+        self.assertEqual(sample["private_bytes"], 1200)
+
+    def test_disappearing_child_identity_keeps_sampled_bytes_resident(self):
+        import psutil
+        root, child = self.process(10, 0), self.process(20, 10, 300)
+        root.children.return_value = [child]
+        child.create_time.side_effect = psutil.NoSuchProcess(20)
+        with patch("ima.research_resources.psutil.Process", return_value=root):
+            sample = observe_process_tree(10)
+        self.assertEqual(sample["private_bytes"], 400)
+        self.assertEqual(sample["private_processes"], {10:private_process(10, 0, 100)})
+        self.assertEqual(partition_worker_private(sample, {"worker":worker_runtime(20)}),
+                         {"resident_private_bytes":400,"workers":{}})
+        child.memory_full_info.assert_called_once_with()
 
 
 class OwnCgroupTests(unittest.TestCase):
