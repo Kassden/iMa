@@ -136,7 +136,7 @@ def promotion_view(registry_root, reference, *, limit=20):
     return result
 
 
-def validate_successor(parent, child):
+def validate_successor(parent, child, *, return_parent=False):
     """Validate real logical data, including all labels and unchanged parent values."""
     import pandas as pd
     if child.get("parent_dataset_id") != parent["dataset_id"]:
@@ -155,11 +155,13 @@ def validate_successor(parent, child):
         pd.testing.assert_frame_equal(old.reset_index(drop=True), new[old.columns].reset_index(drop=True), check_exact=True)
     except AssertionError as exc:
         raise ValueError("Transfer changes parent values, labels, row order or population") from exc
+    if return_parent:
+        return old
 
 
 def transfer_plan(registry_root, build_id, reference, *, destination=None):
     from .research_specs import PipelineRecipe
-    from .research_executor import _effective_schema
+    from .research_executor import RecipeExecutionRequest, _effective_frame_schema, _v6_feature_frame
     reference_id = reference_identity(reference)
     lifecycle = FeatureLifecycle(registry_root)
     receipt = lifecycle.receipt(build_id)
@@ -167,7 +169,7 @@ def transfer_plan(registry_root, build_id, reference, *, destination=None):
         raise ValueError("Transfer needs a ready complete bundle")
     parent = lifecycle.registry.verify(reference["parent_dataset_id"])
     child = lifecycle.registry.verify(receipt["dataset_id"])
-    validate_successor(parent, child)
+    parent_frame = validate_successor(parent, child, return_parent=True)
     control = PipelineRecipe.model_validate(reference["recipe"]).canonical_payload()
     if control.get("dataset_ref") != parent["dataset_id"]:
         raise ValueError("Reference recipe must bind the exact parent dataset")
@@ -177,29 +179,61 @@ def transfer_plan(registry_root, build_id, reference, *, destination=None):
                 "target_contract": PipelineRecipe.model_validate(control).target.kind}
     if any(contract.get(k) != v for k, v in expected.items()):
         raise ValueError("Pinned reference differs from parent comparison contract")
-    if control.get("feature_discovery") or control.get("feature_definitions") or control.get("transforms"):
+    if control.get("feature_discovery") or control.get("feature_definitions"):
         raise ValueError("Adaptive/derived schemas require an explicitly frozen reference first")
+    # Registered transforms are already an explicit frozen recipe. Both arms
+    # retain the exact specifications and fit any state on the same past rows.
+    # Rejecting them would exclude the actual rich champion from transfers.
     features = sorted(child["feature_build"]["feature_names"])
-    if not features or set(features) & set(control.get("extra_numeric_features") or ()):
+    if (not features or set(features) & set(parent_frame.columns)
+            or set(features) & set(control.get("extra_numeric_features") or ())):
         raise ValueError("Complete bundle must add new feature columns")
     graph = control.get("pipeline_graph")
     if graph:
+        from .pipeline_graph import PipelineGraph
+        PipelineGraph.from_dict(graph).validate()
         nodes = {node["node_id"]: node for node in graph["nodes"]}
         if destination not in nodes or nodes[destination]["kind"] != "estimator":
             raise ValueError("Declare an estimator destination for graph transfers")
-        base = list(dict.fromkeys([*_effective_schema(PipelineRecipe.model_validate(control)).features,
-                                  *(control.get("extra_numeric_features") or ())]))
-        for node in nodes.values():
+        control_recipe = PipelineRecipe.model_validate(control)
+        schema_request = RecipeExecutionRequest("transfer-schema", "transfer-plan", 0, control_recipe,
+            Path(parent["features_path"]), Path(parent["features_path"]).parent)
+        parent_frame = _v6_feature_frame(parent_frame, schema_request)
+        base = list(_effective_frame_schema(control_recipe, parent_frame).features)
+        for node in list(nodes.values()):
             if node["kind"] == "estimator":
-                node["parameters"].setdefault("features", base)
+                # Feature routing belongs to graph feature_view nodes. An
+                # estimator's parameters are model options, not feature lists.
+                if not node.get("inputs"):
+                    key = "transfer_features_" + node["node_id"]
+                    while key in nodes:
+                        key += "_"
+                    view = {"node_id": key, "kind": "feature_view", "inputs": [],
+                            "parameters": {"features": list(base)},
+                            "output": {"kind": "feature_frame", "unit": "features"}}
+                    graph["nodes"].append(view)
+                    nodes[key] = view
+                    node["inputs"] = [key]
     elif destination not in (None, "model"):
         raise ValueError("Non-graph destination must be model")
     candidate = deepcopy(control)
     candidate["dataset_ref"] = child["dataset_id"]
     candidate["extra_numeric_features"] = list(control.get("extra_numeric_features") or ()) + features
     if graph:
-        node = next(n for n in candidate["pipeline_graph"]["nodes"] if n["node_id"] == destination)
-        node["parameters"]["features"] = list(node["parameters"]["features"]) + features
+        candidate_graph = candidate["pipeline_graph"]
+        nodes = {n["node_id"]: n for n in candidate_graph["nodes"]}
+        node = nodes[destination]
+        # Clone even an existing shared view: changing one estimator must not
+        # add the bundle to another estimator through its shared parent.
+        view = deepcopy(nodes[node["inputs"][0]])
+        key = "transfer_bundle_" + destination
+        while key in nodes:
+            key += "_"
+        view["node_id"] = key
+        view["parameters"]["features"] = list(view["parameters"].get("features", base)) + features
+        candidate_graph["nodes"].append(view)
+        node["inputs"] = [key]
+        PipelineGraph.from_dict(candidate_graph).validate()
     control = PipelineRecipe.model_validate(control).canonical_payload()
     candidate = PipelineRecipe.model_validate(candidate).canonical_payload()
     plan = {"reference_id": reference_id, "reference": deepcopy(reference), "build_id": build_id,
@@ -221,8 +255,9 @@ def attribution_recipes(plan):
         recipe = deepcopy(plan["candidate_recipe"])
         recipe["extra_numeric_features"].remove(feature)
         if recipe.get("pipeline_graph"):
-            node = next(n for n in recipe["pipeline_graph"]["nodes"] if n["node_id"] == plan["destination"])
-            node["parameters"]["features"].remove(feature)
+            nodes = {n["node_id"]: n for n in recipe["pipeline_graph"]["nodes"]}
+            node = nodes[plan["destination"]]
+            nodes[node["inputs"][0]]["parameters"]["features"].remove(feature)
         variants["without-"+feature] = recipe
     return variants
 

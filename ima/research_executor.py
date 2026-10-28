@@ -480,13 +480,7 @@ def _recipe_fold_inputs(request, frame):
         labelled = _graph_target_labels(labelled, PipelineGraph.from_dict(recipe.pipeline_graph))
         exclusions["graph_untimed_or_unlabelled_races"] = int(before-labelled.race_id.nunique())
         labelled.attrs["dataset_exclusions"] = exclusions
-    schema = _effective_schema(recipe)
-    if recipe.schema_version == 3:
-        schema = FeatureSchema(schema.name, tuple(dict.fromkeys((*schema.numeric,
-            *(recipe.extra_numeric_features or ()), *frame.attrs.get("formula_features", ())))), schema.categorical)
-        ineligible = set(frame.attrs.get("ineligible_predictors", ()))
-        schema = FeatureSchema(schema.name, tuple(c for c in schema.numeric if c not in ineligible),
-                               tuple(c for c in schema.categorical if c not in ineligible))
+    schema = _effective_frame_schema(recipe, frame)
     labelled = _ensure_feature_columns(labelled, schema)
     protocol_parameters = dict(request.protocol_parameters)
     if recipe.schema_version == 3:
@@ -1364,6 +1358,18 @@ def _effective_schema(recipe: PipelineRecipe) -> FeatureSchema:
     return drop_feature_families(
         FEATURE_SCHEMAS[recipe.feature_schema], recipe.drop_feature_families
     )
+
+
+def _effective_frame_schema(recipe: PipelineRecipe, frame: pd.DataFrame) -> FeatureSchema:
+    """One source of truth for registry eligibility and explicit feature extras."""
+    schema = _effective_schema(recipe)
+    if recipe.schema_version == 3:
+        schema = FeatureSchema(schema.name, tuple(dict.fromkeys((*schema.numeric,
+            *(recipe.extra_numeric_features or ()), *frame.attrs.get("formula_features", ())))), schema.categorical)
+        ineligible = set(frame.attrs.get("ineligible_predictors", ()))
+        schema = FeatureSchema(schema.name, tuple(c for c in schema.numeric if c not in ineligible),
+                               tuple(c for c in schema.categorical if c not in ineligible))
+    return schema
 
 
 def _discovery_diagnostics(fitted, train, calibration, score, recipe, output, fold_id, *, prepared=False):

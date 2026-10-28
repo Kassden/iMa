@@ -39,6 +39,50 @@ def test_real_complete_bundle_transfer_persists_matched_control_and_negative_evi
     view = promotion_view(explorer.config.registry, ref)
     assert view["transfer_evidence"][0]["transfers"][0]["result"]["paired"] == report
 
+def test_fixed_transformed_graph_champion_accepts_destination_specific_bundle(tmp_path):
+    from tests.test_pipeline_graph import graph_spec
+    explorer, child, ref = setup_transfer(tmp_path)
+    recipe = deepcopy(ref["recipe"])
+    recipe["model"] = {"kind": "benter_conditional_logit", "parameters": {"l2": .2, "max_iter": 40}}
+    recipe["pipeline_graph"] = graph_spec()
+    recipe["calibration"] = {"kind": "none", "parameters": {}}
+    recipe["transforms"] = [
+        {"kind": "signed_log1p", "parameters": {"columns": ["actual_weight"]}},
+        {"kind": "clip_numeric_quantiles", "parameters": {"columns": ["actual_weight"], "lower": .1, "upper": .9}},
+    ]
+    from ima.research_specs import PipelineRecipe
+    frozen_recipe = PipelineRecipe.model_validate(recipe)
+    request = replace(explorer._request("transformed-graph-reference", explorer.parent), recipe=frozen_recipe)
+    reference_result = explorer._execute(request)
+    observation = explorer._observation(reference_result, explorer.parent, [])
+    ref = dict(ref, recipe=frozen_recipe.canonical_payload(), attempt_id=reference_result["attempt_id"],
+               comparison_contract=observation["comparison_contract"])
+    plan = transfer_plan(explorer.config.registry, child["feature_build_id"], ref, destination="boosted")
+    assert plan["control_recipe"]["transforms"] == recipe["transforms"]
+    assert plan["candidate_recipe"]["transforms"] == recipe["transforms"]
+    controls = {n["node_id"]: n for n in plan["control_recipe"]["pipeline_graph"]["nodes"]}
+    candidates = {n["node_id"]: n for n in plan["candidate_recipe"]["pipeline_graph"]["nodes"]}
+    assert candidates["benter"] == controls["benter"]
+    assert candidates["pool"] == controls["pool"]
+    assert candidates["boosted"]["parameters"] == controls["boosted"]["parameters"]
+    control_view = controls[controls["boosted"]["inputs"][0]]
+    candidate_view = candidates[candidates["boosted"]["inputs"][0]]
+    assert candidate_view["parameters"]["features"] == (
+        control_view["parameters"]["features"] + plan["feature_ids"])
+    row = explorer.transfer(child["feature_build_id"], ref, destination="boosted", attribution=True)
+    assert row["status"] == "completed"
+    assert row["result"]["paired"]["races"] > 0
+    original_predictions = pd.read_csv(reference_result["artifacts"]["predictions"])
+    control_predictions = pd.read_csv(row["result"]["control"]["artifacts"]["predictions"])
+    pd.testing.assert_series_equal(original_predictions.model_probability, control_predictions.model_probability,
+                                   check_exact=True)
+    from ima.feature_promotion import attribution_recipes
+    variants = attribution_recipes(plan)
+    for feature in plan["feature_ids"]:
+        ablated = variants["without-" + feature]
+        nodes = {node["node_id"]: node for node in ablated["pipeline_graph"]["nodes"]}
+        assert feature not in nodes[nodes["boosted"]["inputs"][0]]["parameters"]["features"]
+
 
 def test_managed_fit_ignores_interrupted_result_and_reuses_only_matching_acceptance(tmp_path):
     explorer = explorer_fixture(tmp_path)
