@@ -4,6 +4,27 @@ from ima.event_evidence_audit import audit_event_evidence
 
 
 class EventEvidenceAuditTests(unittest.TestCase):
+    def test_family_season_waterfall_is_exclusive_and_preserves_unknowns(self):
+        base = {"family": "trackwork", "horse_id": "HK_2025_A123",
+                "occurred_date": "2025-09-01", "source_observation_id": "row",
+                "source_url": "https://racing.hkjc.com/sample", "source_body_sha256": "a" * 64,
+                "first_seen_at": "2025-09-02T00:00:00Z"}
+        rows = [base, dict(base, occurred_date="2025-08-31", horse_id="Unknown"),
+                dict(base, occurred_date="invalid"), dict(base, source_body_sha256="bad"),
+                dict(base, published_at="2025-09-01T00:00:00Z", publication_verified=True),
+                dict(base, published_at="invalid", publication_verified=True),
+                dict(base, first_seen_at=None)]
+        result = audit_event_evidence(rows)
+        slices = result["availability_waterfall"]["slices"]
+        self.assertEqual(sum(row["observations"] for row in slices), len(rows))
+        for row in slices:
+            self.assertEqual(sum(row["exclusive_reasons"].values()), row["observations"])
+        by_season = {row["season"]: row["exclusive_reasons"] for row in slices}
+        self.assertEqual(by_season["2024-2025"], {"horse_identity_unresolved": 1})
+        self.assertEqual(by_season["unknown"], {"occurrence_missing_or_invalid": 1})
+        self.assertEqual(by_season["2025-2026"]["prospective_capture_only"], 2)
+        self.assertEqual(result["availability"]["verified_publication_available"], 1)
+
     def test_normalized_null_instant_uses_occurrence_date(self):
         result = audit_event_evidence([{"occurred_at": None, "occurred_date": "2025-11-20"}])
         self.assertEqual(result["summary"]["occurrence_timestamp_present"], 1)

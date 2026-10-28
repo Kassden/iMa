@@ -95,6 +95,35 @@ def _new_counts() -> Counter:
     })
 
 
+def _availability_slice(row: Mapping[str, Any]) -> tuple[str, str]:
+    """Descriptive exclusion reasons; never an authorization to train on a row."""
+    occurrence = next((row.get(k) for k in ("occurred_at", "occurred_date", "event_date")
+                       if _present(row.get(k))), None)
+    season = "unknown"
+    if _valid_timestamp(occurrence):
+        instant = pd.Timestamp(occurrence)
+        start = instant.year if instant.month >= 9 else instant.year - 1
+        season = f"{start}-{start + 1}"
+    else:
+        return season, "occurrence_missing_or_invalid"
+    horse = row.get("horse_id")
+    if not isinstance(horse, str) or not _HORSE_ID.fullmatch(horse.strip()):
+        return season, "horse_identity_unresolved"
+    source_hash = row.get("source_body_sha256", row.get("source_body_hash", row.get("body_hash")))
+    if not (_present(row.get("source_observation_id")) and _present(row.get("source_url"))
+            and isinstance(source_hash, str) and re.fullmatch(r"[0-9a-f]{64}", source_hash)):
+        return season, "source_binding_missing_or_malformed"
+    publication_verified = (row.get("publication_verified") is True
+                            or row.get("availability_tier") == "verified_point_in_time")
+    if _valid_timestamp(row.get("published_at")) and publication_verified:
+        return season, "historical_publication_claim_requires_source_review"
+    capture = next((row.get(k) for k in ("first_seen_at", "first_fetched_at", "fetched_at")
+                    if _present(row.get(k))), None)
+    if _valid_timestamp(capture):
+        return season, "prospective_capture_only"
+    return season, "publication_and_capture_unproven"
+
+
 def audit_event_evidence(events: Any) -> dict[str, Any]:
     """Summarize evidence without treating defaults or captures as historical proof.
 
@@ -107,10 +136,13 @@ def audit_event_evidence(events: Any) -> dict[str, Any]:
     families: dict[str, Counter] = defaultdict(_new_counts)
     field_availability = Counter()
     source_rows: dict[str, set[str]] = defaultdict(set)
+    seasons: dict[tuple[str, str], Counter] = defaultdict(Counter)
     for row in rows:
         family = row.get("family", row.get("event_family", "unknown"))
         family = str(family) if _present(family) else "unknown"
         groups = (overall, families[family])
+        season, reason = _availability_slice(row)
+        seasons[(family, season)][reason] += 1
         for key in _AUDITED_FIELDS:
             if key in row and _present(row[key]):
                 field_availability[key] += 1
@@ -153,7 +185,7 @@ def audit_event_evidence(events: Any) -> dict[str, Any]:
             counts["publication_timestamp_valid"] += int(_valid_timestamp(publication))
             counts["publication_verification_true"] += int(publication_verified)
             counts["publication_availability_verified"] += int(
-                _present(publication) and (publication_verified or normalized_publication_verified)
+                _valid_timestamp(publication) and (publication_verified or normalized_publication_verified)
             )
             counts["first_capture_timestamp_present"] += int(_present(capture))
             counts["first_capture_timestamp_valid"] += int(_valid_timestamp(capture))
@@ -201,4 +233,15 @@ def audit_event_evidence(events: Any) -> dict[str, Any]:
             "interpretation": "First capture establishes observation by that time; it never retrospectively validates publication.",
         },
         "groups_by_event_family": {key: unpack(families[key]) for key in sorted(families)},
+        "availability_waterfall": {
+            "season_convention": "September 1 through August 31, assigned from occurrence date; not an official meeting-calendar claim",
+            "priority": ["occurrence_missing_or_invalid", "horse_identity_unresolved",
+                         "source_binding_missing_or_malformed",
+                         "historical_publication_claim_requires_source_review",
+                         "prospective_capture_only", "publication_and_capture_unproven"],
+            "slices": [{"family": family, "season": season,
+                        "observations": sum(counts.values()), "exclusive_reasons": unpack(counts)}
+                       for (family, season), counts in sorted(seasons.items())],
+            "interpretation": "Every observation has one first-failure/evidence reason. Flags and source-hash presence are not independent raw-source verification or feature eligibility.",
+        },
     }
