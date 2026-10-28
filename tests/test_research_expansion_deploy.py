@@ -61,6 +61,14 @@ class ResearchExpansionDeployTests(unittest.TestCase):
             'IMA_V6_CONFIG': str(self.config), 'IMA_V6_PYTHON': str(self.python),
             'IMA_V6_RESEARCH_POLICY': 'expansion_v6',
         }
+        cache_root=self.base/'fold-preparation-cache'
+        cache_root.mkdir(mode=0o700)
+        policy=self.base/'retention-policy.json'
+        policy.write_text(json.dumps({'schema_version':1,
+            'protected_cache_paths':[str(cache_root/('a'*64))]}))
+        policy.chmod(0o400)
+        self.env.update(IMA_CACHE_HOLD_POLICY=str(policy),
+            IMA_CACHE_HOLD_POLICY_SHA256=hashlib.sha256(policy.read_bytes()).hexdigest())
         self.seal()
 
     def seal(self):

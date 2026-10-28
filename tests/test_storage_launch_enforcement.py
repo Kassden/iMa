@@ -44,6 +44,8 @@ def _supervisor_env(tmp_path: Path, interpreter: Path) -> dict[str, str]:
             "IMA_V6_CAMPAIGN": str(tmp_path / "campaign"),
             "IMA_V6_CONFIG": str(tmp_path / "config.json"),
             "IMA_V6_RESEARCH_POLICY": "expansion_v6",
+            "IMA_CACHE_HOLD_POLICY": "/reviewed-fixture-policy.json",
+            "IMA_CACHE_HOLD_POLICY_SHA256": "b" * 64,
         }
     )
     return env
@@ -115,3 +117,15 @@ def test_acquisition_services_set_the_same_scoped_storage_root():
         assert (
             f"Environment=IMA_STORAGE_ROOT={CANONICAL_STORAGE_ROOT}" in service
         ), service_name
+
+
+def test_supervisor_rejects_unpinned_holds_before_interpreter_or_campaign(tmp_path):
+    interpreter,worker=_fake_runtime(tmp_path)
+    env=_supervisor_env(tmp_path,interpreter)
+    env.update(IMA_STORAGE_ROOT=CANONICAL_STORAGE_ROOT,IMA_FAKE_WORKER=str(worker),
+               IMA_STORAGE_CAPTURE=str(tmp_path/'worker-env'))
+    for missing in ('IMA_CACHE_HOLD_POLICY','IMA_CACHE_HOLD_POLICY_SHA256'):
+        selected=dict(env);selected.pop(missing)
+        result=subprocess.run(['bash',str(LAUNCHER),'--check'],env=selected,text=True,capture_output=True)
+        assert result.returncode!=0 and missing in result.stderr
+        assert not (tmp_path/'worker-env').exists() and not (tmp_path/'campaign').exists()

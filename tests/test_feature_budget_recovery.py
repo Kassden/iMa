@@ -10,8 +10,18 @@ def load_budget():
     return module
 
 
-def test_stopped_main_reserves_future_partition_without_fake_cgroup(tmp_path):
+def test_stopped_main_reserves_future_partition_without_fake_cgroup(tmp_path,monkeypatch):
     budget=load_budget(); budget.STATE=tmp_path/'state.json'; budget.DROPIN=tmp_path/'dropin.conf'
+    # Exercise the real admission path in an owned fixture rather than spoofing
+    # process UID and accidentally targeting production control metadata.
+    control=tmp_path/'storage-control';control.mkdir(mode=0o700)
+    monkeypatch.setattr(budget,'OWN_HOME',tmp_path)
+    monkeypatch.setattr(budget,'STORAGE_ROOT',control)
+    monkeypatch.setattr(budget,'require_owner',lambda:budget.require_owner_identity(1001,Path('/home/imaopt')))
+    monkeypatch.setenv('IMA_STORAGE_ROOT',str(control))
+    original_authority=budget.research_storage.StorageAuthority
+    monkeypatch.setattr(budget.research_storage,'StorageAuthority',
+        lambda root:original_authority(root,headroom_bytes=0,headroom_inodes=0))
     limits={'MemoryMax':str(budget.TOTAL_BYTES),'ActiveState':'failed','MainPID':'0',
             'ControlGroup':'','CPUQuotaPerSecUSec':'26s'}
     calls=[]
@@ -20,8 +30,7 @@ def test_stopped_main_reserves_future_partition_without_fake_cgroup(tmp_path):
         calls.append(args)
         for argument in args:
             if argument.startswith('MemoryMax='): limits['MemoryMax']=argument.split('=')[1]
-    with patch.object(budget,'manager',manager),patch.object(budget.subprocess,'run',run), \
-         patch.object(budget.os,'getuid',return_value=1001),patch.object(budget.Path,'home',return_value=Path('/home/imaopt')):
+    with patch.object(budget,'manager',manager),patch.object(budget.subprocess,'run',run):
         budget.main('reserve')
     assert limits['MemoryMax']==str(budget.MODEL_BYTES)
     assert budget.MODEL_BYTES+budget.FEATURE_BYTES==100_000_000_000

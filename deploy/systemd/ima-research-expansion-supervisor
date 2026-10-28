@@ -114,6 +114,9 @@ if [[ "$IMA_STORAGE_ROOT" != "/home/imaopt/research-v2/storage-control" ]]; then
     exit 78
 fi
 
+: "${IMA_CACHE_HOLD_POLICY:?Set reviewed cache retention policy path}"
+: "${IMA_CACHE_HOLD_POLICY_SHA256:?Set reviewed cache retention policy SHA256}"
+
 : "${IMA_V6_RELEASE:?Set immutable V6 release path}"
 : "${IMA_V6_REVISION:?Set expected immutable source revision}"
 : "${IMA_V6_PYTHON:?Set isolated V6 interpreter}"
@@ -142,6 +145,10 @@ import pandas as pd
 from ima.dataset_registry import DatasetRegistry, _digest, _keys, file_sha256
 from ima.optimizer import CampaignConfig
 from scripts.optimize import _load_config
+from ima.research_cache_policy import cache_holds
+
+if not cache_holds():
+    raise SystemExit('Production recovery release requires a nonempty pinned cache retention policy')
 
 base = Path('/home/imaopt/research-v2')
 release = Path(os.environ['IMA_V6_RELEASE'])
