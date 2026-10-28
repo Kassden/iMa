@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import io
+import contextlib
 from datetime import date, datetime, timezone
 from pathlib import Path
 import tempfile
@@ -14,6 +16,23 @@ from ima.research_study_seal import create_study_seal, evaluate_study_seal
 
 
 class ResearchStudySealTests(unittest.TestCase):
+    def test_actual_cli_seals_and_reports_scheduled_without_creating_a_result(self):
+        from scripts.research_confirmation import main
+        manifest=self.root/'manifest.json'
+        manifest.write_text(json.dumps(self.manifest()))
+        output=self.root/'result.json'
+        with contextlib.redirect_stdout(io.StringIO()) as stdout, patch(
+                'ima.research_confirmation._utc_now',
+                return_value=datetime(2098, 12, 31, tzinfo=timezone.utc)):
+            self.assertEqual(main(['seal','--manifest',str(manifest),'--lock',str(self.lock),
+                                   '--output',str(self.seal)]),0)
+        self.assertTrue(self.seal.is_file())
+        self.assertEqual(json.loads(stdout.getvalue())['artifact'],str(self.seal.resolve()))
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(main(['evaluate-study','--seal',str(self.seal),'--output',str(output)]),0)
+        self.assertEqual(json.loads(stdout.getvalue())['status'],'scheduled')
+        self.assertFalse(output.exists())
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)

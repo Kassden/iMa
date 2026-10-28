@@ -55,6 +55,14 @@ def build_parser() -> argparse.ArgumentParser:
     exposure.add_argument('--campaign',required=True)
     exposure.add_argument('--purpose',required=True)
     exposure.add_argument('--evidence',type=Path,required=True)
+    seal=commands.add_parser('seal',help='Freeze forecasts and an explicit source-bound exposure inventory')
+    seal.add_argument('--manifest',type=Path,required=True)
+    seal.add_argument('--lock',type=Path,required=True)
+    seal.add_argument('--output',type=Path,required=True)
+    study=commands.add_parser('evaluate-study',help='Check a study seal and evaluate only after its horizon')
+    study.add_argument('--seal',type=Path,required=True)
+    study.add_argument('--output',type=Path,required=True)
+    study.add_argument('--labels',type=Path)
     return parser
 
 
@@ -80,6 +88,14 @@ def main(argv: list[str] | None = None) -> int:
             receipt=ExposureLedger(args.ledger).record(first_date=args.first_date,last_date=args.last_date,
                 campaign=args.campaign,purpose=args.purpose,evidence=args.evidence)
             print(json.dumps({'command':args.command,'receipt_id':receipt,'ledger':str(args.ledger)}))
+            return 0
+        elif args.command=='seal':
+            from ima.research_study_seal import create_study_seal
+            path=create_study_seal(json.loads(args.manifest.read_text()),args.lock,args.output)
+        elif args.command=='evaluate-study':
+            from ima.research_study_seal import evaluate_study_seal
+            result=evaluate_study_seal(args.seal,args.output,labels_path=args.labels)
+            print(json.dumps({'command':args.command,**result},sort_keys=True))
             return 0
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
