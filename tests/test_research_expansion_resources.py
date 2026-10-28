@@ -207,7 +207,7 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
         with patch("ima.openrouter_orchestrator._post_json", return_value=response) as post:
             choose_research_decision(evidence, {"trial_ceiling":5,"max_new_programs":2},
                                      OpenRouterConfig(api_key="not-used", model="fixture"))
-        advertised = json.loads(post.call_args.args[1]["messages"][1]["content"])["evidence"]
+        advertised = {k: v for m in post.call_args.args[1]["messages"][1:3] for k, v in json.loads(m["content"]).items()}["evidence"]
         instructions = post.call_args.args[1]["messages"][0]["content"]
         self.assertIn("current campaign's completed_trial_index", instructions)
         self.assertIn("references are historical context only", instructions)
@@ -518,7 +518,8 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
             "model":base.recipe.model.model_copy(update={"kind":"boosted","parameters":{"max_iter":8}})})})
         unrelated = proposal("unrelated-cheap").model_copy(update={"recipe":base.recipe.model_copy(update={
             "seed":base.recipe.seed+1})})
-        programs = [base,second,experimental,unrelated]
+        programs = [item.model_copy(update={"fixed_parameters":True})
+                    for item in (base,second,experimental,unrelated)]
         group_started, release_group, group_ready = Event(), Event(), Event()
         producers, completed = [], []
 
@@ -720,6 +721,82 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
                 self.assertIn("explicit",capabilities["dataset_request_inputs"]["event_policy_selection"])
                 self.assertTrue(capabilities["dataset_request_inputs"]["retrospective_lags_required"])
 
+    def test_storage_retry_finishes_same_allocation_without_failed_objective(self):
+        from dataclasses import replace
+        from ima.research_executor import RecipeExecutionResult
+        from ima.research_storage import StorageBlocked
+        config=replace(self.config,timeout_minutes=.5,queue_low_watermark=0,
+                       replan_every_terminal_trials=10)
+        attempts=[]
+        def planned(evidence,config):
+            item=proposal().model_copy(update={'evidence_ids':(evidence['evidence_id'],)})
+            return {'decision':{'decision_id':evidence['decision_id'],'evidence_id':evidence['evidence_id'],
+                    'trial_budget':1,'programs':[item.model_dump(mode='json')]},'usage':{'cost_status':'fixture'}}
+        def worker(request,*args):
+            attempts.append(request.attempt_id)
+            if len(attempts)==1:raise StorageBlocked('injected pressure')
+            return RecipeExecutionResult(1,request.attempt_id,request.proposal_id,request.trial_number,
+                request.recipe.recipe_hash(),'win_probability','completed',
+                'development_fundamental_race_log_loss',2.,{},{},{},0.)
+        original=ResearchLedger.defer_infrastructure
+        def quick_backoff(ledger,*args,**kwargs):
+            return original(ledger,*args,**(kwargs|{'delay_seconds':.01}))
+        with patch('ima.research_expansion.ProcessPoolExecutor',side_effect=executors), \
+             patch('ima.research_expansion.plan_decision',side_effect=planned) as planner, \
+             patch('ima.research_expansion._worker',side_effect=worker), \
+             patch.object(ResearchLedger,'defer_infrastructure',quick_backoff), \
+             patch('ima.research_expansion.log_snapshot'):
+            result=run_expansion_campaign(config)
+        ledger=ResearchLedger(config.campaign_dir/'ledger.sqlite')
+        self.assertEqual(2,len(attempts),result)
+        self.assertEqual(1,len(set(attempts)))
+        self.assertEqual(1,len(ledger.reserved_attempts()))
+        self.assertEqual(['completed'],[r['status'] for r in ledger.terminal_results()])
+        self.assertEqual(1,len(ledger.infrastructure_history(attempts[0])))
+        planner.assert_called_once()
+
+    def test_artifact_storage_pressure_retries_without_retiring_program(self):
+        from dataclasses import replace
+        from ima import research_expansion as expansion
+        from ima.research_executor import RecipeExecutionResult
+        from ima.research_storage import StorageBlocked
+        original_defer=ResearchLedger.defer_operation
+        def quick_backoff(ledger,*args,**kwargs):
+            return original_defer(ledger,*args,**(kwargs|{'delay_seconds':.01}))
+        for stage,name in [('program','_prepare_program'),('fold','_prepare_fold_dependency')]:
+            with self.subTest(stage=stage):
+                config=replace(self.config,campaign_dir=self.root/stage,timeout_minutes=.5,
+                               queue_low_watermark=0,replan_every_terminal_trials=10)
+                calls=[]
+                original=getattr(expansion,name)
+                def prepare(*args,**kwargs):
+                    calls.append(True)
+                    if len(calls)==1:raise StorageBlocked('injected artifact pressure')
+                    return original(*args,**kwargs)
+                def planned(evidence,config):
+                    item=proposal().model_copy(update={'evidence_ids':(evidence['evidence_id'],)})
+                    return {'decision':{'decision_id':evidence['decision_id'],'evidence_id':evidence['evidence_id'],
+                        'trial_budget':1,'programs':[item.model_dump(mode='json')]},'usage':{'cost_status':'fixture'}}
+                def worker(request,*args):
+                    return RecipeExecutionResult(1,request.attempt_id,request.proposal_id,request.trial_number,
+                        request.recipe.recipe_hash(),'win_probability','completed',
+                        'development_fundamental_race_log_loss',2.,{},{},{},0.)
+                with patch('ima.research_expansion.ProcessPoolExecutor',side_effect=executors), \
+                     patch('ima.research_expansion.plan_decision',side_effect=planned) as planner, \
+                     patch('ima.research_expansion._worker',side_effect=worker), \
+                     patch.object(expansion,name,side_effect=prepare), \
+                     patch.object(ResearchLedger,'defer_operation',quick_backoff), \
+                     patch('ima.research_expansion.log_snapshot'):
+                    result=run_expansion_campaign(config)
+                ledger=ResearchLedger(config.campaign_dir/'ledger.sqlite')
+                self.assertEqual(2,len(calls),result)
+                self.assertEqual(['completed'],[r['status'] for r in ledger.terminal_results()])
+                self.assertEqual(1,len(ledger.reserved_attempts()))
+                self.assertEqual([],ledger.operation_waits())
+                planner.assert_called_once()
+                retired=config.campaign_dir/'retired-programs.json'
+                self.assertFalse(retired.exists() and core._read_json(retired))
+
     def test_final_completion_stop_waits_for_tracking_upload(self):
         from dataclasses import replace
         from ima.research_executor import RecipeExecutionResult
@@ -839,3 +916,63 @@ class ExpansionResourceIntegrationTests(unittest.TestCase):
         self.assertEqual("blocked_tracking",result["mode"])
         self.assertEqual(1,result["pending_trace_delivery"])
         self.assertLessEqual(delivery.call_count,3)
+
+    def test_storage_pressure_does_not_exhaust_trace_retry_circuit(self):
+        from dataclasses import replace
+        from ima.research_storage import StorageBlocked
+        from ima.research_telemetry import _outbox
+        config=replace(self.config,mlflow_tracking_uri='http://unused',timeout_minutes=.2)
+        core._write_json_atomic(config.campaign_dir/'STOP',{})
+        conn=_outbox(config.campaign_dir)
+        conn.execute('INSERT INTO traces(role,number,payload,tracking_uri) VALUES(?,?,?,?)',
+                     ('decision',1,'{}',config.mlflow_tracking_uri))
+        conn.commit();conn.close()
+        calls=[]
+        def recover(campaign,config,role,number):
+            calls.append(number)
+            if len(calls)<=4:raise StorageBlocked('blocked_storage: fixture pressure')
+            conn=_outbox(campaign)
+            conn.execute('UPDATE traces SET delivered=1 WHERE role=? AND number=?',(role,number))
+            conn.commit();conn.close()
+        with patch('ima.research_expansion.ProcessPoolExecutor',side_effect=executors),patch('ima.research_expansion.log_snapshot'),patch('ima.research_telemetry._deliver_trace',side_effect=recover):
+            result=run_expansion_campaign(config)
+        self.assertGreaterEqual(len(calls),5)
+        self.assertEqual('stopped',result['mode'])
+        self.assertEqual(0,result['pending_trace_delivery'])
+
+    def test_startup_sequence_pressure_waits_and_recovers_without_planning(self):
+        from dataclasses import replace
+        from ima.research_storage import StorageBlocked
+        from ima.research_telemetry import next_trace_number
+        config=replace(self.config,mlflow_tracking_uri='http://unused',timeout_minutes=.2)
+        core._write_json_atomic(config.campaign_dir/'STOP',{})
+        calls=[]
+        def recover(directory,role):
+            calls.append(role)
+            if len(calls)<=3:raise StorageBlocked('blocked_storage: sequence')
+            return next_trace_number(directory,role)
+        with patch('ima.research_expansion.ProcessPoolExecutor',side_effect=executors),patch('ima.research_expansion.log_snapshot'),patch('ima.research_expansion.next_trace_number',side_effect=recover),patch('ima.research_expansion.plan_decision') as planner:
+            result=run_expansion_campaign(config)
+        self.assertGreaterEqual(len(calls),4)
+        self.assertEqual('stopped',result['mode'])
+        planner.assert_not_called()
+
+    def test_failed_execution_enqueue_retries_exact_payload_and_sequence(self):
+        from dataclasses import replace
+        from ima.research_storage import StorageBlocked
+        config=replace(self.config,mlflow_tracking_uri='http://unused',timeout_minutes=.2)
+        core._write_json_atomic(config.campaign_dir/'STOP',{})
+        retried=[]
+        identity=[]
+        def recover(directory,payload,config,*,role,number):
+            if not identity:identity.append((role,number))
+            if (role,number)==identity[0]:
+                retried.append(json.dumps(payload,sort_keys=True))
+                if len(retried)<=4:raise StorageBlocked('blocked_storage: enqueue')
+        with patch('ima.research_expansion.ProcessPoolExecutor',side_effect=executors),patch('ima.research_expansion.log_snapshot',side_effect=recover),patch('ima.research_expansion.plan_decision') as planner:
+            result=run_expansion_campaign(config)
+        self.assertGreaterEqual(len(retried),5)
+        self.assertEqual(1,len(set(retried)))
+        self.assertEqual('stopped',result['mode'])
+        self.assertEqual(0,result['pending_trace_enqueues'])
+        planner.assert_not_called()

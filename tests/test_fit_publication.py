@@ -247,3 +247,156 @@ def test_timeout_recording_failure_does_not_strand_the_future(tmp_path):
                 raw.set_result(result)
                 with pytest.raises(OSError,match='control filesystem full'):future.result(2)
     assert not (request.output_dir/'result.json').exists()
+
+
+def test_controller_recovers_publication_before_ledger_commit_without_refitting(tmp_path):
+    from ima import research_expansion as expansion
+    from ima.optimizer import CampaignConfig
+    from ima.research_store import ResearchLedger
+    from tests.test_research_executor_v6 import dataset
+    from tests.test_research_expansion import proposal
+    source,_=dataset(tmp_path)
+    protocol=tmp_path/'protocol.json'
+    protocol.write_text(json.dumps({'min_train_races':12,'calibration_races':3,'score_races':3,'max_folds':1}))
+    config=CampaignConfig(campaign_dir=tmp_path/'campaign',policy='agentic',research_policy='expansion_v6',
+        planner_mode='fixture',max_trials=1,proposal_batch_size=1,max_concurrent_trials=1,
+        max_active_preparations=1,host_reserve_cpu_threads=0,host_reserve_ram_gib=0,
+        cpu_thread_budget=1,dataset_path=source,protocol_path=protocol,timeout_minutes=.5)
+    def planned(evidence,config):
+        item=proposal().model_copy(update={'evidence_ids':(evidence['evidence_id'],)})
+        return {'decision':{'decision_id':evidence['decision_id'],'evidence_id':evidence['evidence_id'],
+            'trial_budget':1,'programs':[item.model_dump(mode='json')]},'usage':{'cost_status':'fixture'}}
+    def crash(ledger,attempt,result,**kwargs):
+        canonical=config.campaign_dir/'trials'/attempt/'result.json'
+        assert json.loads(canonical.read_text())['_execution_acceptance']
+        raise RuntimeError('injected crash before ledger commit')
+    with patch.object(expansion,'plan_decision',side_effect=planned), \
+         patch.object(ResearchLedger,'complete_attempt',crash):
+        with pytest.raises(RuntimeError,match='injected crash'):
+            expansion.run_expansion_campaign(config)
+    ledger=ResearchLedger(config.campaign_dir/'ledger.sqlite')
+    assert len(ledger.reserved_attempts())==1 and ledger.terminal_results()==[]
+    with patch.object(expansion,'plan_decision',side_effect=AssertionError('unneeded replan')), \
+         patch.object(expansion,'_worker',side_effect=AssertionError('accepted fit was resubmitted')) as worker:
+        outcome=expansion.run_expansion_campaign(config)
+        worker.assert_not_called()
+    assert outcome['mode']=='complete'
+    assert len(ledger.terminal_results())==1 and ledger.terminal_results()[0]['status']=='completed'
+    assert ledger.pending_tells()==[]
+
+
+def test_live_controller_retries_only_ledger_after_accepted_fit_storage_failure(tmp_path):
+    from ima import research_expansion as expansion
+    from ima.optimizer import CampaignConfig
+    from ima.research_store import ResearchLedger
+    from ima.research_storage import StorageBlocked
+    from tests.test_research_executor_v6 import dataset
+    from tests.test_research_expansion import proposal
+    source,_=dataset(tmp_path)
+    protocol=tmp_path/'protocol.json'
+    protocol.write_text(json.dumps({'min_train_races':12,'calibration_races':3,'score_races':3,'max_folds':1}))
+    config=CampaignConfig(campaign_dir=tmp_path/'campaign',policy='agentic',research_policy='expansion_v6',
+        planner_mode='fixture',max_trials=1,proposal_batch_size=1,max_concurrent_trials=1,
+        max_active_preparations=1,host_reserve_cpu_threads=0,host_reserve_ram_gib=0,
+        cpu_thread_budget=1,dataset_path=source,protocol_path=protocol,timeout_minutes=1)
+    def planned(evidence,config):
+        item=proposal().model_copy(update={'evidence_ids':(evidence['evidence_id'],)})
+        return {'decision':{'decision_id':evidence['decision_id'],'evidence_id':evidence['evidence_id'],
+            'trial_budget':1,'programs':[item.model_dump(mode='json')]},'usage':{'cost_status':'fixture'}}
+    complete=ResearchLedger.complete_attempt
+    defer=ResearchLedger.defer_infrastructure
+    submit=BoundedFitExecutor.submit
+    completions=[]
+    physical=[]
+    def interrupted(ledger,attempt,result,**kwargs):
+        canonical=config.campaign_dir/'trials'/attempt/'result.json'
+        assert json.loads(canonical.read_text())['_execution_acceptance']
+        completions.append(attempt)
+        if len(completions)==1:raise StorageBlocked('injected ledger capacity denial')
+        return complete(ledger,attempt,result,**kwargs)
+    def immediate_retry(ledger,*args,**kwargs):
+        return defer(ledger,*args,**dict(kwargs,delay_seconds=.01))
+    def counted_submit(pool,function,*args,**kwargs):
+        if args and getattr(args[0],'supervised_fit',False):physical.append(args[0].attempt_id)
+        return submit(pool,function,*args,**kwargs)
+    with patch.object(expansion,'plan_decision',side_effect=planned), \
+         patch.object(ResearchLedger,'complete_attempt',interrupted), \
+         patch.object(ResearchLedger,'defer_infrastructure',immediate_retry), \
+         patch.object(BoundedFitExecutor,'submit',counted_submit):
+        outcome=expansion.run_expansion_campaign(config)
+    ledger=ResearchLedger(config.campaign_dir/'ledger.sqlite')
+    assert outcome['mode']=='complete'
+    assert len(physical)==1 and completions==physical*2
+    assert len(ledger.terminal_results())==1 and ledger.pending_tells()==[]
+    assert len(ledger.infrastructure_history(physical[0]))==1
+
+
+def test_startup_defers_blocked_accepted_fit_and_retries_without_refitting(tmp_path):
+    from ima import research_expansion as expansion
+    from ima.optimizer import CampaignConfig
+    from ima.research_storage import StorageBlocked
+    from ima.research_store import ResearchLedger
+    from tests.test_research_executor_v6 import dataset
+    from tests.test_research_expansion import proposal
+    source,_=dataset(tmp_path)
+    protocol=tmp_path/'protocol.json'
+    protocol.write_text(json.dumps({'min_train_races':12,'calibration_races':3,'score_races':3,'max_folds':1}))
+    config=CampaignConfig(campaign_dir=tmp_path/'campaign',policy='agentic',research_policy='expansion_v6',
+        planner_mode='fixture',max_trials=1,proposal_batch_size=1,max_concurrent_trials=1,
+        max_active_preparations=1,host_reserve_cpu_threads=0,host_reserve_ram_gib=0,
+        cpu_thread_budget=1,dataset_path=source,protocol_path=protocol,timeout_minutes=1)
+
+    def planned(evidence,config):
+        item=proposal().model_copy(update={'evidence_ids':(evidence['evidence_id'],)})
+        return {'decision':{'decision_id':evidence['decision_id'],'evidence_id':evidence['evidence_id'],
+            'trial_budget':1,'programs':[item.model_dump(mode='json')]},'usage':{'cost_status':'fixture'}}
+
+    def crash_before_ledger(ledger,attempt,result,**kwargs):
+        canonical=config.campaign_dir/'trials'/attempt/'result.json'
+        assert json.loads(canonical.read_text())['_execution_acceptance']
+        raise RuntimeError('injected crash before ledger commit')
+
+    with patch.object(expansion,'plan_decision',side_effect=planned), \
+         patch.object(ResearchLedger,'complete_attempt',crash_before_ledger):
+        with pytest.raises(RuntimeError,match='injected crash'):
+            expansion.run_expansion_campaign(config)
+
+    pending_attempt=ResearchLedger(config.campaign_dir/'ledger.sqlite').reserved_attempts()[0]['attempt_id']
+    accepted_path=config.campaign_dir/'trials'/pending_attempt/'result.json'
+    runtime_path=config.campaign_dir/'trials'/pending_attempt/'runtime.json'
+    accepted_before=accepted_path.read_bytes()
+    runtime_before=runtime_path.read_bytes()
+    complete=ResearchLedger.complete_attempt
+    defer=ResearchLedger.defer_infrastructure
+    submit=BoundedFitExecutor.submit
+    commits=[]
+    physical=[]
+
+    def blocked_once(ledger,attempt,result,**kwargs):
+        commits.append(attempt)
+        if len(commits)==1:
+            raise StorageBlocked('injected startup ledger capacity denial')
+        return complete(ledger,attempt,result,**kwargs)
+
+    def immediate_retry(ledger,*args,**kwargs):
+        return defer(ledger,*args,**(kwargs|{'delay_seconds':.01}))
+
+    def counted_submit(pool,function,*args,**kwargs):
+        if args and getattr(args[0],'supervised_fit',False):
+            physical.append(args[0].attempt_id)
+        return submit(pool,function,*args,**kwargs)
+
+    with patch.object(expansion,'plan_decision',side_effect=AssertionError('saved decision must be reused')), \
+         patch.object(ResearchLedger,'complete_attempt',blocked_once), \
+         patch.object(ResearchLedger,'defer_infrastructure',immediate_retry), \
+         patch.object(BoundedFitExecutor,'submit',counted_submit):
+        outcome=expansion.run_expansion_campaign(config)
+
+    ledger=ResearchLedger(config.campaign_dir/'ledger.sqlite')
+    assert outcome['mode']=='complete'
+    assert len(commits)==2 and commits[0]==commits[1]
+    assert physical==[]
+    assert accepted_path.read_bytes()==accepted_before
+    assert runtime_path.read_bytes()==runtime_before
+    assert len(ledger.terminal_results())==1 and ledger.pending_tells()==[]
+    assert len(ledger.infrastructure_history(commits[0]))==1
