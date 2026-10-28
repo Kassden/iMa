@@ -901,9 +901,9 @@ def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, star
                     from .pipeline_graph import _schema_subset
                     node_schema = _schema_subset(schema, nodes[node.inputs[0]].parameters.get("features", schema.features))
                 options = dict(node.parameters)
-                kind = options.pop("model_kind", recipe.model.kind if node.node_id == graph_spec.primary_node_id else "benter_conditional_logit")
+                kind = options.pop("model_kind", recipe.model.kind if node.node_id == graph_spec.tuned_estimator_id else "benter_conditional_logit")
                 parameters = dict(options.pop("model_parameters", options.pop("parameters", {})))
-                if node.node_id == graph_spec.primary_node_id:
+                if node.node_id == graph_spec.tuned_estimator_id:
                     if kind != recipe.model.kind:
                         raise ValueError("Outer model family differs from primary graph estimator")
                     parameters.update(recipe.model.parameters)
@@ -962,7 +962,9 @@ def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, star
         output["fold_id"] = fold.fold_id
         folds.append(row)
         prediction_rows.append(output)
+        from .pipeline_transparency import graph_fit_lineage
         reports.append({"fold_id": fold.fold_id, **fitted.fit_report,
+            "attribution": graph_fit_lineage(fitted),
             "prediction_cache_policy": "disabled_for_fold_local_feature_pipelines" if learned_features else "content_addressed"})
         effective_training.append({"fold_id": fold.fold_id, "rows": len(train), "races": train.race_id.nunique(),
             "features": list(replay_schema.features), "fit_scope": "recursive_forward_oof",
@@ -987,6 +989,7 @@ def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, star
         objective, {"objective": objective, "objective_source": source if contract.kind == "win_probability" else "model",
             "folds": folds, "summary": _aggregate_fold_metrics(folds), "metric_contract_version": 3 if fundamental_first else METRIC_CONTRACT_VERSION,
             "metric_directions": _metric_directions(folds), "effective_training": effective_training,
+            "component_attribution": [r["attribution"] for r in reports],
             "physical_component_fits": sum(r["physical_fits"] for r in reports),
             "dataset_exclusions": labelled.attrs.get("dataset_exclusions",{})},
         {"protocol": str(protocol_path), "predictions": str(predictions_path), "package": str(package_path), "graph_fits": str(graph_report_path)},

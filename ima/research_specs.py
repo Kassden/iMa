@@ -284,7 +284,7 @@ class PipelineRecipe(StrictModel):
             ):
                 raise ValueError("Distribution graph ancestors require transforms=[] and feature_discovery=null; "
                                  "fold-local distribution preprocessing is not supported")
-            if graph.primary_node_id is None:
+            if graph.tuned_estimator_id is None:
                 raise ValueError("Tunable graphs require primary_node_id")
             for field, disabled in (("calibration", CalibrationSpec(kind="none")),
                                     ("blend", BlendSpec(kind="none"))):
@@ -299,8 +299,8 @@ class PipelineRecipe(StrictModel):
                     kind = node.parameters.get("model_kind", "benter_conditional_logit")
                     parameters = node.parameters.get("model_parameters", node.parameters.get("parameters", {}))
                     ModelSpec(kind=kind, parameters=parameters)
-                    if node.node_id == graph.primary_node_id and kind != self.model.kind:
-                        raise ValueError("Outer model must match the primary graph estimator family")
+                    if node.node_id == graph.tuned_estimator_id and kind != self.model.kind:
+                        raise ValueError("Outer model must match the primary/tune graph estimator family")
             nodes = {node.node_id: node for node in graph.nodes}
             fundamental = nodes[graph.fundamental_node_id or graph.output_node_id]
             if fundamental.output.kind != "win_probability":

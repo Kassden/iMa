@@ -423,7 +423,6 @@ class ProgramSearchController:
         with program_ask_lock(self.search_dir.resolve() / "program-ask.lock"):
             self._reconcile_incomplete_asks_locked()
 
-
     def _reconcile_incomplete_asks_locked(self) -> None:
         for program_id, study in self.studies.items():
             for trial in study.get_trials(deepcopy=True):
@@ -455,7 +454,6 @@ class ProgramSearchController:
                     # Persist the recovery classification before the durable,
                     # idempotent terminal transition. PRUNED does not consume budget.
                     study.tell(trial.number, state=TrialState.PRUNED)
-
 
     def ask(
         self, count: int, *, preferred_program_ids: list[str] | None = None,
@@ -500,7 +498,6 @@ class ProgramSearchController:
                     )
                 raise
 
-
     def _ask_admitted(
         self, count: int, program_order: list[str]
     ) -> list[RecipeSuggestion]:
@@ -537,7 +534,8 @@ class ProgramSearchController:
                     continue
                 attempts += 1
                 trial = study.ask()
-                space = {} if proposal.fixed_parameters else (proposal.search_space or _default_space(proposal.recipe.model.kind))
+                original_graph_control = bool(proposal.recipe.pipeline_graph) and trial.number == 0
+                space = {} if proposal.fixed_parameters or original_graph_control else (proposal.search_space or _default_space(proposal.recipe.model.kind))
                 parameters = dict(proposal.recipe.model.parameters)
                 for name, dimension in space.items():
                     if dimension.kind == "float":
@@ -559,6 +557,10 @@ class ProgramSearchController:
                 trial.set_user_attr("recipe", recipe.canonical_payload())
                 trial.set_user_attr("recipe_hash", recipe_hash)
                 trial.set_user_attr("program_id", program_id)
+                if recipe.pipeline_graph:
+                    from .pipeline_graph import PipelineGraph
+                    trial.set_user_attr("tune_node_id", PipelineGraph.from_dict(recipe.pipeline_graph).tuned_estimator_id)
+                    trial.set_user_attr("original_graph_control", original_graph_control)
                 if recipe_hash in seen:
                     study.tell(trial, state=TrialState.PRUNED)
                     continue
@@ -640,8 +642,70 @@ def _default_space(model_kind: str) -> dict[str, SearchDimension]:
     return {
         "learning_rate": SearchDimension(kind="float", low=0.015, high=0.12, log=True),
         "max_iter": SearchDimension(kind="int", low=80, high=260),
+        "max_leaf_nodes": SearchDimension(kind="int", low=2, high=63),
+        "max_depth": SearchDimension(kind="int", low=1, high=12),
+        "min_samples_leaf": SearchDimension(kind="int", low=2, high=100),
         "l2_regularization": SearchDimension(kind="float", low=0.0, high=10.0),
     }
+
+
+def component_controls(recipe: PipelineRecipe) -> dict[str, PipelineRecipe]:
+    """Matched pure/equal/fixed controls of the declared fundamental pool."""
+    from dataclasses import asdict
+    from .pipeline_graph import GraphNode, PipelineGraph
+    graph = PipelineGraph.from_dict(recipe.pipeline_graph).validate()
+    nodes = {n.node_id: n for n in graph.nodes}
+    pool = nodes[graph.fundamental_node_id or graph.output_node_id]
+    if pool.kind != "weighted_probability_pool" or len(pool.inputs) != 2:
+        raise ValueError("Component controls require a fixed two-component fundamental pool")
+    if any(nodes[key].kind != "estimator" for key in pool.inputs):
+        raise ValueError("Component controls require direct estimator inputs")
+    # Freeze the reference's effective outer override before rebinding tuning.
+    tuned = nodes[graph.tuned_estimator_id]
+    options = dict(tuned.parameters)
+    options["model_parameters"] = dict(options.pop("parameters", {})) | dict(options.get("model_parameters", {})) | recipe.model.parameters
+    nodes[tuned.node_id] = GraphNode(tuned.node_id, tuned.kind, tuned.inputs, options, tuned.output, tuned.fit_scope)
+    controls = {"fixed": recipe, "fixed_champion": recipe}
+    for name, weights in (("equal", [0.5, 0.5]), ("fixed_35_65", [0.35, 0.65])):
+        updated = asdict(graph)
+        updated["nodes"] = [asdict(nodes[n.node_id]) if n.node_id != pool.node_id else
+                            asdict(pool) | {"parameters": {"weights": weights}} for n in graph.nodes]
+        controls[name] = PipelineRecipe.model_validate(recipe.model_dump(mode="json") | {"pipeline_graph": updated})
+    for key in pool.inputs:
+        component = nodes[key]
+        keep = set()
+        def collect(node_id):
+            keep.add(node_id)
+            for parent in nodes[node_id].inputs:
+                collect(parent)
+        collect(key)
+        updated = asdict(graph) | {"nodes": [asdict(n) for n in nodes.values() if n.node_id in keep],
+            "output_node_id": key, "fundamental_node_id": key, "joint_node_id": None,
+            "primary_node_id": key, "tune_node_id": key}
+        controls[f"pure_{key}"] = PipelineRecipe.model_validate(recipe.model_dump(mode="json") | {
+            "pipeline_graph": updated, "model": {
+                "kind": component.parameters.get("model_kind", "benter_conditional_logit"),
+                "parameters": component.parameters.get("model_parameters", component.parameters.get("parameters", {}))}})
+    return controls
+
+
+def tune_component(recipe: PipelineRecipe, node_id: str) -> PipelineRecipe:
+    """Bind a study to one estimator while freezing all reference parameters."""
+    from dataclasses import asdict
+    from .pipeline_graph import GraphNode, PipelineGraph
+    graph = PipelineGraph.from_dict(recipe.pipeline_graph).validate()
+    nodes = {n.node_id: n for n in graph.nodes}
+    if node_id not in nodes or nodes[node_id].kind != "estimator":
+        raise ValueError("Tune node must name an estimator")
+    previous = nodes[graph.tuned_estimator_id]
+    options = dict(previous.parameters)
+    options["model_parameters"] = dict(options.pop("parameters", {})) | dict(options.get("model_parameters", {})) | recipe.model.parameters
+    nodes[previous.node_id] = GraphNode(previous.node_id, previous.kind, previous.inputs, options, previous.output, previous.fit_scope)
+    target = nodes[node_id]
+    return PipelineRecipe.model_validate(recipe.model_dump(mode="json") | {
+        "pipeline_graph": asdict(graph) | {"nodes": [asdict(n) for n in nodes.values()], "tune_node_id": node_id},
+        "model": {"kind": target.parameters.get("model_kind", "benter_conditional_logit"),
+                  "parameters": target.parameters.get("model_parameters", target.parameters.get("parameters", {}))}})
 
 
 def _seed_recipes() -> tuple[tuple[PipelineRecipe, str, tuple[str, ...]], ...]:
