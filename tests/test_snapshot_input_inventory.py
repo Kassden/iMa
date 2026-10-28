@@ -233,3 +233,17 @@ def test_noncanonical_output_parent_is_rejected(tmp_path, monkeypatch):
             output_parent=output_parent / ".." / output_parent.name,
             verified_capture_file_sha256=set(),
         )
+
+
+def test_absent_optional_raw_root_is_reported_without_creating_it(tmp_path):
+    from ima.snapshot_input_inventory import inventory_snapshot_inputs
+    parent = tmp_path.resolve()
+    source = parent / "archive"
+    source.mkdir(mode=0o700)
+    result = inventory_snapshot_inputs(raw_roots={"archive": source / "raw"},
+        output_parent=parent, verified_capture_file_sha256=set())
+    assert result["files"] == []
+    assert result["roots"] == [{"root_id": "archive", "path": str(source / "raw"),
+                                "status": "absent_at_inventory"}]
+    assert not (source / "raw").exists()
+    assert not (parent / "unknown-raw").exists()

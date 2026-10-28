@@ -102,14 +102,16 @@ def _scan_roots(raw_roots: dict[str, str | os.PathLike[str]]) -> tuple[list[dict
     for root_id, raw_path in sorted(raw_roots.items()):
         if not isinstance(root_id, str) or not _ROOT_ID.fullmatch(root_id):
             raise ValueError(f"Invalid raw root ID: {root_id!r}")
-        root = _canonical(raw_path)
-        _owned_directory(root, label=f"Raw root {root_id}")
+        root = _canonical(raw_path, exists=False)
+        present = root.exists()
+        _owned_directory(root if present else root.parent, label=f"Raw root {root_id}" if present else f"Parent of absent raw root {root_id}")
         if any(root == other or root.is_relative_to(other) or other.is_relative_to(root)
                for other in seen_roots):
             raise ValueError("Explicit raw roots must not overlap")
         seen_roots.append(root)
-        roots.append({"root_id": root_id, "path": str(root)})
-        stack = [root]
+        roots.append({"root_id": root_id, "path": str(root),
+                      "status": "present" if present else "absent_at_inventory"})
+        stack = [root] if present else []
         while stack:
             directory = stack.pop()
             _owned_directory(directory, label=f"Raw directory for {root_id}")
