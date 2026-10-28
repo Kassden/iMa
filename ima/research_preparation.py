@@ -167,6 +167,10 @@ def _qualify_cache_directory(root, root_fd, directory_fd, identity, root_identit
 
 def _remove_known_cache_payload(root, identity):
     """Remove only a structurally proven cache payload, using bound directory FDs."""
+    from .research_cache_policy import cache_is_held
+    if cache_is_held(root/identity):
+        from .research_storage import StorageBlocked
+        raise StorageBlocked('Preparation rebuild is held by the pinned retention policy')
     try:
         root_fd, directory_fd, root_identity, directory_identity = _open_cache_directory(
             root, identity)
@@ -611,6 +615,8 @@ class PreparationCache:
     def evict(self, artifact_id):
         artifact = PreparationArtifact(str(self.root),artifact_id,"hit")
         artifact.path  # Validate identifier before forming the lock path.
+        from .research_cache_policy import cache_is_held
+        if cache_is_held(artifact.path):return False
         root_fd = directory_fd = -1
         descriptors = []
         locked = []
