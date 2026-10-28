@@ -170,6 +170,10 @@ class FittedGraphRecipeModel:
     feature_schema: FeatureSchema
     residual_history: Any = None
 
+    @property
+    def fit_report(self):
+        return self.model.fit_report
+
     def _frame(self, frame):
         return _ensure_feature_columns(self.transforms.transform(frame), self.feature_schema)
 
@@ -1096,6 +1100,27 @@ class GraphComponentRecipeModel:
         return self.model.predict(self._frame(frame))
 
 
+def _nested_selection_source_context(request, labelled, protocol, dataset_hash):
+    """Bind the selector to real inputs without passing future evaluation labels."""
+    source = labelled[["race_id", "horse_no", "date"]].sort_values(
+        ["date", "race_id", "horse_no"], kind="stable")
+    population_hash = hashlib.sha256(source.to_json(orient="records", date_format="iso").encode()).hexdigest()
+    modules = _preparation_implementation(request.recipe)["modules"]
+    modules.update({name: _hash_file(Path(__file__).with_name(name + ".py")) for name in (
+        "pool_selection", "pipeline_graph", "research_pooling", "prediction_store", "modeling", "research_models")})
+    manifest = labelled.attrs.get("verified_dataset_manifest", {})
+    return {
+        "dataset_hash": dataset_hash,
+        "dataset_manifest_hash": labelled.attrs.get("dataset_manifest_hash"),
+        "source_revision": request.code_revision,
+        "source_code_hash": hashlib.sha256(json.dumps(modules, sort_keys=True).encode()).hexdigest(),
+        "protocol_hash": hashlib.sha256(json.dumps(protocol.to_dict(), sort_keys=True).encode()).hexdigest(),
+        "target_contract": asdict(target_contract(request.recipe.target.kind, request.recipe.target.parameters)),
+        "evaluation_population_id": manifest.get("evaluation_population_id") or "selection-source-" + population_hash,
+        "evaluation_population_hash": population_hash,
+    }
+
+
 def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, started, *, pins=None):
     from functools import partial
     from .pipeline_graph import PipelineGraph, fit_graph
@@ -1108,6 +1133,11 @@ def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, star
     if recipe.feature_discovery and recipe.feature_discovery.adjusted_speed_residuals:
         raise ValueError("Graph adjusted-speed histories require a nested residual fit contract; this combination is unsupported")
     learned_features = bool(recipe.transforms or recipe.feature_discovery)
+    nested_selection = any(node.kind == "learned_probability_pool" and
+                           node.parameters.get("selection_mode") == "nested_selection"
+                           for node in graph_spec.nodes)
+    selection_context = (_nested_selection_source_context(request, labelled, protocol, dataset_hash)
+                         if nested_selection else None)
     folds, prediction_rows, reports, effective_training = [], [], [], []
     final_model = None
     for fold_index, fold in enumerate(protocol.folds, 1):
@@ -1138,9 +1168,16 @@ def _execute_graph_frame(request, labelled, schema, protocol, dataset_hash, star
                 factories[node.node_id] = partial(GraphComponentRecipeModel, recipe, node_schema, kind, parameters,
                     node.output.kind, "target_win" if node.output.kind == "win_probability" else node.output.target,
                     request.output_dir, node.node_id)
+        selection_options = {}
+        if nested_selection:
+            selection_dir = request.output_dir / "nested-selection" / fold.fold_id
+            selection_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            selection_options = {"selection_source_context": selection_context,
+                                 "selection_artifact_dir": selection_dir}
         fitted = fit_graph(graph_spec, train, calibration, schema, recipe.seed,
             model_spec=recipe.model, estimator_factories=factories or None,
-            prediction_store=PredictionStore(request.output_dir.parent.parent/"graph-prediction-cache"))
+            prediction_store=PredictionStore(request.output_dir.parent.parent/"graph-prediction-cache"),
+            **selection_options)
         _execution_progress(request, "evaluating", **progress)
         component_features = []
         visited = set()
