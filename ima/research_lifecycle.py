@@ -5,6 +5,7 @@ from contextvars import ContextVar
 from copy import deepcopy
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import re
@@ -157,9 +158,14 @@ def lifecycle_worker(request, workload, threads):
     profiles = []
     profile_token = _PROFILES.set(profiles)
     try:
-        result = expansion._lifecycle_original_worker(request, workload, threads)
+        from . import performance_probit as probit
+        if not hasattr(probit, "_lifecycle_original_fit"):
+            probit._lifecycle_original_fit = probit.fit_probit
+            probit.fit_probit = lifecycle_probit_fit
+        original_worker = getattr(expansion, "_lifecycle_original_worker", expansion._worker)
+        result = original_worker(request, workload, threads)
         result.metrics["research_lifecycle"] = {"version": VERSION,
-            "release_sha256": getattr(expansion, "_lifecycle_release_hash", None)}
+            "release_sha256": getattr(expansion, "_lifecycle_release_hash", None) or os.environ.get("IMA_LIFECYCLE_RELEASE_SHA256")}
         if profiles:
             result.metrics["probit_fits"] = {f"fit_{index:03d}": profile for index, profile in enumerate(profiles)}
             result.artifacts["probit_profiles"] = str(request.output_dir/"probit-profiles.json")
@@ -258,7 +264,8 @@ def lifecycle_prepare(dataset, recipe, digest, root):
     from . import research_expansion as expansion
     if recipe.feature_definitions:
         from .feature_lifecycle import build_feature_candidate
-        config = _json(Path(root)/"config.json")
+        campaign_config = Path(root) / "campaign.json"
+        config = _json(campaign_config if campaign_config.is_file() else Path(root) / "config.json")
         manifest = Path(dataset).parent/"manifest.json"
         if not manifest.exists():
             raise ValueError("Feature lifecycle publication requires a verified parent manifest")
@@ -269,7 +276,8 @@ def lifecycle_prepare(dataset, recipe, digest, root):
             tracking_uri=config.get("mlflow_tracking_uri"),
             experiment_name="ima-feature-builds")
         expansion.core._write_json_atomic(Path(root)/"feature-builds"/(recipe.recipe_hash()+".json"), candidate)
-    return expansion._lifecycle_original_prepare(dataset, recipe, digest, root)
+    original_prepare = getattr(expansion, "_lifecycle_original_prepare", expansion._prepare_program)
+    return original_prepare(dataset, recipe, digest, root)
 
 
 def install_campaign_policy(directory, *, release_sha256=None):
@@ -287,6 +295,8 @@ def install_campaign_policy(directory, *, release_sha256=None):
     expansion._lifecycle_original_worker = expansion._worker
     expansion._lifecycle_original_prepare = expansion._prepare_program
     expansion._lifecycle_release_hash = release_sha256
+    if release_sha256 is not None:
+        os.environ["IMA_LIFECYCLE_RELEASE_SHA256"] = release_sha256
     probit._lifecycle_original_fit = probit.fit_probit
     probit.fit_probit = lifecycle_probit_fit
     from . import mlflow_tracking

@@ -167,3 +167,57 @@ def test_hooks_reach_compiled_campaign_namespace(tmp_path):
         # Exercise the real controller call site, including all keyword arguments.
         spend = expansion._control_planner_spend(tmp_path, [], planning=(None, {"decision_id": "D000999"}))
         assert spend["spend_unknown"] is True
+
+
+def test_lifecycle_entrypoints_work_in_fresh_worker_interpreter(tmp_path):
+    """Spawned workers import modules; parent-only installed globals are absent."""
+    import os
+    import subprocess
+    import sys
+    code = r'''
+import json, os, sys
+from pathlib import Path
+from types import SimpleNamespace
+from ima import research_expansion as expansion, performance_probit as probit
+from ima.research_lifecycle import lifecycle_prepare, lifecycle_worker, lifecycle_probit_fit, _REQUEST
+assert not hasattr(expansion, '_lifecycle_original_prepare')
+assert not hasattr(expansion, '_lifecycle_original_worker')
+expansion._prepare_program = lambda *args: {'source': 'fresh_base_prepare', 'arguments': len(args)}
+recipe = SimpleNamespace(feature_definitions=None)
+assert lifecycle_prepare('dataset', recipe, 'digest', Path(sys.argv[1])) == {
+    'source': 'fresh_base_prepare', 'arguments': 4}
+result = SimpleNamespace(status='failed', metrics={}, artifacts={})
+result.serializable = lambda: {'status': result.status, 'metrics': result.metrics, 'artifacts': result.artifacts}
+expansion._worker = lambda *args: result
+root = Path(sys.argv[1]); root.mkdir(exist_ok=True)
+request = SimpleNamespace(output_dir=root, attempt_id='fresh-worker')
+os.environ['IMA_LIFECYCLE_RELEASE_SHA256'] = 'qualified-release'
+assert lifecycle_worker(request, None, 1) is result
+assert result.metrics['research_lifecycle']['release_sha256'] == 'qualified-release'
+assert probit.fit_probit is lifecycle_probit_fit
+assert _REQUEST.get() is None
+assert json.loads((root/'result.json').read_text())['status'] == 'failed'
+print('fresh worker entrypoints qualified')
+'''
+    environment = {key: value for key, value in os.environ.items() if not key.startswith('IMA_STORAGE_')}
+    run = subprocess.run([sys.executable, '-B', '-c', code, str(tmp_path)],
+                         capture_output=True, text=True, env=environment, timeout=60)
+    assert run.returncode == 0, run.stderr
+    assert 'fresh worker entrypoints qualified' in run.stdout
+
+
+def test_feature_preparation_reads_controller_campaign_configuration(tmp_path):
+    from ima import research_expansion as expansion
+    from ima.research_lifecycle import lifecycle_prepare
+    dataset_dir = tmp_path/'dataset';dataset_dir.mkdir()
+    dataset = dataset_dir/'features.parquet'
+    (dataset_dir/'manifest.json').write_text('{}')
+    config = {'dataset_registry_path': str(tmp_path/'registry'), 'mlflow_tracking_uri': 'http://example.invalid'}
+    (tmp_path/'campaign.json').write_text(json.dumps(config))
+    recipe = SimpleNamespace(feature_definitions=[{'name':'test'}], recipe_hash=lambda:'recipe')
+    with patch('ima.feature_lifecycle.build_feature_candidate', return_value={'build_id':'build'}) as build, \
+         patch.object(expansion, '_lifecycle_original_prepare', return_value={'prepared':True}, create=True):
+        assert lifecycle_prepare(dataset, recipe, 'digest', tmp_path) == {'prepared':True}
+    assert build.call_args.kwargs['registry_root'] == config['dataset_registry_path']
+    assert build.call_args.kwargs['tracking_uri'] == config['mlflow_tracking_uri']
+    assert json.loads((tmp_path/'feature-builds/recipe.json').read_text())['build_id'] == 'build'
