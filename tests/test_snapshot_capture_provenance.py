@@ -55,7 +55,7 @@ class SnapshotCaptureProvenanceTests(unittest.TestCase):
     def test_changed_object_or_capacity_implementation_invalidates_refresh_fingerprint(self):
         original_read = Path.read_bytes
         for dependency in ('ima/research_objects.py', 'ima/research_object_lifecycle.py',
-                           'ima/research_dataset_capacity.py'):
+                           'ima/research_dataset_capacity.py', 'ima/snapshot_input_inventory.py'):
             before = input_digest(self.archive, self.profiles, [self.corpus])
             def changed_read(path):
                 return b'changed consumer source' if path.as_posix() == dependency else original_read(path)
@@ -135,6 +135,21 @@ class SnapshotCaptureProvenanceTests(unittest.TestCase):
             self.assertTrue(raw_path.is_file(), raw_path)
             self.assertEqual(sha256(gzip.decompress(raw_path.read_bytes())), body_hash)
 
+    def assert_snapshot_input_inventory(self, snapshot):
+        snapshot = Path(snapshot)
+        manifest = json.loads((snapshot / "manifest.json").read_text())
+        inventory_record = manifest["source_inputs"]["snapshot_input_inventory"]
+        self.assertEqual(inventory_record["path"], "snapshot_input_inventory.json")
+        inventory_path = snapshot / inventory_record["path"]
+        inventory = json.loads(inventory_path.read_text())
+        self.assertNotIn("inventory_sha256", inventory)
+        self.assertEqual(sha256(inventory_path.read_bytes()), inventory_record["inventory_sha256"])
+        self.assertEqual(manifest["files"][inventory_record["path"]], inventory_record["inventory_sha256"])
+        self.assertIn("ima/snapshot_input_inventory.py", manifest["code_hashes"])
+        self.assertEqual(manifest["code_hashes"]["ima/snapshot_input_inventory.py"],
+                         sha256((snapshot / "code" / "snapshot_input_inventory.py").read_bytes()))
+        return inventory
+
     def test_read_verified_hashes_the_same_compressed_capture_it_parses(self):
         raw = self.archive / "raw" / "2025-07-13" / "ST" / "R1.html.gz"
         raw.parent.mkdir(parents=True)
@@ -196,6 +211,10 @@ class SnapshotCaptureProvenanceTests(unittest.TestCase):
         self.assertEqual(tree_hash(first_snapshot), first_tree)
         self.assertEqual(tree_hash(second_snapshot), second_tree)
         self.assert_lineage_raws_are_exact(Path(third['snapshot']), {sha256(original), sha256(changed)})
+        inventory = self.assert_snapshot_input_inventory(third["snapshot"])
+        self.assertEqual({row["sha256"] for row in inventory["files"]
+                          if row["status"] == "content_referenced"},
+                         {sha256(gzip.compress(original, mtime=0))})
         # A later unrelated addition must reuse only the currently materialized
         # capture, without parsing every old unchanged archive page again.
         self.add_archive_seed(20, 'HK_2000_A117', 'HK_2000_A118')
@@ -226,6 +245,11 @@ class SnapshotCaptureProvenanceTests(unittest.TestCase):
                          str(second_snapshot))
         self.assertEqual(tree_hash(first_snapshot), first_tree)
         self.assert_lineage_raws_are_exact(second_snapshot, {original_hash, revised_hash})
+        inventory = self.assert_snapshot_input_inventory(second_snapshot)
+        self.assertEqual({root["root_id"] for root in inventory["roots"]},
+                         {"archive", "profiles", "corpus_000"})
+        self.assertTrue(all(row["status"] == "content_referenced" and
+                            row["deletion_eligible"] is False for row in inventory["files"]))
 
         before = read_snapshot_table(first_snapshot, "runners.parquet")
         after = read_snapshot_table(second_snapshot, "runners.parquet")

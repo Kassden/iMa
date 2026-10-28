@@ -10,6 +10,19 @@ from scrapper.official_corpus import PARSER_VERSION
 
 
 class SnapshotRefreshTests(unittest.TestCase):
+    def test_inventory_code_invalidates_refresh_fingerprint(self):
+        original_read = Path.read_bytes
+        dependency = "ima/snapshot_input_inventory.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            before = input_digest(root, root, [root])
+
+            def changed_read(path):
+                return b"changed inventory implementation" if path.as_posix() == dependency else original_read(path)
+
+            with patch.object(Path, "read_bytes", new=changed_read):
+                self.assertNotEqual(before, input_digest(root, root, [root]))
+
     def test_raw_input_changes_trigger_rebuild(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

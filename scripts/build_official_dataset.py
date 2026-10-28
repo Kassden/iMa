@@ -19,6 +19,7 @@ from scrapy.http import HtmlResponse
 
 from ima.rich_features import prepare_rich_runner_dataset
 from ima.research_storage import storage_writer,reserved_output_file
+from ima.snapshot_input_inventory import inventory_snapshot_inputs, inventory_manifest_bytes
 from scrapper.research_storage_io import admitted_native_growth, cleanup_owned_temporary, validate_owned_temporary
 from scrapper.official_corpus import HORSE_ID, NONFINISHERS, PARSER_VERSION, ROOT, WITHDRAWN, canonical_url, event_date, now, parse_document
 
@@ -230,6 +231,7 @@ def _build_locked(args):
     code_hashes = {}
     _mkdir_admitted(staging / "code")
     for path in (Path(__file__), Path("scrapper/official_corpus.py"), Path("ima/rich_features.py"),
+                 Path("ima/snapshot_input_inventory.py"),
                  Path("scrapper/research_storage_io.py"), Path("ima/research_storage.py"), Path("ima/research_sqlite.py"),
                  Path("ima/research_objects.py"), Path("ima/research_dataset_capacity.py"),
                  Path("ima/research_object_lifecycle.py"),
@@ -442,6 +444,20 @@ def _build_locked(args):
         record["raw_path"] = str(destination.resolve())
         record["capture_time_status"] = "recorded_public_capture; not historical publication proof" if record.get("fetched_at") else "unknown_legacy_capture_time; replay is not publication proof"
     with reserved_output_file(staging/'lineage.json','w') as stream:json.dump(list(lineage.values()),stream,indent=2)
+    raw_roots = {"archive": (Path(args.archive).absolute() / "raw"),
+                 "profiles": (Path(args.profiles).absolute() / "raw")}
+    raw_roots.update({f"corpus_{index:03d}": (Path(corpus).absolute() / "raw")
+                      for index, corpus in enumerate(args.corpus)})
+    verified_capture_hashes = {record["capture_file_sha256"] for record in lineage.values()
+                               if record.get("capture_file_sha256")}
+    input_inventory = inventory_snapshot_inputs(
+        raw_roots=raw_roots,
+        output_parent=Path(args.output).absolute().parent,
+        verified_capture_file_sha256=verified_capture_hashes,
+    )
+    inventory_path = "snapshot_input_inventory.json"
+    with reserved_output_file(staging / inventory_path, "wb") as stream:
+        stream.write(inventory_manifest_bytes(input_inventory))
     with reserved_output_file(staging/'exclusions.json','w') as stream:json.dump(exclusions,stream,indent=2)
     seeds = [ROOT + "otherhorse?horseid=" + h for h in sorted(identities)]
     with reserved_output_file(staging/'horse_seeds.json','w') as stream:json.dump(seeds,stream,indent=2)
@@ -454,6 +470,9 @@ def _build_locked(args):
         pdf_version = None
     manifest = {"created_at": now(), "source_policy": "HKJC-only; raw replay; no third-party values",
         "parser_version": PARSER_VERSION, "code_hashes": code_hashes,
+        "source_inputs": {"snapshot_input_inventory": {
+            "path": inventory_path, "inventory_sha256": input_inventory["inventory_sha256"],
+            "roots": input_inventory["roots"]}},
         "dependencies": {name: version(name) for name in ("numpy", "pandas", "pyarrow", "scrapy", "parsel", "lxml")} | {"pypdf": pdf_version},
         "base_snapshot": str(args.base_snapshot) if args.base_snapshot else None,
         "nonfinishers": int(source.get("finishing_status", pd.Series(dtype=str)).isin(NONFINISHERS).sum()),
