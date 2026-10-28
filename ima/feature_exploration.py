@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 from contextlib import closing, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import fcntl
 import json
 import math
 import os
-import stat
 from pathlib import Path
 import shutil
 import sqlite3
+import stat
 import time
 
 from .dataset_registry import _digest, _write_json, file_sha256
@@ -231,6 +231,13 @@ def feature_screen_worker(request, native_threads):
         return execute_recipe(request).serializable()
 
 
+def _managed_feature_worker(request, native_threads):
+    """Return the result object so the supervisor can publish an accepted episode."""
+    from threadpoolctl import threadpool_limits
+    with threadpool_limits(limits=native_threads):
+        return execute_recipe(request)
+
+
 class FeatureExplorer:
     def __init__(self, config: ExplorationConfig):
         from . import feature_lifecycle, modeling, research_evaluation, research_executor
@@ -308,41 +315,128 @@ class FeatureExplorer:
         if len(promising) >= 2:
             self.queue.enqueue([row["definitions"][0] for row in promising], "adaptive_bundle")
 
-    def _execute(self, request, executor=None):
-        result_path = request.output_dir/"result.json"
-        if result_path.exists():
-            stored = json.loads(result_path.read_text())
-            if (stored.get("status") == "completed" and stored.get("recipe_hash") == request.recipe.recipe_hash()
-                    and stored.get("lineage", {}).get("code_revision") == request.code_revision):
-                for artifact, digest in (("predictions", "prediction_sha256"), ("protocol", "protocol_hash")):
-                    path = Path(stored["artifacts"][artifact])
-                    if not path.is_file() or file_sha256(path) != stored["lineage"][digest]:
-                        raise ValueError("Cached feature fit artifact checksum mismatch: "+artifact)
-                return stored
-        if executor is None:
-            return feature_screen_worker(request, self.config.native_threads)
-        # Scientific identity is stable; each failed execution gets a fresh deadline.
-        executions = request.output_dir/"executions"
+    def _execute(self, request, executor=None, *, expected_protocol=None):
+        # Do not let manually constructed legacy requests bypass accepted-episode
+        # publication. All feature screening and transfer fits share this gate.
+        if not request.supervised_fit:
+            request = replace(request, supervised_fit=True)
+        return self._execute_managed(request, executor, expected_protocol=expected_protocol)
+
+    def _execute_managed(self, request, executor=None, *, expected_protocol=None):
+        """Use accepted-episode receipts for transfer fits and only reuse bound results."""
+        from .research_publication import read_accepted
         from .research_storage import admitted_output
-        with admitted_output(executions, estimated_bytes=max(4096,_missing_directories(executions)*65536),
-                             stage="feature_exploration_executions",
+
+        base_id = request.attempt_id
+        trials = Path(request.output_dir).parent
+        if trials.name != "trials" or Path(request.output_dir).name != base_id:
+            raise ValueError("Managed feature fit requires a canonical trials/<attempt> path")
+        if not request.dataset_hash or file_sha256(request.dataset_path) != request.dataset_hash:
+            raise ValueError("Managed feature fit dataset hash differs from the request")
+        attempts = [(base_id, Path(request.output_dir))]
+        for path in sorted(trials.glob(base_id + "--execution-*")):
+            if path.is_dir():
+                attempts.append((path.name, path))
+
+        def expected_payload(attempt_id):
+            return {"attempt_id": attempt_id, "payload": {
+                "recipe_hash": request.recipe.recipe_hash(), "proposal_id": request.proposal_id,
+                "trial_number": request.trial_number, "dataset_hash": request.dataset_hash,
+                "code_revision": request.code_revision, "environment_hash": request.environment_hash}}
+
+        # Legacy and interrupted results have no supervisor acceptance receipt. Keep
+        # them as evidence and give each retry a fresh canonical runtime/episode path.
+        for attempt_id, output_dir in attempts:
+            result_path = output_dir / "result.json"
+            if not result_path.is_file():
+                continue
+            stored = json.loads(result_path.read_text())
+            if "_execution_acceptance" not in stored:
+                continue
+            accepted = read_accepted(trials.parent, expected_payload(attempt_id))
+            if accepted is None:
+                continue
+            physical_request = replace(request, attempt_id=attempt_id, output_dir=output_dir)
+            self._validate_managed_result(accepted, physical_request, expected_protocol=expected_protocol)
+            return accepted
+
+        occupied = {attempt_id for attempt_id, _ in attempts}
+        if (base_id not in occupied or
+                (not (Path(request.output_dir)/"runtime.json").exists()
+                 and not (Path(request.output_dir)/"result.json").exists())):
+            attempt_id, output_dir = base_id, Path(request.output_dir)
+        else:
+            number = 1
+            while f"{base_id}--execution-{number:06d}" in occupied:
+                number += 1
+            attempt_id = f"{base_id}--execution-{number:06d}"
+            output_dir = trials / attempt_id
+        managed_request = replace(request, attempt_id=attempt_id, output_dir=output_dir,
+                                  supervised_fit=True, managed_episode_nonce=None)
+        executions = output_dir / "executions"
+        with admitted_output(executions, estimated_bytes=max(4096, _missing_directories(executions)*65536),
+                             stage="feature_transfer_executions",
                              inodes=_missing_directories(executions)):
             executions.mkdir(parents=True, exist_ok=True)
-        attempt = len(list(executions.glob("execution-*.json")))+1
-        future = executor.submit(feature_screen_worker, request, self.config.native_threads,
-                                 runtime_path=executions/f"execution-{attempt:06d}.json", timeout=self.config.fit_timeout)
+        if executor is None:
+            from .research_worker_runtime import BoundedFitExecutor
+            with BoundedFitExecutor(max_workers=1, max_tasks_per_child=1) as owned_executor:
+                return self._run_managed_attempt(managed_request, owned_executor,
+                                                 expected_protocol=expected_protocol)
+        return self._run_managed_attempt(managed_request, executor, expected_protocol=expected_protocol)
+
+    def _run_managed_attempt(self, request, executor, *, expected_protocol=None):
+        from .research_publication import read_accepted
+        output_dir = Path(request.output_dir)
+        trials = output_dir.parent
+        future = executor.submit(_managed_feature_worker, request, self.config.native_threads,
+                                 runtime_path=output_dir/"runtime.json", timeout=self.config.fit_timeout)
         while not future.done():
-            progress = request.output_dir/"progress.json"
-            self.status("screening", active_id=request.attempt_id,
+            progress = output_dir/"progress.json"
+            self.status("transfer_fit", active_id=request.attempt_id,
                         progress=json.loads(progress.read_text()) if progress.exists() else {})
             time.sleep(2)
-        return future.result()
+        result = future.result()
+        payload = result.serializable()
+        acceptance_request = {"attempt_id": request.attempt_id, "payload": {
+            "recipe_hash": request.recipe.recipe_hash(), "proposal_id": request.proposal_id,
+            "trial_number": request.trial_number, "dataset_hash": request.dataset_hash,
+            "code_revision": request.code_revision, "environment_hash": request.environment_hash}}
+        accepted = read_accepted(trials.parent, acceptance_request)
+        if accepted != payload:
+            raise ValueError("Feature transfer result lacks matching supervisor acceptance")
+        self._validate_managed_result(accepted, request, expected_protocol=expected_protocol)
+        return accepted
+
+    @staticmethod
+    def _validate_managed_result(payload, request, *, expected_protocol=None):
+        if (payload.get("attempt_id") != request.attempt_id
+                or payload.get("proposal_id") != request.proposal_id
+                or payload.get("trial_number") != request.trial_number
+                or payload.get("recipe_hash") != request.recipe.recipe_hash()
+                or payload.get("status") != "completed"):
+            raise ValueError("Accepted feature result differs from the requested attempt")
+        lineage = payload.get("lineage", {})
+        if any(lineage.get(key) != value for key, value in (
+                ("dataset_hash", request.dataset_hash), ("code_revision", request.code_revision),
+                ("environment_hash", request.environment_hash))):
+            raise ValueError("Accepted feature result input identity changed")
+        if expected_protocol is not None and lineage.get("protocol_hash") != expected_protocol.get("protocol_hash"):
+            raise ValueError("Accepted feature result protocol differs from the pinned reference")
+        for artifact, digest in (("predictions", "prediction_sha256"), ("protocol", "protocol_hash")):
+            artifact_path = Path(payload["artifacts"][artifact])
+            if not artifact_path.is_file() or file_sha256(artifact_path) != lineage.get(digest):
+                raise ValueError("Accepted feature fit artifact checksum mismatch: " + artifact)
+        protocol_payload = json.loads(Path(payload["artifacts"]["protocol"]).read_text())
+        if protocol_payload.get("protocol_id") != lineage.get("protocol_id"):
+            raise ValueError("Accepted feature result protocol artifact identity changed")
 
     def _request(self, identifier, manifest, features=()):
         return RecipeExecutionRequest(identifier, "feature-exploration", 0,
             self.recipe(manifest["dataset_id"], features), Path(manifest["features_path"]),
-            self.root/"trials"/identifier, self.protocol, manifest["files"]["features.parquet"],
-            self.config.code_revision, self.config.environment_hash, V6_PORTFOLIO_VERSION)
+            self.root/"trials"/identifier, self.protocol, manifest["files"][Path(manifest['features_path']).name],
+            self.config.code_revision, self.config.environment_hash, V6_PORTFOLIO_VERSION,
+            supervised_fit=True)
 
     def baseline(self, executor=None):
         identifier = "feature-control-" + self.context_id
@@ -351,6 +445,163 @@ class FeatureExplorer:
         if result["status"] != "completed":
             raise RuntimeError("Feature baseline failed: " + str(result.get("error")))
         return result
+
+    def transfer(self, build_id, reference, *, destination=None, executor=None, attribution=False):
+        from .feature_promotion import transfer_plan
+        from .feature_lifecycle import FeatureLifecycle
+        plan=transfer_plan(self.config.registry,build_id,reference,destination=destination)
+        lifecycle=FeatureLifecycle(self.config.registry)
+        # Exploration roots may differ; execution ownership is registry-wide.
+        with lifecycle.registry._lock('execute-'+plan['transfer_id']):
+            return self._transfer(build_id,reference,destination=destination,
+                                  executor=executor,attribution=attribution)
+
+    def _transfer(self, build_id, reference, *, destination=None, executor=None, attribution=False):
+        """Run fixed control and full bundle through the existing recipe executor."""
+        from .feature_promotion import paired_transfer_report, save_transfer, transfer_plan
+        from .feature_lifecycle import FeatureLifecycle
+        plan = transfer_plan(self.config.registry, build_id, reference, destination=destination)
+        if (reference["code_revision"] != self.config.code_revision
+                or reference["environment_hash"] != self.config.environment_hash):
+            raise ValueError("Transfer runtime differs from pinned champion")
+        saved = save_transfer(self.config.registry, plan)
+        if saved["status"] == "completed":
+            return self._transfer_followup(saved, executor=executor, attribution=attribution)
+        lifecycle = FeatureLifecycle(self.config.registry)
+        manifests = [lifecycle.registry.verify(plan[k]) for k in ("parent_dataset_id", "dataset_id")]
+        if self.parent["dataset_id"] != plan["parent_dataset_id"]:
+            raise ValueError("Transfer worker must use the pinned parent context")
+        save_transfer(self.config.registry, plan, status="running")
+        try:
+            results = []
+            for role, manifest in zip(("control", "candidate"), manifests, strict=True):
+                identifier = plan["transfer_id"] + "-" + role
+                request = RecipeExecutionRequest(identifier, plan["transfer_id"], 0,
+                    PipelineRecipe.model_validate(plan[role+"_recipe"]), Path(manifest["features_path"]),
+                    self.root/"trials"/identifier, self.protocol, manifest["files"][Path(manifest['features_path']).name],
+                    self.config.code_revision, self.config.environment_hash, V6_PORTFOLIO_VERSION,
+                    supervised_fit=True)
+                result = self._execute(request, executor, expected_protocol=reference["comparison_contract"])
+                if result["status"] != "completed":
+                    raise ValueError("Transfer fit failed: " + str(result.get("error")))
+                results.append(result)
+            control, candidate = results
+            observations = []
+            for result, manifest, definitions in zip(results, manifests, ([], plan["definition_ids"]), strict=True):
+                observation = self._observation(result, manifest, definitions)
+                observation["model_id"] = "champion-transfer:" + result["recipe_hash"]
+                observation["model_context"] = {"stage": "fixed_champion_transfer", "reference_id": plan["reference_id"]}
+                observation["comparison_contract"]["target_contract"] = reference["comparison_contract"]["target_contract"]
+                if observation["comparison_contract"] != reference["comparison_contract"]:
+                    raise ValueError("Transfer scored contract differs from pinned reference")
+                observations.append(observation)
+            report = paired_transfer_report(candidate["artifacts"]["predictions"], control["artifacts"]["predictions"],
+                                            reference["comparison_contract"]["target_contract"])
+            linked = record_model_outcome(self.config.registry, build_id, observations[1], baseline=observations[0])
+            payload = {"paired": report, "outcome_id": linked["outcome_id"], "control": control, "candidate": candidate,
+                       "next_action": "review_complete_bundle_then_schedule_ablation_and_null_control",
+                       "scope": "fixed recipe development transfer; no confirmation or wagering promotion"}
+            report_path = self.root/"trials"/plan["transfer_id"]/"paired-report.json"
+            from .research_storage import admitted_output
+            report_size = max(4096, len(json.dumps(payload, allow_nan=False).encode("utf-8"))+4096)
+            with admitted_output(report_path.parent, estimated_bytes=report_size,
+                                 stage="feature_transfer_paired_report",
+                                 inodes=_missing_directories(report_path.parent)+1):
+                report_path.parent.mkdir(parents=True, exist_ok=True)
+                _write_json(report_path, payload)
+            saved = save_transfer(self.config.registry, plan, status="completed", result=payload)
+        except Exception as exc:
+            save_transfer(self.config.registry, plan, status="failed", result={"error": f"{type(exc).__name__}: {exc}"})
+            raise
+        return self._transfer_followup(saved, executor=executor, attribution=attribution)
+
+    def _transfer_followup(self, saved, *, executor=None, attribution=False):
+        from .feature_promotion import attribution_recipes, paired_transfer_report
+        from .feature_lifecycle import FeatureLifecycle
+        plan = saved["plan"]
+        lifecycle = FeatureLifecycle(self.config.registry)
+        report_dir = lifecycle.root/"transfers"
+        if attribution:
+            manifest = lifecycle.registry.verify(plan["dataset_id"])
+            reports = {}
+            for role, recipe in attribution_recipes(plan).items():
+                identifier = plan["transfer_id"] + "-" + role
+                request = RecipeExecutionRequest(identifier, plan["transfer_id"], 0,
+                    PipelineRecipe.model_validate(recipe), Path(manifest["features_path"]),
+                    self.root/"trials"/identifier, self.protocol, manifest["files"][Path(manifest['features_path']).name],
+                    self.config.code_revision, self.config.environment_hash, V6_PORTFOLIO_VERSION,
+                    supervised_fit=True)
+                result = self._execute(request, executor,
+                                       expected_protocol=plan["reference"]["comparison_contract"])
+                if result["status"] != "completed":
+                    raise ValueError("Attribution fit failed: " + str(result.get("error")))
+                report = paired_transfer_report(result["artifacts"]["predictions"],
+                    saved["result"]["control"]["artifacts"]["predictions"],
+                    plan["reference"]["comparison_contract"]["target_contract"])
+                if role == "null" and any(abs(row["delta"]) > 1e-12 for row in report["race_deltas"]):
+                    raise ValueError("Null control changed predictions despite unchanged inputs")
+                reports[role] = {"result": result, "paired": report}
+            _write_json(report_dir/(plan["transfer_id"]+"-attribution.json"), reports)
+        tracking_path = report_dir/(plan["transfer_id"]+"-tracking.json")
+        if self.config.tracking_uri:
+            try:
+                from mlflow.tracking import MlflowClient
+                client = MlflowClient(tracking_uri=self.config.tracking_uri)
+                experiment = client.get_experiment_by_name("ima-champion-feature-transfers")
+                experiment_id = experiment.experiment_id if experiment else client.create_experiment("ima-champion-feature-transfers")
+                tracking = json.loads(tracking_path.read_text()) if tracking_path.exists() else {"runs": {}}
+                for role in ("control", "candidate"):
+                    result = saved["result"][role]
+                    run_id = tracking["runs"].get(role)
+                    dataset_id = plan["parent_dataset_id"] if role == "control" else plan["dataset_id"]
+                    result_identity = result["lineage"]
+                    run_tags = {"ima.stage": "fixed_champion_feature_transfer",
+                        "ima.transfer_id": plan["transfer_id"], "ima.reference_id": plan["reference_id"],
+                        "ima.role": role, "ima.attempt_id": result["attempt_id"],
+                        "ima.dataset_id": dataset_id, "ima.protocol_id": result_identity["protocol_id"],
+                        "ima.protocol_hash": result_identity["protocol_hash"],
+                        "ima.code_revision": result_identity["code_revision"],
+                        "ima.environment_hash": result_identity["environment_hash"]}
+                    if not run_id:
+                        run_id = client.create_run(experiment_id, tags=run_tags).info.run_id
+                        tracking["runs"][role] = run_id
+                        _write_json(tracking_path, tracking)
+                    client.log_param(run_id, "recipe_hash", result["recipe_hash"])
+                    client.log_param(run_id, "reference_attempt_id", plan["reference"]["attempt_id"])
+                    client.log_param(run_id, "feature_build_id", plan["build_id"])
+                    expected_params = {"recipe_hash": result["recipe_hash"],
+                        "reference_attempt_id": plan["reference"]["attempt_id"],
+                        "feature_build_id": plan["build_id"], "attempt_id": result["attempt_id"],
+                        "dataset_id": dataset_id, "dataset_hash": result_identity["dataset_hash"],
+                        "protocol_id": result_identity["protocol_id"],
+                        "protocol_hash": result_identity["protocol_hash"],
+                        "code_revision": result_identity["code_revision"],
+                        "environment_hash": result_identity["environment_hash"]}
+                    for key, value in expected_params.items():
+                        client.log_param(run_id, key, value)
+                    if role == "candidate":
+                        client.log_param(run_id, "baseline_run_id", tracking["runs"]["control"])
+                        client.log_metric(run_id, "paired_delta", saved["result"]["paired"]["paired_delta"])
+                    client.log_metric(run_id, result["objective_name"], result["objective_value"])
+                    client.log_artifact(run_id, result["artifacts"]["predictions"])
+                    report_path = self.root/"trials"/plan["transfer_id"]/"paired-report.json"
+                    client.log_artifact(run_id, str(report_path))
+                    client.set_terminated(run_id, "FINISHED")
+                    observed = client.get_run(run_id)
+                    expected_tags = run_tags
+                    if role == "candidate":
+                        expected_params["baseline_run_id"] = tracking["runs"]["control"]
+                    if (observed.info.run_id != run_id or observed.info.experiment_id != experiment_id
+                            or observed.info.status != "FINISHED"
+                            or any(observed.data.tags.get(key) != value for key, value in expected_tags.items())
+                            or any(observed.data.params.get(key) != value for key, value in expected_params.items())):
+                        raise ValueError("Transfer MLflow readback failed")
+                tracking.update(status="published", error=None)
+            except Exception as exc:
+                tracking = (json.loads(tracking_path.read_text()) if tracking_path.exists() else {"runs": {}})
+                tracking.update(status="pending", error=f"{type(exc).__name__}: {exc}")
+            _write_json(tracking_path, tracking)
+        return saved
 
     def _observation(self, result, manifest, definition_ids):
         lineage = result["lineage"]
@@ -405,6 +656,7 @@ class FeatureExplorer:
                 raise ValueError("Candidate fit failed: " + str(result.get("error")))
             paired = paired_feature_report(result["artifacts"]["predictions"], baseline["artifacts"]["predictions"], "win_probability")
             outcome = self._observation(result, manifest, manifest["feature_definition_ids"])
+            outcome["paired_statistics"] = paired
             control = self._observation(baseline, self.parent, [])
             report = record_model_outcome(self.config.registry, manifest["feature_build_id"], outcome, baseline=control)
             if not report["paired"]:

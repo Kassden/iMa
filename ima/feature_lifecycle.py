@@ -712,7 +712,7 @@ def record_model_outcome(registry_root, build_id: str, outcome: dict, *, baselin
         return row
 
 
-def catalog(registry_root, *, limit: int = 20) -> dict:
+def catalog(registry_root, *, limit: int = 20, build_ids=None) -> dict:
     """Use cheap summaries to bound receipt, parquet and outcome reads by limit.
 
     Totals describe recorded status; integrity checks cover only the selected
@@ -742,6 +742,9 @@ def catalog(registry_root, *, limit: int = 20) -> dict:
         candidates.append((priority, created_at, build_id, path))
     candidates.sort(key=lambda row: (row[1], row[2]), reverse=True)
     candidates.sort(key=lambda row: row[0])
+    if build_ids is not None:
+        order = {identifier: i for i, identifier in enumerate(build_ids)}
+        candidates = sorted((row for row in candidates if row[2] in order), key=lambda row: order[row[2]])
     builds, loaded_outcomes = [], 0
     for _, _, build_id, path in candidates[:limit]:
         receipt = lifecycle.receipt(path.stem)
