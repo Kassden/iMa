@@ -54,12 +54,17 @@ def input_digest(archive, profiles, corpora):
 
 
 @storage_writer(stage='official_snapshot_refresh',output=lambda a:a['output'],estimate=lambda a:64*1024**2)
-def refresh(archive, profiles, corpora, output, baseline_runners=None, baseline_manifest=None):
+def refresh(archive, profiles, corpora, output, baseline_runners=None, baseline_manifest=None,
+            *,storage_format='legacy',export_csv=False):
+    if storage_format not in {'legacy','objects-v2'}:
+        raise ValueError('Unsupported snapshot storage format')
     if bool(baseline_runners) != bool(baseline_manifest):
         raise ValueError("Baseline runners and manifest must be supplied together")
     _mkdir_admitted(output)
     with FileLock(output / "refresh.lock", timeout=0):
         fingerprint = input_digest(archive, profiles, corpora)
+        if storage_format!='legacy':
+            fingerprint=hashlib.sha256(json.dumps([fingerprint,storage_format,export_csv]).encode()).hexdigest()
         if baseline_runners:
             fingerprint = hashlib.sha256(json.dumps([fingerprint,
                 hashlib.sha256(baseline_runners.read_bytes()).hexdigest(),
@@ -81,7 +86,8 @@ def refresh(archive, profiles, corpora, output, baseline_runners=None, baseline_
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         snapshot = output / f"snapshot-{stamp}-{uuid4().hex[:8]}"
         build(SimpleNamespace(archive=archive, profiles=profiles, corpus=corpora,
-                              base_snapshot=base, output=snapshot))
+                              base_snapshot=base, output=snapshot,
+                              storage_format=storage_format,export_csv=export_csv))
         report = verify(snapshot, baseline_runners, baseline_manifest)
         report_path = snapshot.with_suffix(".readback.json")
         _publish_json(report_path,report)
@@ -105,11 +111,14 @@ def main():
     parser.add_argument("--profiles", type=Path, required=True)
     parser.add_argument("--corpus", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument('--storage-format',choices=['legacy','objects-v2'],default='legacy')
+    parser.add_argument('--export-csv',action='store_true')
     parser.add_argument("--baseline-runners", type=Path)
     parser.add_argument("--baseline-manifest", type=Path)
     args = parser.parse_args()
     print(json.dumps(refresh(args.archive, args.profiles, args.corpus, args.output,
-                             args.baseline_runners, args.baseline_manifest), indent=2))
+                             args.baseline_runners, args.baseline_manifest,
+                             storage_format=args.storage_format,export_csv=args.export_csv), indent=2))
 
 
 if __name__ == "__main__":

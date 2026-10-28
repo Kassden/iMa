@@ -218,6 +218,7 @@ def _build_locked(args):
     _mkdir_admitted(staging / "code")
     for path in (Path(__file__), Path("scrapper/official_corpus.py"), Path("ima/rich_features.py"),
                  Path("scrapper/research_storage_io.py"), Path("ima/research_storage.py"), Path("ima/research_sqlite.py"),
+                 Path("ima/research_objects.py"), Path("ima/research_dataset_capacity.py"),
                  Path("ima/data.py"), Path("ima/feature_sets.py"),
                  Path("scrapper/historical/results.py"), Path("scrapper/horse_pages.py")):
         body = path.read_bytes()
@@ -230,7 +231,8 @@ def _build_locked(args):
         for name, digest in manifest["files"].items():
             if hashlib.sha256((args.base_snapshot / name).read_bytes()).hexdigest() != digest:
                 raise ValueError(f"Base snapshot hash mismatch: {name}")
-        base = pd.read_parquet(args.base_snapshot / "runners.parquet")
+        from ima.research_objects import read_snapshot_table
+        base = read_snapshot_table(args.base_snapshot,'runners.parquet')
         if not base["source"].eq("official:hkjc-results").all():
             raise ValueError("Base snapshot contains nonofficial runners")
         for race_id, group in base.groupby("race_id", sort=False):
@@ -344,8 +346,16 @@ def _build_locked(args):
     if not rows:
         raise ValueError("No verified official races; refusing empty snapshot")
     source = pd.DataFrame(rows).sort_values(["date", "race_id", "horse_no"]).reset_index(drop=True)
-    with reserved_output_file(staging/'runners.parquet') as stream:source.to_parquet(stream,index=False)
-    with reserved_output_file(staging/'runners.csv','w') as stream:source.to_csv(stream,index=False)
+    object_format=getattr(args,'storage_format','legacy')=='objects-v2'
+    tables={}
+    if object_format:
+        from ima.research_objects import ObjectStore
+        store=ObjectStore(args.output.parent/'objects')
+        tables['runners.parquet']=store.publish_table(source)
+    else:
+        with reserved_output_file(staging/'runners.parquet') as stream:source.to_parquet(stream,index=False)
+    if not object_format or getattr(args,'export_csv',False):
+        with reserved_output_file(staging/'runners.csv','w') as stream:source.to_csv(stream,index=False)
     with reserved_output_file(staging/'profiles.jsonl','w') as stream:
         pd.DataFrame(profiles.values()).to_json(stream,orient='records',lines=True)
     print(f"Preparing rich historical features for {len(source)} official runners", flush=True)
@@ -357,8 +367,12 @@ def _build_locked(args):
     for column in set(unknown):
         if not column.endswith("_available"):
             features[column] = float("nan")
-    with reserved_output_file(staging/'features.parquet') as stream:features.to_parquet(stream,index=False)
-    with reserved_output_file(staging/'features.csv','w') as stream:features.to_csv(stream,index=False)
+    if object_format:
+        tables['features.parquet']=store.publish_table(features)
+    else:
+        with reserved_output_file(staging/'features.parquet') as stream:features.to_parquet(stream,index=False)
+    if not object_format or getattr(args,'export_csv',False):
+        with reserved_output_file(staging/'features.csv','w') as stream:features.to_csv(stream,index=False)
     newly_resolved_workouts = resolve_workout_identities(list(events.values()))
     workout_groups = group_workout_observations(list(events.values()))
     with reserved_output_file(staging/'events.jsonl','w') as stream:
@@ -430,6 +444,9 @@ def _build_locked(args):
         "benter_gaps": ["proprietary adjustments not reproduced", "historical workout/trial/vet publication unverified",
             "current profile age not substituted into history", "no exhaustive official fixture denominator yet"],
         "files": {p.name: _sha256_file(p) for p in staging.iterdir() if p.is_file()}}
+    if object_format:
+        manifest.update(storage_format='ima.snapshot.objects.v2',tables=tables,
+                        csv_export_policy='explicit_opt_in_only')
     _fsync_tree(staging)
     with reserved_output_file(staging/'manifest.json','x') as stream:
         json.dump(manifest,stream,indent=2)
@@ -447,6 +464,8 @@ def main():
     parser.add_argument("--corpus", type=Path, action="append", default=[])
     parser.add_argument("--base-snapshot", type=Path, help="Hash-verified official snapshot; retry its quarantined races and add newly captured pages")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument('--storage-format',choices=['legacy','objects-v2'],default='legacy')
+    parser.add_argument('--export-csv',action='store_true')
     args = parser.parse_args()
     build(args)
 

@@ -55,8 +55,9 @@ def verify(snapshot, baseline_runners=None, baseline_manifest=None):
     for name, digest in manifest["code_hashes"].items():
         if hashlib.sha256((snapshot / "code" / Path(name).name).read_bytes()).hexdigest() != digest:
             raise ValueError(f"Captured code hash mismatch: {name}")
-    runners = pd.read_parquet(snapshot / "runners.parquet")
-    features = pd.read_parquet(snapshot / "features.parquet")
+    from ima.research_objects import read_snapshot_table
+    runners = read_snapshot_table(snapshot,'runners.parquet')
+    features = read_snapshot_table(snapshot,'features.parquet')
     baseline_report = check_baseline_roster(runners, baseline_runners, baseline_manifest) if baseline_runners else {}
     if not runners["source"].eq("official:hkjc-results").all():
         raise ValueError("Nonofficial runner source")
