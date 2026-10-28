@@ -272,9 +272,11 @@ def restore_object(*, archive_path, object_root, reference, authority):
             "status": "restored_verified", "consumer_readback": "required via read_snapshot_table"}
 
 def _restore_pinned(archive, ref, dest, temporary, shard_fd):
+    created = False
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                              0o600, dir_fd=shard_fd)
+        created = True
         with archive.open("rb") as src, os.fdopen(descriptor, "wb") as dst:
             digest = hashlib.sha256()
             size = 0
@@ -292,10 +294,11 @@ def _restore_pinned(archive, ref, dest, temporary, shard_fd):
             raise ValueError("Restore destination already exists") from exc
         os.fsync(shard_fd)
     finally:
-        try:
-            os.unlink(temporary, dir_fd=shard_fd)
-        except FileNotFoundError:
-            pass
+        if created:
+            try:
+                os.unlink(temporary, dir_fd=shard_fd)
+            except FileNotFoundError:
+                pass
 
 def verify_restored_snapshot(snapshot, table_name="runners.parquet"):
     """Prove restore through the actual snapshot reader."""
