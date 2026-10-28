@@ -61,6 +61,81 @@ def graph_spec(output="pool"):
 
 
 class PipelineGraphTests(unittest.TestCase):
+    def test_nested_pool_selects_prefix_graph_and_freezes_source_linked_oof(self):
+        frame = race_frame(30)
+        frame["field_size"] = frame.groupby("race_id")["race_id"].transform("size")
+        frame = frame.sort_values(["date", "race_id", "horse_id"]).reset_index(drop=True)
+        candidates = []
+        for candidate_id, first_features, second_features in (
+            ("ability-first", ["ability"], ["context"]),
+            ("context-first", ["context"], ["ability"]),
+        ):
+            candidates.append({"candidate_id": candidate_id, "graph": {
+                "graph_id": candidate_id, "primary_node_id": "benter", "output_node_id": "benter",
+                "nodes": [
+                    {"node_id": "benter_view", "kind": "feature_view",
+                     "parameters": {"features": first_features},
+                     "output": {"kind": "feature_frame", "target": "features", "unit": "features"}},
+                    {"node_id": "benter", "kind": "estimator", "inputs": ["benter_view"],
+                     "parameters": {"model_kind": "benter_conditional_logit",
+                                    "model_parameters": {"l2": 0.1}}},
+                    {"node_id": "boosted_view", "kind": "feature_view",
+                     "parameters": {"features": second_features},
+                     "output": {"kind": "feature_frame", "target": "features", "unit": "features"}},
+                    {"node_id": "boosted", "kind": "estimator", "inputs": ["boosted_view"],
+                     "parameters": {"model_kind": "benter_conditional_logit",
+                                    "model_parameters": {"l2": 1.0}}},
+                ]}})
+        protocol = {"schema_version": 1, "selection_cutoff": "2020-01-15",
+            "validation_start": "2020-01-11", "min_prefix_train_meetings": 10,
+            "min_prefix_validation_meetings": 5, "registered_features": ["ability", "context"],
+            "candidate_graphs": candidates, "selection_trial_budget": 2, "seed": 19,
+            "objective": "mean_meeting_log_loss"}
+        spec = {"graph_id": "nested-pool", "output_node_id": "pool", "n_splits": 3,
+            "min_train_dates": 2, "nodes": [
+                {"node_id": "benter", "kind": "estimator",
+                 "parameters": {"model_kind": "benter_conditional_logit"}},
+                {"node_id": "boosted", "kind": "estimator",
+                 "parameters": {"model_kind": "benter_conditional_logit"}},
+                {"node_id": "pool", "kind": "learned_probability_pool", "inputs": ["benter", "boosted"],
+                 "parameters": {"selection_mode": "nested_selection",
+                                "selection_cutoff": "2020-01-15", "selection_protocol": protocol}},
+            ]}
+        source = {"dataset_hash": "1"*64, "dataset_manifest_hash": None,
+            "source_revision": "test-revision", "source_code_hash": "2"*64,
+            "protocol_hash": "3"*64, "target_contract": {"kind": "win_probability",
+            "label_column": "target_probability"}, "evaluation_population_id": "graph-test",
+            "evaluation_population_hash": "4"*64}
+        with tempfile.TemporaryDirectory() as directory:
+            fitted = fit_pipeline_graph(spec, frame, feature_schema=SCHEMA,
+                selection_source_context=source, selection_artifact_dir=directory)
+            pool_report = fitted.fit_report["learned_pools"][0]
+            self.assertEqual("nested_selection", pool_report["selection_mode"])
+            self.assertGreater(pool_report["selection"]["prefix_meetings"], 0)
+            self.assertGreater(pool_report["selection"]["oof_meetings"], 0)
+            self.assertEqual(1, len(fitted.fit_report["selections"]))
+            selection = fitted.fit_report["selections"][0]
+            self.assertTrue(Path(selection["artifact_path"]).is_file())
+            for receipt in pool_report["forward_blocks"]:
+                self.assertGreater(pd.Timestamp(receipt["prediction_start"]), pd.Timestamp("2020-01-15"))
+                self.assertLess(pd.Timestamp(receipt["training_cutoff"]), pd.Timestamp(receipt["prediction_start"]))
+            score = race_frame(2, 30)
+            np.testing.assert_allclose(fitted.predict_proba(score).reshape(-1, 4).sum(axis=1), 1.0)
+            changed = frame.copy()
+            future_mask = pd.to_datetime(changed.date) > pd.Timestamp("2020-01-15")
+            for _, indices in changed.loc[future_mask].groupby("race_id").groups.items():
+                old_winner = changed.loc[indices, "target_win"].to_numpy().argmax()
+                new_winner = (old_winner + 1) % 4
+                changed.loc[indices, "target_win"] = 0
+                changed.loc[indices[new_winner], "target_win"] = 1
+                changed.loc[indices, "target_probability"] = changed.loc[indices, "target_win"].astype(float)
+            second_dir = Path(directory) / "changed-future"
+            second_dir.mkdir()
+            refitted = fit_pipeline_graph(spec, changed, feature_schema=SCHEMA,
+                selection_source_context=source, selection_artifact_dir=second_dir)
+            self.assertEqual(selection["selection_sha256"],
+                refitted.fit_report["selections"][0]["selection_sha256"])
+
     def test_real_pool_primary_tuning_and_pickle(self):
         train, calibration, score = race_frame(20), race_frame(5, 20), race_frame(3, 25)
         fitted = fit_graph(graph_spec(), train, calibration, SCHEMA,

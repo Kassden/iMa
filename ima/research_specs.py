@@ -294,6 +294,22 @@ class PipelineRecipe(StrictModel):
                     raise ValueError(f"Graph recipes define {field} inside graph nodes, not an outer adapter")
             if self.target.kind != "win_probability":
                 raise ValueError("Composed graph evaluation currently requires win_probability")
+            nested_pools = [node for node in graph.nodes
+                            if node.kind == "learned_probability_pool"
+                            and node.parameters.get("selection_mode") == "nested_selection"]
+            if nested_pools:
+                if self.transforms or self.feature_discovery or self.feature_definitions or self.extra_numeric_features:
+                    raise ValueError("nested_selection currently requires the shared graph feature schema without outer recipe transforms/discovery")
+                from .feature_sets import FEATURE_SCHEMAS, drop_feature_families
+                from .pool_selection import validate_selection_protocol
+                selection_schema = drop_feature_families(
+                    FEATURE_SCHEMAS[self.feature_schema], self.drop_feature_families)
+                for node in nested_pools:
+                    validate_selection_protocol(node.parameters["selection_protocol"],
+                        feature_schema=selection_schema, expected_output={
+                            "kind": "win_probability", "target": "win_probability",
+                            "unit": "probability", "market": False,
+                        })
             for node in graph.nodes:
                 if node.kind == "estimator":
                     kind = node.parameters.get("model_kind", "benter_conditional_logit")
