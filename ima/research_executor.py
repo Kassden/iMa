@@ -275,7 +275,7 @@ def _execution_progress(request, stage, *, fold_id=None, fold_index=None, fold_c
 def _load_recipe_features(request):
     _execution_progress(request, "loading_dataset")
     _write_json_atomic(request.output_dir/"stage.json", {"phase": "loading_dataset", "started_at_epoch": time.time()})
-    frame = _load_dataset(request.dataset_path)
+    frame = _load_request_dataset(request)
     observed_hash = _hash_file(request.dataset_path)
     if request.dataset_hash is not None and request.dataset_hash != observed_hash:
         raise ValueError("dataset hash does not match execution request")
@@ -1592,7 +1592,7 @@ def _feature_replay_context(request, schema, score, *, dataset_hash=None):
     from importlib.metadata import version
     if dataset_hash is not None and _hash_file(request.dataset_path) != dataset_hash:
         raise ValueError("Dataset changed during trial; inference package cannot be published")
-    source = _v6_feature_frame(_load_dataset(request.dataset_path), request)
+    source = _v6_feature_frame(_load_request_dataset(request), request)
     if source.attrs.get("dataset_manifest_hash") != score.attrs.get("dataset_manifest_hash"):
         raise ValueError("Dataset predictor manifest changed during trial")
     metadata = source.attrs["input_metadata"]
@@ -1803,14 +1803,55 @@ def _apply_training_window(
     return selected
 
 
-def _load_dataset(path: Path) -> pd.DataFrame:
+def _load_request_dataset(request):
+    """Project unused delta additions only when recipe dependencies are explicit.
+
+    Keep every parent column, including labels and historical side channels.
+    Adaptive discovery, transforms and graphs keep the complete input until their
+    dependency closure has a separately qualified projection contract.
+    """
+    path=Path(request.dataset_path)
+    recipe=request.recipe
+    if (path.name!='features.delta.json' or recipe.feature_discovery
+            or recipe.transforms or recipe.pipeline_graph or recipe.performance_distribution):
+        return _load_dataset(path)
+    descriptor=json.loads(path.read_text())
+    required=set(_effective_schema(recipe).features)|set(recipe.extra_numeric_features or ())
+    required.update(descriptor.get('replacements',()))
+    for definition in recipe.feature_definitions or ():
+        required.update(definition['input_refs'])
+        required.add(definition['name'])
+    delta_columns=set(descriptor['delta_columns'])
+    manifest_path=path.parent/'manifest.json'
+    if manifest_path.is_file():
+        manifest=json.loads(manifest_path.read_text())
+        catalog=manifest.get('predictor_catalog',manifest.get('eligible_predictors',manifest.get('feature_catalog',{})))
+        if isinstance(catalog,list):
+            if any(not isinstance(row,dict) or 'name' not in row for row in catalog):
+                return _load_dataset(path)
+            catalog={row['name']:row for row in catalog}
+        if not isinstance(catalog,dict) or any(not isinstance(row,dict) for row in catalog.values()):
+            return _load_dataset(path)
+        retained=set(descriptor['columns'])-delta_columns|required
+        while True:
+            bindings={row['available_at_column'] for name,row in catalog.items()
+                if name in retained and isinstance(row.get('available_at_column'),str)}
+            added=bindings-retained
+            if not added:break
+            retained.update(added)
+        required.update(retained)
+    columns=[name for name in descriptor['columns'] if name not in delta_columns or name in required]
+    return _load_dataset(path,columns=columns)
+
+
+def _load_dataset(path: Path, *, columns=None) -> pd.DataFrame:
     if not path.is_file():
         raise FileNotFoundError(path)
     if path.suffix == ".parquet":
-        frame = pd.read_parquet(path)
+        frame = pd.read_parquet(path,columns=columns)
     elif path.name=='features.delta.json':
         from .dataset_delta import read_feature_table
-        frame=read_feature_table(path)
+        frame=read_feature_table(path,columns=columns)
     else:
         frame = pd.read_csv(path, low_memory=False)
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
