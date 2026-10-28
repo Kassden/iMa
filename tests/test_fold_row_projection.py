@@ -35,7 +35,7 @@ class FoldRowProjectionTests(unittest.TestCase):
 
     def test_cold_preparation_matches_full_read_and_pushes_rows_and_columns(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             fast, _ = self._parquet_request(root / "fast")
             legacy, _ = self._parquet_request(root / "legacy")
             shutil.copyfile(fast.dataset_path, legacy.dataset_path)
@@ -75,9 +75,96 @@ class FoldRowProjectionTests(unittest.TestCase):
             self.assertTrue(all("horse_rating" in cols for cols, _, _ in filtered))
             self.assertTrue(all(rows < population[2] for _, _, rows in filtered))
 
+    def test_two_layer_delta_fold_route_projects_actual_positions_and_matches_full(self):
+        from ima.dataset_delta import digest, read_feature_table, write_feature_delta
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            fast, source_frame = self._parquet_request(root / "source", row_group_size=9)
+            # An invalid label in a late, unselected race must still be seen by the
+            # full narrow population pass and excluded exactly as in the full route.
+            source_frame.loc[source_frame.race_id == "R025", "target_win"] = np.nan
+            pq.write_table(pa.Table.from_pandas(source_frame, preserve_index=False),
+                           fast.dataset_path, row_group_size=9)
+            registry = root / "registry"
+            parent = registry / "datasets" / "dataset-parent"
+            parent.mkdir(parents=True)
+            shutil.copyfile(fast.dataset_path, parent / "features.parquet")
+            parent_manifest = {"dataset_id": "dataset-parent", "features_path": str(parent / "features.parquet"),
+                "files": {"features.parquet": digest(parent / "features.parquet")},
+                "predictor_catalog": json.loads((fast.dataset_path.parent / "manifest.json").read_text()).get(
+                    "predictor_catalog", {})}
+            (parent / "manifest.json").write_text(json.dumps(parent_manifest))
+            metadata = {"unit": "1", "dtype": "float64", "temporal_scope": "pre_race",
+                "target_tainted": False, "eligible": True, "source_family": "validated_formula",
+                "availability_proof": "derived from verified fixture values"}
+            child = registry / "datasets" / "dataset-child"
+            first = source_frame.assign(delta_unused=source_frame.horse_rating / 10)
+            write_feature_delta(parent / "manifest.json", child, first, registry_root=registry,
+                columns=["delta_unused"], catalog={"delta_unused": metadata})
+            child_manifest = {"dataset_id": "dataset-child", "features_path": str(child / "features.delta.json"),
+                "files": {"features.delta.json": digest(child / "features.delta.json")},
+                "predictor_catalog": parent_manifest["predictor_catalog"]}
+            (child / "manifest.json").write_text(json.dumps(child_manifest))
+            grandchild = registry / "datasets" / "dataset-grandchild"
+            full = first.assign(delta_second=first.delta_unused + 1)
+            write_feature_delta(child / "manifest.json", grandchild, full, registry_root=registry,
+                columns=["delta_second"], catalog={"delta_second": metadata})
+            source = grandchild / "features.delta.json"
+            delta_request = replace(fast, dataset_path=source, output_dir=root / "trials" / "delta",
+                attempt_id="delta-fold", proposal_id="delta-fold")
+            full_request = replace(fast, output_dir=root / "trials" / "full",
+                attempt_id="full-fold", proposal_id="full-fold")
+            self.assertTrue(executor._supports_direct_parquet_fold_pushdown(delta_request))
+            observed_positions = []
+            original_reader = read_feature_table
+            def observed(path, **kwargs):
+                if Path(path) == source and kwargs.get("positions") is not None:
+                    observed_positions.extend(kwargs["positions"])
+                return original_reader(path, **kwargs)
+            with patch("ima.dataset_delta.read_feature_table", side_effect=observed):
+                projected = prepare_recipe_folds(delta_request)
+            with patch.object(executor, "_supports_direct_parquet_fold_pushdown", return_value=False):
+                full_artifacts = prepare_recipe_folds(full_request)
+            self.assertTrue(observed_positions)
+            self.assertLess(len(observed_positions), len(source_frame))
+            self.assertEqual(list(full_artifacts), list(projected))
+            for fold_id in full_artifacts:
+                expected, actual = full_artifacts[fold_id], projected[fold_id]
+                self.assertEqual(expected.manifest()["row_keys"], actual.manifest()["row_keys"])
+                self.assertNotIn('R025', {json.loads(key)[0] for group in actual.manifest()["row_keys"].values()
+                                          for key in group})
+                # Cache identities remain source-hash bound; compare the prepared
+                # artifact contents and ordered keys across the logical population.
+                a, b = expected.load_arrays(), actual.load_arrays()
+                self.assertEqual(set(a), set(b))
+                for name in a:
+                    np.testing.assert_array_equal(a[name], b[name])
+
+    def test_delta_fold_route_falls_back_for_single_row_group_payloads(self):
+        from ima.dataset_delta import digest, write_feature_delta
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            request, frame = self._parquet_request(root / "source", row_group_size=10_000)
+            registry = root / "registry"
+            parent = registry / "datasets" / "parent"
+            parent.mkdir(parents=True)
+            shutil.copyfile(request.dataset_path, parent / "features.parquet")
+            (parent / "manifest.json").write_text(json.dumps({"dataset_id": "parent",
+                "features_path": str(parent / "features.parquet"),
+                "files": {"features.parquet": digest(parent / "features.parquet")},
+                "predictor_catalog": {}}))
+            metadata = {"unit": "1", "dtype": "float64", "temporal_scope": "pre_race",
+                "target_tainted": False, "eligible": True, "source_family": "validated_formula",
+                "availability_proof": "fixture"}
+            child = registry / "datasets" / "child"
+            write_feature_delta(parent / "manifest.json", child, frame.assign(extra=1.),
+                registry_root=registry, columns=["extra"], catalog={"extra": metadata})
+            delta_request = replace(request, dataset_path=child / "features.delta.json")
+            self.assertFalse(executor._supports_direct_parquet_fold_pushdown(delta_request))
+
     def test_single_row_group_uses_full_read_and_matches_cached_fold_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             single_group, _ = self._parquet_request(root / "single", row_group_size=10_000)
             full_read, _ = self._parquet_request(root / "full", row_group_size=10_000)
             shutil.copyfile(single_group.dataset_path, full_read.dataset_path)

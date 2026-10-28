@@ -49,6 +49,93 @@ def test_delta_projection_and_corruption_checks(tmp_path):
     with pytest.raises(ValueError): read_feature_table(child/'features.delta.json')
 
 
+def test_row_positions_preserve_order_duplicates_and_reject_invalid_values(tmp_path):
+    registry,parent,frame=parent_fixture(tmp_path)
+    child=registry/'datasets/position-child'
+    write_feature_delta(parent/'manifest.json',child,frame.assign(y=frame.x*2),
+        registry_root=registry,columns=['y'],catalog={'y':predictor()})
+    path=child/'features.delta.json'
+    expected=frame.assign(y=frame.x*2)[['race_id','horse_no','y']].iloc[[1,0,1]].reset_index(drop=True)
+    pd.testing.assert_frame_equal(read_feature_table(path,columns=['race_id','horse_no','y'],positions=[1,0,1]),expected)
+    for invalid in ([-1], [2], [True], [0.0]):
+        with pytest.raises(ValueError,match='position|integers'):
+            read_feature_table(path,columns=['y'],positions=invalid)
+
+
+def test_projected_read_checks_declared_parent_manifest_key_hash(tmp_path):
+    registry,parent,frame=parent_fixture(tmp_path)
+    manifest_path=parent/'manifest.json'
+    manifest=json.loads(manifest_path.read_text())
+    manifest['ordered_row_keys_sha256']='0'*64
+    manifest_path.write_text(json.dumps(manifest))
+    child=registry/'datasets/key-hash-child'
+    with pytest.raises(ValueError,match='manifest ordered runner identity'):
+        write_feature_delta(manifest_path,child,frame.assign(y=frame.x+1),registry_root=registry,
+            columns=['y'],catalog={'y':predictor()})
+    assert not child.exists()
+
+
+def test_projected_delta_reads_rows_before_pandas_and_keeps_full_key_validation(tmp_path,monkeypatch):
+    import pyarrow.parquet as pq
+    registry=tmp_path/'registry'; parent=registry/'datasets/root'; parent.mkdir(parents=True)
+    count=40
+    frame=pd.DataFrame({'race_id':[f'r{i:02}' for i in range(count)],'horse_no':[1]*count,
+        'horse_id':[f'h{i}' for i in range(count)],'target_win':[i%2 for i in range(count)],
+        'x':range(count)})
+    pq.write_table(__import__('pyarrow').Table.from_pandas(frame,preserve_index=False),
+                   parent/'features.parquet',row_group_size=5)
+    (parent/'manifest.json').write_text(json.dumps({'dataset_id':'root',
+        'features_path':str(parent/'features.parquet'),
+        'files':{'features.parquet':digest(parent/'features.parquet')},'predictor_catalog':{}}))
+    metadata=predictor()
+    child=registry/'datasets/child'
+    first=frame.assign(y=frame.x*2)
+    write_feature_delta(parent/'manifest.json',child,first,registry_root=registry,
+        columns=['y'],catalog={'y':metadata})
+    child_manifest={'dataset_id':'child','features_path':str(child/'features.delta.json'),
+        'files':{'features.delta.json':digest(child/'features.delta.json')},'predictor_catalog':{'y':metadata}}
+    (child/'manifest.json').write_text(json.dumps(child_manifest))
+    grandchild=registry/'datasets/grandchild'
+    full=first.assign(z=first.y+1)
+    write_feature_delta(child/'manifest.json',grandchild,full,registry_root=registry,
+        columns=['z'],catalog={'z':metadata})
+    source=grandchild/'features.delta.json'
+    positions=[31,2,31,18]
+
+    real_parquet_file=pq.ParquetFile
+    row_group_reads=[]
+    pandas_lengths=[]
+    class SpyParquetFile:
+        def __init__(self,*args,**kwargs): self.inner=real_parquet_file(*args,**kwargs)
+        def __getattr__(self,name): return getattr(self.inner,name)
+        def read_row_groups(self,groups,**kwargs):
+            result=self.inner.read_row_groups(groups,**kwargs)
+            row_group_reads.append((tuple(groups),tuple(kwargs.get('columns',())),result.num_rows))
+            class SpyTable:
+                def __init__(self,table): self.table=table
+                def __getattr__(self,name): return getattr(self.table,name)
+                def take(self,indices): return SpyTable(self.table.take(indices))
+                def to_pandas(self,*args,**kw):
+                    value=self.table.to_pandas(*args,**kw); pandas_lengths.append(len(value)); return value
+            return SpyTable(result)
+    monkeypatch.setattr(delta_module.pq,'ParquetFile',SpyParquetFile)
+    actual=read_feature_table(source,columns=['race_id','horse_no','x','y','z'],positions=positions)
+    expected=full[['race_id','horse_no','x','y','z']].iloc[positions].reset_index(drop=True)
+    pd.testing.assert_frame_equal(actual,expected)
+    assert any(groups and len(groups)<8 and set(cols)=={'race_id','horse_no','x'}
+               for groups,cols,_ in row_group_reads)
+    assert any(length==4 for length in pandas_lengths)
+    # Even when only the first key is requested, the full key chain is checked.
+    corrupt=pd.read_parquet(grandchild/'feature-delta.parquet')
+    corrupt.loc[39,'horse_no']=999
+    corrupt.to_parquet(grandchild/'feature-delta.parquet',index=False)
+    descriptor=json.loads(source.read_text())
+    descriptor['delta_sha256']=digest(grandchild/'feature-delta.parquet')
+    source.write_text(json.dumps(descriptor))
+    with pytest.raises(ValueError,match='Delta runner order/population|ordered'):
+        read_feature_table(source,columns=['z'],positions=[0])
+
+
 def test_multilayer_delta_preserves_parents_and_projects(tmp_path):
     registry,parent,frame=parent_fixture(tmp_path)
     child=registry/'datasets/dataset-child'

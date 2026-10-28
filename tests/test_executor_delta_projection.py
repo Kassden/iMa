@@ -33,17 +33,34 @@ def test_recipe_projects_unused_delta_before_parquet_decode_preserving_parent(tm
     path=fixture(tmp_path)
     request=SimpleNamespace(dataset_path=path,recipe=PipelineRecipe(schema_version=3,extra_numeric_features=('useful',)))
     calls=[]
-    original=pd.read_parquet
-    def read(source,*args,**kwargs):
-        calls.append((str(source),kwargs.get('columns')))
-        return original(source,*args,**kwargs)
-    with patch('pandas.read_parquet',side_effect=read):
+    from ima import dataset_delta
+    original=dataset_delta._read_parquet_positions
+    def read(source,columns,positions):
+        calls.append((str(source),columns,positions))
+        return original(source,columns,positions)
+    with patch.object(dataset_delta,'_read_parquet_positions',side_effect=read):
         projected=_load_request_dataset(request)
     expected=_load_dataset(path).drop(columns=['unused'])
     pd.testing.assert_frame_equal(projected,expected)
     assert 'unregistered_historical_sidechannel' in projected
-    delta_calls=[columns for source,columns in calls if source.endswith('feature-delta.parquet')]
-    assert delta_calls==[['race_id','horse_no','useful']]
+    delta_calls=[(columns,positions) for source,columns,positions in calls if source.endswith('feature-delta.parquet')]
+    assert delta_calls==[(['race_id','horse_no'],None),(['race_id','horse_no','useful'],None)]
+
+
+def test_fold_position_loader_keeps_transitive_binding_and_caller_order(tmp_path):
+    path=fixture(tmp_path)
+    metadata={'unit':'1','dtype':'float64','temporal_scope':'pre_race',
+        'target_tainted':False,'eligible':True,'available_at_column':'unused'}
+    manifest={'dataset_id':'fixture-child','files':{'features.delta.json':digest(path)},
+        'predictor_catalog':{'useful':metadata}}
+    (path.parent/'manifest.json').write_text(json.dumps(manifest))
+    request=SimpleNamespace(dataset_path=path,
+        recipe=PipelineRecipe(schema_version=3,extra_numeric_features=('useful',)))
+    projected=_load_request_dataset(request,positions=[1,0,1],fold_columns=[
+        'race_id','horse_no','race_no','date','target_win','target_probability','useful'])
+    assert projected[['race_id','horse_no']].values.tolist()==[['a',2],['a',1],['a',2]]
+    assert 'unused' in projected
+    assert 'unregistered_historical_sidechannel' not in projected
 
 
 def test_transform_recipe_keeps_full_dependency_population(tmp_path):

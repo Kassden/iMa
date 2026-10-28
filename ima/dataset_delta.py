@@ -3,10 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from bisect import bisect_left, bisect_right
 from contextlib import contextmanager
+from numbers import Integral
 from pathlib import Path
 import tempfile
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from .feature_expressions import InputMetadata
 from .research_storage import (
     _OUTPUT_BUDGET,
@@ -36,6 +40,12 @@ def digest(path):
 
 def key_digest(frame):
     return hashlib.sha256(json.dumps(frame[KEYS].astype(str).values.tolist(),separators=(',',':')).encode()).hexdigest()
+
+
+def _registry_key_digest(frame):
+    rows = [(str(race_id), str(horse_id))
+            for race_id, horse_id in zip(frame['race_id'], frame['horse_id'])]
+    return hashlib.sha256(json.dumps(rows,sort_keys=True,separators=(',',':'),default=str).encode()).hexdigest()
 
 
 @contextmanager
@@ -112,12 +122,77 @@ def _unlink_if_same(path, identity):
         pass
 
 
+def _validated_positions(positions, row_count):
+    if positions is None:
+        return None
+    values = list(positions)
+    # Positions are absolute, zero-based row offsets. Reject bools (an int subclass),
+    # negatives and out-of-range offsets so callers cannot accidentally get iloc's
+    # negative-index wraparound semantics.
+    if any(isinstance(value, bool) or not isinstance(value, Integral) for value in values):
+        raise ValueError('Row positions must be integers (not booleans)')
+    values = [int(value) for value in values]
+    if any(value < 0 or value >= row_count for value in values):
+        raise ValueError('Row position is outside the dataset population')
+    return values
+
+
+def _read_parquet_positions(path, columns, positions):
+    """Read selected row groups, then Arrow-take requested rows before pandas."""
+    parquet = pq.ParquetFile(path)
+    names = parquet.schema_arrow.names
+    requested = list(names if columns is None else columns)
+    missing = set(requested) - set(names)
+    if missing:
+        raise ValueError('Projected Parquet columns are missing: ' + ', '.join(sorted(missing)))
+    if positions is None:
+        return parquet.read(columns=requested).to_pandas()
+    row_count = parquet.metadata.num_rows
+    positions = _validated_positions(positions, row_count)
+    if not positions:
+        empty = pa.Table.from_arrays(
+            [pa.array([], type=parquet.schema_arrow.field(name).type) for name in requested],
+            names=requested,
+        )
+        return empty.to_pandas()
+    offsets = []
+    start = 0
+    for index in range(parquet.metadata.num_row_groups):
+        count = parquet.metadata.row_group(index).num_rows
+        offsets.append((start, start + count, index))
+        start += count
+    ordered_positions = sorted(set(positions))
+    selected_groups = [index for lo, hi, index in offsets
+                       if bisect_left(ordered_positions, hi) > bisect_left(ordered_positions, lo)]
+    table = parquet.read_row_groups(selected_groups, columns=requested)
+    local_indices = []
+    # Concatenated row groups preserve physical order. Map each requested position
+    # to its index in that compact Arrow table, then restore duplicates/caller order.
+    compact_offsets = {}
+    cursor = 0
+    for lo, hi, index in offsets:
+        if index in selected_groups:
+            compact_offsets[index] = cursor
+            cursor += hi - lo
+    ends = [hi for lo, hi, _ in offsets]
+    for pos in positions:
+        group_offset = bisect_right(ends, pos)
+        lo, _, index = offsets[group_offset]
+        local_indices.append(compact_offsets[index] + pos - lo)
+    return table.take(pa.array(local_indices, type=pa.int64())).to_pandas()
+
+
 def read_feature_table(path,*,columns=None,positions=None,_seen=None):
     path=Path(path).absolute()
     if path.resolve()!=path: raise ValueError('Noncanonical dataset input')
     if path.suffix=='.parquet':
-        frame=pd.read_parquet(path,columns=columns)
-        return frame if positions is None else frame.iloc[list(positions)].reset_index(drop=True)
+        parquet = pq.ParquetFile(path)
+        selected = _validated_positions(positions, parquet.metadata.num_rows)
+        before = digest(path)
+        frame = _read_parquet_positions(path, columns, selected)
+        if digest(path) != before:
+            raise ValueError('Dataset table changed during projected read')
+        return frame.reset_index(drop=True) if selected is not None else frame
     if path.suffix!='.json': raise ValueError('Unsupported dataset representation')
     seen=set() if _seen is None else set(_seen)
     if path in seen: raise ValueError('Dataset parent cycle')
@@ -139,23 +214,48 @@ def read_feature_table(path,*,columns=None,positions=None,_seen=None):
     delta=path.parent/'feature-delta.parquet'
     if delta.resolve()!=delta or digest(delta)!=descriptor['delta_sha256']:
         raise ValueError('Delta content changed')
+    delta_checksum = descriptor['delta_sha256']
     requested=list(descriptor['columns'] if columns is None else columns)
     if len(requested)!=len(set(requested)) or set(requested)-set(descriptor['columns']):
         raise ValueError('Invalid projected predictor columns')
     delta_columns=set(descriptor['delta_columns'])
-    wanted_parent=list(dict.fromkeys(KEYS+[c for c in requested if c not in delta_columns]))
-    base=read_feature_table(parent_features,columns=wanted_parent,_seen=seen)
-    added=pd.read_parquet(delta,columns=list(dict.fromkeys(KEYS+[c for c in requested if c in delta_columns])))
-    if base.duplicated(KEYS).any() or added.duplicated(KEYS).any() or len(base)!=descriptor['rows']:
+    # Validate the entire key chain and delta alignment independently of projection.
+    # This narrow pass keeps malformed/unselected identities from being hidden.
+    parent_key_columns = KEYS + (['horse_id'] if parent.get('ordered_row_keys_sha256') is not None else [])
+    base_keys=read_feature_table(parent_features,columns=parent_key_columns,_seen=seen)
+    delta_keys=_read_parquet_positions(delta,KEYS,None)
+    if base_keys.duplicated(KEYS).any() or delta_keys.duplicated(KEYS).any() or len(base_keys)!=descriptor['rows'] or len(delta_keys)!=descriptor['rows']:
         raise ValueError('Duplicate or changed delta population')
-    try: pd.testing.assert_frame_equal(base[KEYS].reset_index(drop=True),added[KEYS].reset_index(drop=True),check_exact=True)
+    try: pd.testing.assert_frame_equal(base_keys[KEYS].reset_index(drop=True),delta_keys.reset_index(drop=True),check_exact=True)
     except AssertionError as exc: raise ValueError('Delta runner order/population changed') from exc
-    if key_digest(base)!=descriptor['ordered_keys_sha256']: raise ValueError('Parent runner identity changed')
+    observed_key_hash = key_digest(base_keys)
+    if observed_key_hash != descriptor['ordered_keys_sha256']:
+        raise ValueError('Parent runner identity changed')
+    declared_parent_key_hash = parent.get('ordered_row_keys_sha256')
+    if declared_parent_key_hash is not None and declared_parent_key_hash != _registry_key_digest(base_keys):
+        raise ValueError('Parent manifest ordered runner identity changed')
+    selected = _validated_positions(positions, len(base_keys))
+    # With no explicit positions preserve the historical full-table API. With a
+    # projection, only selected predictor payload rows reach pandas materialization.
+    payload_positions = selected
+    wanted_parent=list(dict.fromkeys(KEYS+[c for c in requested if c not in delta_columns]))
+    base=read_feature_table(parent_features,columns=wanted_parent,positions=payload_positions,_seen=seen)
+    added=_read_parquet_positions(delta,list(dict.fromkeys(KEYS+[c for c in requested if c in delta_columns])),payload_positions)
+    if digest(delta) != delta_checksum:
+        raise ValueError('Delta content changed during projected read')
+    if selected is None:
+        selected = list(range(len(base_keys)))
+    selected_keys = base_keys.iloc[selected][KEYS].reset_index(drop=True)
+    try:
+        pd.testing.assert_frame_equal(base[KEYS].reset_index(drop=True),selected_keys,check_exact=True)
+        pd.testing.assert_frame_equal(added[KEYS].reset_index(drop=True),selected_keys,check_exact=True)
+    except AssertionError as exc:
+        raise ValueError('Projected delta runner order/population changed') from exc
     result=base.copy(deep=False)
     for name in requested:
         if name in delta_columns: result[name]=added[name].to_numpy()
     result=result[requested]
-    return result if positions is None else result.iloc[list(positions)].reset_index(drop=True)
+    return result.reset_index(drop=True) if positions is not None else result
 
 
 def write_feature_delta(parent_manifest_path,output,frame,*,registry_root,columns,replacements=(),catalog=None):

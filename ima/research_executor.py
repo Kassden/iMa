@@ -344,17 +344,39 @@ def _supports_direct_parquet_fold_pushdown(request):
     recipe = request.recipe
     eligible = (recipe.schema_version == 3
         and recipe.target.kind == "win_probability"
-        and Path(request.dataset_path).suffix == ".parquet"
+        and (Path(request.dataset_path).suffix == ".parquet"
+             or Path(request.dataset_path).name == "features.delta.json")
         and Path(request.dataset_path).is_file()
         and not (recipe.feature_discovery or recipe.transforms or recipe.feature_definitions
-                 or recipe.pipeline_graph or recipe.performance_distribution
-                 or recipe.extra_numeric_features))
+                 or recipe.pipeline_graph or recipe.performance_distribution))
     if not eligible:
         return False
     # A predicate cannot prune I/O within a single row group. Avoid the extra
     # population pass when the file layout offers no row-group pruning opportunity.
     import pyarrow.parquet as pq
-    return pq.ParquetFile(request.dataset_path).metadata.num_row_groups > 1
+    if Path(request.dataset_path).suffix == ".parquet":
+        return pq.ParquetFile(request.dataset_path).metadata.num_row_groups > 1
+    # Gate the extra narrow pass on actual row-group pruning potential in a
+    # predictor-bearing layer. Do not route all-history single-group packages here.
+    descriptor_path = Path(request.dataset_path)
+    seen = set()
+    needed_predictors = set(_effective_schema(recipe).features) | set(recipe.extra_numeric_features or ())
+    while descriptor_path.name == "features.delta.json":
+        descriptor_path = descriptor_path.absolute()
+        if descriptor_path in seen:
+            return False
+        seen.add(descriptor_path)
+        layer = json.loads(descriptor_path.read_text())
+        delta_path = descriptor_path.parent / "feature-delta.parquet"
+        layer_columns = set(layer.get("delta_columns", ()))
+        if (needed_predictors & layer_columns
+                and pq.ParquetFile(delta_path).metadata.num_row_groups > 1):
+            return True
+        needed_predictors -= layer_columns
+        descriptor_path = Path(layer["parent_manifest_path"]).parent / Path(
+            json.loads(Path(layer["parent_manifest_path"]).read_text())["features_path"]).name
+    return (descriptor_path.suffix == ".parquet" and bool(needed_predictors)
+            and pq.ParquetFile(descriptor_path).metadata.num_row_groups > 1)
 
 
 def _prepare_direct_parquet_folds(request, dependency_id):
@@ -368,13 +390,26 @@ def _prepare_direct_parquet_folds(request, dependency_id):
     observed_hash = _hash_file(path)
     if request.dataset_hash is not None and request.dataset_hash != observed_hash:
         raise ValueError("dataset hash does not match execution request")
-    population_columns = _fold_population_columns(path)
-    population = pd.read_parquet(path, columns=population_columns)
-    population = _sort_fold_rows(population)
+    is_delta = path.name == "features.delta.json"
+    population_columns = (_delta_fold_population_columns(path, request) if is_delta
+                          else _fold_population_columns(path))
+    if is_delta:
+        from .dataset_delta import read_feature_table
+        physical_population = read_feature_table(path, columns=population_columns)
+        source_position_by_key = {
+            (str(row.race_id), str(row.horse_no)): position
+            for position, row in enumerate(physical_population.itertuples(index=False))
+        }
+        population = _sort_fold_rows(physical_population)
+    else:
+        population = pd.read_parquet(path, columns=population_columns)
+        population = _sort_fold_rows(population)
     # This purpose-specific frame carries no predictors. Keep schema-3 manifest/catalog
     # validation and metadata construction, while deferring value availability checks to
     # each projected payload where predictor and binding columns are present.
-    population = _v6_feature_frame(population, request)
+    population_request = (replace(request, recipe=request.recipe.model_copy(update={"extra_numeric_features": ()}))
+                          if request.recipe.extra_numeric_features else request)
+    population = _v6_feature_frame(population, population_request)
     # _recipe_fold_inputs adds schema placeholders while retaining full target eligibility
     # and protocol rows; no predictors are used to choose fold membership.
     labelled, _, protocol, _ = _recipe_fold_inputs(request, population)
@@ -382,16 +417,30 @@ def _prepare_direct_parquet_folds(request, dependency_id):
     for index, fold in enumerate(protocol.folds, 1):
         _execution_progress(request, "preparing", fold_id=fold.fold_id,
                             fold_index=index, fold_count=len(protocol.folds))
-        race_ids = tuple(dict.fromkeys((*fold.train_race_ids, *fold.calibration_race_ids,
+        calibration_population = select_fold(labelled, fold.calibration_race_ids)
+        train_population = select_fold(labelled, fold.train_race_ids)
+        if request.recipe.train_window == "trailing_3_years" and not calibration_population.empty:
+            cutoff = pd.to_datetime(calibration_population.date).min() - pd.DateOffset(years=3)
+            permitted_train = train_population.loc[pd.to_datetime(train_population.date).ge(cutoff), "race_id"].astype(str)
+            train_race_ids = tuple(dict.fromkeys(permitted_train))
+        else:
+            train_race_ids = tuple(fold.train_race_ids)
+        race_ids = tuple(dict.fromkeys((*train_race_ids, *fold.calibration_race_ids,
                                         *fold.score_race_ids)))
-        payload = _read_direct_parquet_fold(request, race_ids)
+        if is_delta:
+            selected_population = select_fold(labelled, race_ids)
+            positions = [source_position_by_key[(str(row.race_id), str(row.horse_no))]
+                         for row in selected_population.itertuples(index=False)]
+            payload = _read_delta_fold_positions(request, positions)
+        else:
+            payload = _read_direct_parquet_fold(request, race_ids)
         fold_labelled, exclusions = _exclude_non_single_winner_races(payload)
         fold_labelled = apply_target_contract(
             fold_labelled, target_contract(request.recipe.target.kind, request.recipe.target.parameters))
         fold_labelled.attrs["dataset_exclusions"] = exclusions
         schema = _effective_frame_schema(request.recipe, payload)
         fold_labelled = _ensure_feature_columns(fold_labelled, schema)
-        required_population_columns = set(schema.features) | {"race_id", "date", "race_no", "horse_no",
+        required_population_columns = set(schema.features) | set(request.recipe.extra_numeric_features or ()) | {"race_id", "date", "race_no", "horse_no",
             "horse_id", "target_win", "target_probability", "market_probability", "result",
             "field_size", "win_odds", "finishing_status"}
         fold_labelled = fold_labelled.loc[:, [name for name in fold_labelled if name in required_population_columns]]
@@ -403,7 +452,7 @@ def _prepare_direct_parquet_folds(request, dependency_id):
         if actual_keys != expected_keys:
             raise ValueError("Filtered Parquet fold population/order differs from protocol population")
         calibration = select_fold(fold_labelled, fold.calibration_race_ids)
-        train = _apply_training_window(select_fold(fold_labelled, fold.train_race_ids),
+        train = _apply_training_window(select_fold(fold_labelled, train_race_ids),
                                        calibration, request.recipe.train_window)
         score = select_fold(fold_labelled, fold.score_race_ids)
         artifacts[fold.fold_id] = _prepared_fold(
@@ -428,6 +477,60 @@ def _fold_population_columns(path):
     return sorted(required)
 
 
+def _delta_fold_population_columns(path, request):
+    descriptor = json.loads(Path(path).read_text())
+    available = set(descriptor.get("columns", ()))
+    required = {"date", "race_no", "race_id", "horse_no", "target_win", "target_probability"}
+    # Keep the eligibility and protocol inputs consumed by schema-3 validation.
+    required |= {"horse_id", "field_size", "result", "finishing_status", "market_probability",
+                 "win_odds", "finish_seconds", "finish_time"}
+    manifest_path = Path(path).parent / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    catalog = manifest.get("predictor_catalog", manifest.get("eligible_predictors", manifest.get("feature_catalog", {})))
+    if isinstance(catalog, list):
+        catalog = {row["name"]: row for row in catalog if isinstance(row, dict) and "name" in row}
+    for name in (*_effective_schema(request.recipe).features, *(request.recipe.extra_numeric_features or ())):
+        row = catalog.get(name, {}) if isinstance(catalog, dict) else {}
+        clock = row.get("available_at_column") if isinstance(row, dict) else None
+        if isinstance(clock, str):
+            required.add(clock)
+    missing = {"date", "race_no", "race_id", "horse_no", "target_win", "target_probability"} - available
+    if missing:
+        raise ValueError("Delta fold population is missing required columns: " + ", ".join(sorted(missing)))
+    return sorted(required & available)
+
+
+def _read_delta_fold_positions(request, positions):
+    path = Path(request.dataset_path)
+    descriptor = json.loads(path.read_text())
+    manifest_path = path.parent / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    catalog = manifest.get("predictor_catalog", manifest.get("eligible_predictors", manifest.get("feature_catalog", {})))
+    if isinstance(catalog, list):
+        catalog = {row["name"]: row for row in catalog if isinstance(row, dict) and "name" in row}
+    required = set(_effective_schema(request.recipe).features) | set(request.recipe.extra_numeric_features or ()) | {
+        "date", "race_id", "race_no", "horse_no", "horse_id", "field_size", "target_win",
+        "target_probability", "result", "finishing_status", "market_probability", "win_odds",
+        "finish_seconds", "finish_time", "distance", "actual_weight", "lengths_raw", "source",
+        "jockey_id", "jockey_key", "trainer_id", "trainer_key", "observed_at", "venue",
+        "course", "surface", "horse_rating", "odds_snapshot_at", "forecast_at",
+        "future_market_probability",
+    }
+    if isinstance(catalog, dict):
+        for name, row in catalog.items():
+            if name in required and isinstance(row, dict) and isinstance(row.get("available_at_column"), str):
+                required.add(row["available_at_column"])
+    # The normal request projection retains replacement values and all transitive
+    # availability bindings; fold_columns narrows that closure to this fold's contract.
+    columns = [name for name in descriptor["columns"] if name in required]
+    frame = _load_request_dataset(request, positions=positions, fold_columns=columns)
+    frame = _sort_fold_rows(frame)
+    observed_hash = _hash_file(path)
+    if request.dataset_hash is not None and observed_hash != request.dataset_hash:
+        raise ValueError("dataset hash does not match execution request")
+    return _v6_feature_frame(frame, request)
+
+
 def _sort_fold_rows(frame):
     frame = frame.copy()
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
@@ -440,7 +543,7 @@ def _read_direct_parquet_fold(request, race_ids):
     available = set(pq.read_schema(path).names)
     # _v6_feature_frame validates all catalog metadata and required source fields. Keep
     # that established validation intact while projecting only its declared closure.
-    required = set(_effective_schema(request.recipe).features) | {
+    required = set(_effective_schema(request.recipe).features) | set(request.recipe.extra_numeric_features or ()) | {
         "date", "race_id", "race_no", "horse_no", "horse_id", "field_size", "target_win",
         "target_probability", "result", "finishing_status", "market_probability", "win_odds",
         "finish_seconds", "finish_time", "distance", "actual_weight", "lengths_raw", "source",
@@ -1938,7 +2041,7 @@ def _apply_training_window(
     return selected
 
 
-def _load_request_dataset(request):
+def _load_request_dataset(request, *, positions=None, fold_columns=None):
     """Project unused delta additions only when recipe dependencies are explicit.
 
     Keep every parent column, including labels and historical side channels.
@@ -1967,7 +2070,8 @@ def _load_request_dataset(request):
             catalog={row['name']:row for row in catalog}
         if not isinstance(catalog,dict) or any(not isinstance(row,dict) for row in catalog.values()):
             return _load_dataset(path)
-        retained=set(descriptor['columns'])-delta_columns|required
+        retained=(set(fold_columns) if fold_columns is not None
+                  else set(descriptor['columns'])-delta_columns|required)
         while True:
             bindings={row['available_at_column'] for name,row in catalog.items()
                 if name in retained and isinstance(row.get('available_at_column'),str)}
@@ -1975,21 +2079,30 @@ def _load_request_dataset(request):
             if not added:break
             retained.update(added)
         required.update(retained)
+    if fold_columns is not None:
+        required.update(fold_columns)
+        # Replacement payloads are part of the logical parent contract even when
+        # their names are not model inputs; availability clocks are transitive.
+        required.update(descriptor.get('replacements', ()))
     columns=[name for name in descriptor['columns'] if name not in delta_columns or name in required]
-    return _load_dataset(path,columns=columns)
+    if fold_columns is not None:
+        columns=[name for name in columns if name in required]
+    return _load_dataset(path,columns=columns,positions=positions)
 
 
-def _load_dataset(path: Path, *, columns=None) -> pd.DataFrame:
+def _load_dataset(path: Path, *, columns=None, positions=None) -> pd.DataFrame:
     if not path.is_file():
         raise FileNotFoundError(path)
     if path.suffix == ".parquet":
         frame = pd.read_parquet(path,columns=columns)
     elif path.name=='features.delta.json':
         from .dataset_delta import read_feature_table
-        frame=read_feature_table(path,columns=columns)
+        frame=read_feature_table(path,columns=columns,positions=positions)
     else:
         frame = pd.read_csv(path, low_memory=False)
     frame["date"] = pd.to_datetime(frame["date"], errors="raise")
+    if positions is not None:
+        return frame.reset_index(drop=True)
     return frame.sort_values(["date", "race_no", "race_id", "horse_no"], kind="stable").reset_index(drop=True)
 
 
