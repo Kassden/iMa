@@ -536,8 +536,8 @@ def choose_cycle_trial_budget(
 def _sum_planner_usage(rows: list[dict[str, Any]]) -> dict[str, Any]:
     usage = {
         key: sum(row[key] for row in rows)
-        if all(row[key] is not None for row in rows) else None
-        for key in ("input_tokens", "output_tokens", "total_tokens", "total_cost_usd")
+        if all(row.get(key) is not None for row in rows) else None
+        for key in ("input_tokens", "output_tokens", "total_tokens", "total_cost_usd", "cached_input_tokens", "cache_write_tokens")
     }
     usage["cost_status"] = "reported" if usage["total_cost_usd"] is not None else "unavailable"
     return usage
@@ -595,7 +595,7 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
     from .dataset_specs import DatasetRequest
     from .feature_definitions import FeatureDefinition
     from .research_specs import PerformanceDistributionSpec
-    from .research_planner_context import compact_planner_evidence
+    from .research_planner_context import decision_planner_evidence
     from .research_planner_examples import adapter_recipe_examples, MODEL_TARGET_GUIDANCE
     memo = evidence_bundle.get("capabilities", {}).get("research_memo")
     messages = [{"role": "system", "content": (
@@ -646,7 +646,7 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         "choose fewer when useful. Do not fabricate market quotes, realized profits or independent validation. "
         "No live code mutation, money wagering, credentials or arbitrary sources. Future data or "
         "confirmation races are inaccessible. A failed proposal is not a successful empty decision."
-    )}, {"role": "user", "content": json.dumps(compact_planner_evidence({
+    )}, {"role": "user", "content": json.dumps(decision_planner_evidence({
         "task": "research_decision_v6", "limits": limits,
         "required_identity": {"decision_id": evidence_bundle["decision_id"],
                               "evidence_id": evidence_bundle["evidence_id"],
@@ -687,6 +687,25 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
         "model_parameter_contracts": MODEL_PARAMETER_CONTRACTS,
         "evidence": evidence_bundle,
     }), default=str, separators=(",", ":"))}]
+    context = json.loads(messages[1]["content"])
+    dynamic_keys = {"evidence", "required_identity", "limits", "output_budget",
+                    "planner_decision_view", "planner_context_encoding",
+                    "operator_budget_policy", "operator_experiment_allocation"}
+    static = {key: value for key, value in context.items() if key not in dynamic_keys}
+    dynamic = {key: value for key, value in context.items() if key in dynamic_keys}
+    messages[0]["content"] += (
+        " The following user JSON messages are parts of one logical bundle; merge their top-level "
+        "fields. Schema references resolve against decision_schema in the stable first JSON message. "
+        "Use current dynamic evidence, not historical claims, for latest champions and budgets. "
+        "A justified expensive experiment may request max_wall_seconds=172800 (two days); "
+        "runtime is separate from memory/CPU admission. Do not reject hypotheses solely for being slow. "
+        "Avoid repeating an identical fixed same-seed control without a stated replication reason. "
+        "Read evidence.proposal_audit_feedback: warnings are not rejection gates. For matched "
+        "ablations keep model settings and search budgets identical, or declare a joint test; "
+        "different comparison contracts cannot establish matched gains. "
+        "Prefer finishing outstanding informative tests over proposing more work just to fill slots.")
+    messages[1]["content"] = json.dumps(static, sort_keys=True, separators=(",", ":"))
+    messages.append({"role": "user", "content": json.dumps(dynamic, separators=(",", ":"))})
     payload = {"model": config.model, "messages": messages, "temperature": .2,
                "max_tokens": config.max_output_tokens, "response_format": {"type": "json_object"}}
     payload |= _service_tier_option(config) | _provider_route(config) | _reasoning_options(config)
@@ -704,9 +723,15 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
                 raise ValueError("Decision identity or evidence watermark mismatch")
             if decision.trial_budget > limits["trial_ceiling"] or len(decision.programs) > limits["max_new_programs"]:
                 raise ValueError("Decision exceeds independent operator limits")
+            from .proposal_audit import planner_proposal_feedback
+            audit_evidence = dict(evidence_bundle)
+            audit_evidence["hypothesis_memory"] = [{"kind": "planned",
+                "payload": decision.model_dump(mode="json")}] + list(evidence_bundle.get("hypothesis_memory") or [])
             return {"decision": decision.model_dump(mode="json"),
                     "usage": _sum_planner_usage(usage_rows), "raw_response": response,
                     "planning_wall_seconds": time.monotonic()-started,
+                    "context_projection": context["planner_decision_view"],
+                    "proposal_audit": planner_proposal_feedback(audit_evidence),
                     "repair_count": attempt}
         except Exception as exc:
             if attempt == 1:
@@ -751,12 +776,16 @@ def normalize_openrouter_usage(response: dict[str, Any]) -> dict[str, Any]:
     total_cost = _optional_non_negative_float(
         usage.get("cost", usage.get("total_cost"))
     )
+    details = usage.get("prompt_tokens_details", usage.get("input_tokens_details", {}))
+    details = details if isinstance(details, dict) else {}
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
         "total_cost_usd": total_cost,
         "cost_status": "reported" if total_cost is not None else "unavailable",
+        "cached_input_tokens": _optional_non_negative_int(details.get("cached_tokens")),
+        "cache_write_tokens": _optional_non_negative_int(details.get("cache_write_tokens")),
     }
 
 
