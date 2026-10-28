@@ -25,6 +25,7 @@ class FittedResearchTransforms:
 
     specs: tuple[TransformSpec, ...]
     clip_bounds: dict[str, tuple[float, float]]
+    inactive_columns: frozenset[str] = frozenset()
 
     @classmethod
     def fit(
@@ -33,34 +34,51 @@ class FittedResearchTransforms:
         specs: tuple[TransformSpec, ...],
     ) -> "FittedResearchTransforms":
         bounds: dict[str, tuple[float, float]] = {}
+        inactive: set[str] = set()
         for spec in specs:
             validate_transform_spec(spec)
             columns = tuple(spec.parameters.get("columns", ()))
             missing = [column for column in columns if column not in train]
             if missing:
                 raise TransformError(f"transform columns missing from train: {missing}")
-            empty = [
-                column for column in columns
-                if pd.to_numeric(train[column], errors="coerce").notna().sum() == 0
-            ]
-            if empty:
+            numeric_values = {
+                column: pd.to_numeric(train[column], errors="coerce") for column in columns
+            }
+            empty = [column for column, values in numeric_values.items() if values.notna().sum() == 0]
+            if spec.kind == "clip_numeric_quantiles" and empty:
                 raise TransformError(f"transform columns have no training observations: {empty}")
             if spec.kind != "clip_numeric_quantiles":
+                inactive.update(empty)
                 continue
             lower = float(spec.parameters.get("lower", 0.01))
             upper = float(spec.parameters.get("upper", 0.99))
             for column in tuple(spec.parameters["columns"]):
-                values = pd.to_numeric(train[column], errors="coerce")
+                values = numeric_values[column]
                 bounds[column] = (float(values.quantile(lower)), float(values.quantile(upper)))
-        return cls(specs=specs, clip_bounds=bounds)
+        return cls(specs=specs, clip_bounds=bounds, inactive_columns=frozenset(inactive))
 
     def transform(self, frame: pd.DataFrame) -> pd.DataFrame:
         output = frame.copy()
+        inactive_columns = getattr(self, "inactive_columns", frozenset())
         for spec in self.specs:
+            columns = tuple(spec.parameters.get("columns", ()))
+            required = (
+                ("race_id", *columns)
+                if spec.kind in {"race_relative_rank", "race_relative_center"}
+                else columns
+            )
+            missing = [column for column in required if column not in output]
+            if missing:
+                label = {
+                    "race_relative_rank": "rank",
+                    "clip_numeric_quantiles": "clip",
+                }.get(spec.kind, spec.kind)
+                raise TransformError(f"{label} columns missing from frame: {missing}")
+            for column in columns:
+                if column in inactive_columns:
+                    output[column] = np.nan
             if spec.kind == "clip_numeric_quantiles":
                 for column in tuple(spec.parameters["columns"]):
-                    if column not in output:
-                        raise TransformError(f"clip columns missing from frame: {[column]}")
                     lo, hi = self.clip_bounds[column]
                     output[column] = pd.to_numeric(output[column], errors="coerce").clip(lo, hi)
             elif spec.kind == "race_relative_rank":
@@ -78,8 +96,7 @@ class FittedResearchTransforms:
             elif spec.kind == "numeric_interaction":
                 left, right = tuple(spec.parameters["columns"])
                 output[f"{left}_x_{right}"] = (
-                    pd.to_numeric(output[left], errors="coerce")
-                    * pd.to_numeric(output[right], errors="coerce")
+                    pd.to_numeric(output[left], errors="coerce") * pd.to_numeric(output[right], errors="coerce")
                 )
             else:  # pragma: no cover - specs are validated during fit.
                 raise TransformError(f"Unknown transform kind: {spec.kind}")
