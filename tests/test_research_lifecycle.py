@@ -161,3 +161,9 @@ def test_hooks_reach_compiled_campaign_namespace(tmp_path):
         assert actual[0] is lifecycle_worker and actual[1] is lifecycle_prepare
         assert actual[2] is expansion._capabilities and actual[3] is expansion._planner_spend
         assert actual[4] is expansion.BoundedFitExecutor
+        spend_kwargs = {"reserved_decision_ids": ["D000999"],
+                        "fallback_decisions": [], "include_trace_receipts": True}
+        assert actual[3](tmp_path, **spend_kwargs) == patches["_planner_spend"](tmp_path, **spend_kwargs)
+        # Exercise the real controller call site, including all keyword arguments.
+        spend = expansion._control_planner_spend(tmp_path, [], planning=(None, {"decision_id": "D000999"}))
+        assert spend["spend_unknown"] is True

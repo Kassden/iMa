@@ -302,8 +302,8 @@ def install_campaign_policy(directory, *, release_sha256=None):
 
     mlflow_tracking.research_run_parameters = run_parameters
 
-    def spend(root):
-        result = original_spend(root)
+    def spend(root, **kwargs):
+        result = original_spend(root, **kwargs)
         local = [identifier for identifier in result.get("unresolved_decision_ids", [])
                  if _qualified_unsent(root, identifier)]
         if local:
