@@ -109,12 +109,29 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
-def _artifact(result, name, campaign, attempt):
+def _artifact(result, name, campaign, attempt, row):
     path = Path(result["artifacts"][name])
     directory = campaign / "trials" / attempt
     expected = directory.resolve()
     if directory.is_symlink() or path.name != {"predictions": "predictions.csv", "protocol": "protocol.json"}[name]:
         raise ValueError("Paper inputs must be canonical actual attempt artifacts")
+    # Supervised workers publish only a canonical acceptance record. Their large
+    # artifacts stay in the private physical episode; never infer acceptance from
+    # the directory name or a caller-supplied artifact path.
+    if path.is_absolute() and path.parent != expected:
+        if path.parent.parent != campaign / ".fit-episodes":
+            raise ValueError("Paper inputs must be actual current attempt output artifacts")
+        from .research_publication import read_accepted
+        if "payload" not in row:
+            raise ValueError("Paper episode inputs require the admitted attempt payload")
+        accepted = read_accepted(campaign, row)
+        # Ledger publication adds lane/portfolio bookkeeping after acceptance.
+        # Every accepted scientific field must still match exactly.
+        if (accepted is None or not accepted.keys() <= result.keys()
+                or accepted != {key: result[key] for key in accepted}):
+            raise ValueError("Paper episode inputs differ from supervisor-accepted result")
+        receipt = json.loads((directory / "result.json").read_text())["_execution_acceptance"]
+        expected = Path(receipt["episode_path"])
     if not path.is_absolute() or path.resolve().parent != expected or not expected.is_relative_to(campaign):
         raise ValueError("Paper inputs must be actual current attempt output artifacts")
     if not path.is_file() or path.is_symlink():
@@ -153,8 +170,8 @@ def _load_paper_inputs(request: PaperResearchRequest | dict, *, campaign_dir: Pa
         identities.append(identity)
         if identity != identities[0]:
             raise ValueError("Cannot mix different dataset/protocol/comparison populations")
-        path = _artifact(result, "predictions", campaign, attempt)
-        protocol = _artifact(result, "protocol", campaign, attempt)
+        path = _artifact(result, "predictions", campaign, attempt, row)
+        protocol = _artifact(result, "protocol", campaign, attempt, row)
         if hashlib.sha256(protocol.read_bytes()).hexdigest() != lineage["protocol_hash"]:
             raise ValueError("Frozen protocol artifact hash mismatch")
         if path.stat().st_size > 128 * 1024**2:

@@ -12,6 +12,18 @@ from pydantic import ValidationError
 from ima.research_betting import PaperResearchRequest, evaluate_paper_research, validate_paper_research
 
 
+def _write_supervised_paper_fixture(request, result, prediction_bytes, protocol_bytes):
+    from ima.research_executor import RecipeExecutionResult
+    request.output_dir.mkdir(parents=True, exist_ok=True)
+    (request.output_dir / 'predictions.csv').write_bytes(prediction_bytes)
+    (request.output_dir / 'protocol.json').write_bytes(protocol_bytes)
+    result = dict(result, artifacts={
+        name: str(request.output_dir / filename)
+        for name, filename in [('predictions', 'predictions.csv'), ('protocol', 'protocol.json')]
+    })
+    return RecipeExecutionResult(**result)
+
+
 class PaperResearchTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -63,6 +75,47 @@ class PaperResearchTests(unittest.TestCase):
         self.assertEqual(preflight['available_races'], 1)
         self.assertGreater(preflight['input_memory_bytes'], 0)
         self.assertGreater(preflight['cold_private_memory_bytes'], 512 * 1024**2)
+
+    def test_actual_supervisor_episode_is_a_valid_frozen_paper_input(self):
+        from ima.research_executor import RecipeExecutionRequest
+        from ima.research_specs import PipelineRecipe
+        from ima.research_worker_runtime import BoundedFitExecutor
+        recipe = PipelineRecipe.model_validate({'schema_version': 3,
+            'model': {'kind': 'benter_conditional_logit'}, 'blend': {'kind': 'none'}})
+        original = self.rows[0]['result']
+        result = dict(original, schema_version=1, proposal_id='fixture', trial_number=0,
+            recipe_hash=recipe.recipe_hash(), objective_name='development_fundamental_race_log_loss',
+            objective_value=1.0, metrics={}, duration_seconds=0.0, error=None)
+        request = RecipeExecutionRequest('a1', 'fixture', 0, recipe, self.campaign / 'data.csv',
+            self.campaign / 'trials' / 'a1', {}, 'd1', 'test', 'env', supervised_fit=True)
+        with BoundedFitExecutor(1) as pool:
+            accepted = pool.submit(_write_supervised_paper_fixture, request, result,
+                Path(original['artifacts']['predictions']).read_bytes(),
+                Path(original['artifacts']['protocol']).read_bytes(),
+                runtime_path=request.output_dir / 'runtime.json', timeout=30).result(40)
+        self.rows[0].update(result=accepted.serializable(), payload={
+            'proposal_id': request.proposal_id, 'trial_number': request.trial_number,
+            'recipe_hash': recipe.recipe_hash(), 'dataset_hash': 'd1',
+            'code_revision': 'test', 'environment_hash': 'env'})
+        self.rows[0]['result']['lane'] = 'benter'
+        report = self.run_request(pools=['WIN'])
+        self.assertEqual(report['races'][0]['reports'][0]['probability'], .4)
+        self.rows[0]['result'].pop('error')
+        with self.assertRaisesRegex(ValueError, 'supervisor-accepted result'):
+            self.run_request()
+        self.rows[0]['result'] = accepted.serializable()
+        # A caller cannot redirect even a known accepted attempt to another episode.
+        self.rows[0]['result']['artifacts']['predictions'] = str(
+            self.campaign / '.fit-episodes' / ('a1.' + 'b' * 32) / 'predictions.csv')
+        with self.assertRaisesRegex(ValueError, 'supervisor-accepted result'):
+            self.run_request()
+        self.rows[0]['result'] = accepted.serializable()
+        runtime_path = request.output_dir / 'runtime.json'
+        runtime = json.loads(runtime_path.read_text())
+        runtime['task_nonce'] = 'b' * 32
+        runtime_path.write_text(json.dumps(runtime))
+        with self.assertRaisesRegex(ValueError, 'runtime was replaced or rejected'):
+            self.run_request()
 
     def test_contract_strict_bounds_and_unknown_fields(self):
         cases = [{'arbitrary_path': '/tmp/x'}, {'attempt_ids': ['../outside']},

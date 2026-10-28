@@ -16,6 +16,26 @@ from ima.openrouter_orchestrator import (
 
 
 class OpenRouterOrchestratorTests(unittest.TestCase):
+    def test_stale_proposal_is_repaired_inside_same_costed_decision(self):
+        import copy
+        import json
+        from ima.openrouter_orchestrator import choose_research_decision
+        from tests.test_planner_request_guard import PlannerRequestGuardTests
+        evidence, response = PlannerRequestGuardTests().fixture()
+        valid = copy.deepcopy(response['decision'])
+        valid['programs'][0]['evidence_ids'] = [evidence['evidence_id']]
+        stale = copy.deepcopy(valid)
+        stale['programs'][0]['evidence_ids'] = ['old-evidence']
+        responses = [{'choices': [{'message': {'content': json.dumps(value)}}],
+                      'usage': {'cost': .001}} for value in (stale, valid)]
+        with mock.patch('ima.openrouter_orchestrator._post_json', side_effect=responses) as post:
+            result = choose_research_decision(evidence, {'trial_ceiling': 260, 'max_new_programs': 12},
+                                             OpenRouterConfig('unused', 'fixture/model'))
+        self.assertEqual(2, post.call_count)
+        self.assertEqual(.002, result['usage']['total_cost_usd'])
+        self.assertEqual(1, result['repair_count'])
+        self.assertEqual([evidence['evidence_id']], result['decision']['programs'][0]['evidence_ids'])
+
     def test_static_prefix_is_identical_across_changing_evidence(self):
         import json
         from ima.openrouter_orchestrator import choose_research_decision

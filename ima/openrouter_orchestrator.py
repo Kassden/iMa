@@ -721,6 +721,12 @@ def choose_research_decision(evidence_bundle: dict[str, Any], limits: dict[str, 
                 raise ValueError("Research memo checksum acknowledgement missing or mismatched")
             if decision.decision_id != evidence_bundle["decision_id"] or decision.evidence_id != evidence_bundle["evidence_id"]:
                 raise ValueError("Decision identity or evidence watermark mismatch")
+            if any(proposal.evidence_ids != (evidence_bundle["evidence_id"],)
+                   for proposal in decision.programs):
+                raise ValueError("Proposal has stale evidence; copy current required_identity.evidence_id into every proposal evidence_ids")
+            if any(request.get("evidence_watermark") != evidence_bundle["evidence_id"]
+                   for request in decision.dataset_requests):
+                raise ValueError("Dataset request has stale evidence watermark")
             if decision.trial_budget > limits["trial_ceiling"] or len(decision.programs) > limits["max_new_programs"]:
                 raise ValueError("Decision exceeds independent operator limits")
             from .proposal_audit import planner_proposal_feedback
