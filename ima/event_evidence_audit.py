@@ -128,7 +128,8 @@ def audit_event_evidence(events: Any) -> dict[str, Any]:
         normalized_publication_verified = row.get("availability_tier") == "verified_point_in_time"
         capture = next((row.get(name) for name in ("first_seen_at", "first_fetched_at", "fetched_at") if _present(row.get(name))), None)
         effective_availability = row.get("available_at")
-        occurrence = row.get("occurred_at", row.get("occurred_date", row.get("event_date")))
+        occurrence = next((row.get(name) for name in ("occurred_at", "occurred_date", "event_date")
+                           if _present(row.get(name))), None)
 
         for counts in groups:
             counts["observations"] += 1

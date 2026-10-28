@@ -4,6 +4,11 @@ from ima.event_evidence_audit import audit_event_evidence
 
 
 class EventEvidenceAuditTests(unittest.TestCase):
+    def test_normalized_null_instant_uses_occurrence_date(self):
+        result = audit_event_evidence([{"occurred_at": None, "occurred_date": "2025-11-20"}])
+        self.assertEqual(result["summary"]["occurrence_timestamp_present"], 1)
+        self.assertEqual(result["summary"]["occurrence_timestamp_valid"], 1)
+
     def test_separates_missing_false_and_true_physical_evidence(self):
         rows = [
             {"family": "trackwork", "event_id": "missing"},
