@@ -94,7 +94,7 @@ class ObjectStore:
             2 * int(arguments["frame"].memory_usage(index=False, deep=False).sum()),
         ),
     )
-    def put_table(self, frame):
+    def _put_table_admitted(self, frame):
         temporary = None
         destination = None
         primary_error = None
@@ -159,6 +159,13 @@ class ObjectStore:
                         raise
                     primary_error.add_note(f"Object temporary retained at {temporary}: {cleanup_error!r}")
 
+    def put_table(self, frame):
+        # All direct object publishers participate in the marker. The snapshot
+        # builder nests this lease through durable manifest publication.
+        from .research_object_lifecycle import object_publication_lease
+        with object_publication_lease(self.root):
+            return self._put_table_admitted(frame)
+
     def publish_table(self, frame):
         ordinal = "__ima_object_ordinal__"
         if ordinal in frame:
@@ -214,7 +221,19 @@ def read_snapshot_table(snapshot, name, *, columns=None):
             raise ValueError("Snapshot object root outside qualified acquisition output")
         if not store.is_dir():
             raise FileNotFoundError("Missing immutable snapshot object store")
-        return ObjectStore(store).read_table(table, columns=columns)
+        # Keep the shared lifecycle lease until the Parquet bytes have actually
+        # been consumed; a manifest-only pin would race a prospective collector.
+        from .research_object_lifecycle import object_read_lease
+        with object_read_lease(store):
+            # Re-read the reference manifest after acquiring the lease so the
+            # pin covers both root resolution and the Parquet consumer read.
+            manifest = json.loads((snapshot / "manifest.json").read_text())
+            if manifest.get("storage_format") != "ima.snapshot.objects.v2":
+                raise ValueError("Snapshot format changed while acquiring object read lease")
+            table = manifest["tables"][name]
+            if Path(table["object_root"]) != store:
+                raise ValueError("Snapshot object root changed while acquiring read lease")
+            return ObjectStore(store).read_table(table, columns=columns)
     return pd.read_parquet(snapshot / name, columns=columns)
 
 
