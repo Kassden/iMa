@@ -51,6 +51,11 @@ class CampaignThroughputTests(unittest.TestCase):
         admission.observe_private_peak("long", 60 * GIB)
         self.assertEqual(admission.active["long"].private_peak_bytes, 60 * GIB)
         admission.release("fast-0")
+        self.assertIn("host_memory", admission.blockers(self.estimate(6)))
+        # Releasing a reservation does not prove its process pages are already
+        # returned. A fresh host/cgroup sample makes that capacity usable.
+        admission.set_headroom(memory_available_gib=15, cgroup_available_gib=15,
+                               disk_available_bytes=100 * GIB)
         self.assertTrue(admission.admits(self.estimate(6)))
         admission.set_headroom(cgroup_available_gib=1)
         self.assertIn("cgroup_memory", admission.blockers(self.estimate(6)))
