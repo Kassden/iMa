@@ -23,7 +23,7 @@ def reference_identity(reference):
     return "feature-reference-" + _digest({k: reference[k] for k in sorted(required)})
 
 
-def campaign_references(registry_root, directory, reference_directory=None):
+def campaign_references(registry_root, directory, reference_directory=None, *, unavailable=None):
     """Resolve actual completed compatible champions, never a historical scalar."""
     from .experiment_discipline import attempt_rows
     from .research_telemetry import champions
@@ -39,7 +39,20 @@ def campaign_references(registry_root, directory, reference_directory=None):
         dataset_id = recipe.get("dataset_ref")
         if not dataset_id:
             continue
-        manifest = lifecycle.registry.verify(dataset_id)
+        try:
+            manifest = lifecycle.registry.verify(dataset_id)
+        except FileNotFoundError as exc:
+            expected_manifest = lifecycle.registry.dataset_path(dataset_id) / "manifest.json"
+            if exc.filename is None or Path(exc.filename) != expected_manifest:
+                raise  # Missing payloads inside an existing dataset are corruption.
+            # A scoped successor registry need not contain every old dataset.
+            # Missing history is not a valid reference, but must not hide the
+            # independently verified references that are still available.
+            if unavailable is not None:
+                unavailable.append({"attempt_id": row["attempt_id"], "dataset_id": dataset_id,
+                    "reason": "reference_dataset_unavailable", "missing_path": str(exc.filename),
+                    "eligible_as_reference": False})
+            continue
         lineage = result.get("lineage", {})
         needed = ("evaluation_population_id", "declared_evaluation_population_id", "protocol_hash",
                   "evaluation_population_hash", "probability_basis", "code_revision", "environment_hash")

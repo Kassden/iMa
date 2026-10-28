@@ -319,10 +319,11 @@ def install_campaign_policy(directory, *, release_sha256=None):
         from .feature_lifecycle import catalog, deterministic_candidate_definitions
         result = original_caps(config, dataset, **kwargs)
         registry_root = getattr(config, "dataset_registry_path", None)
-        promotions = []
+        promotions, unavailable_references = [], []
         if registry_root:
             from .feature_promotion import campaign_references, promotion_view
-            for reference in campaign_references(registry_root, directory, getattr(config, "reference_campaign_dir", None)):
+            for reference in campaign_references(registry_root, directory, getattr(config, "reference_campaign_dir", None),
+                                                 unavailable=unavailable_references):
                 promotions.append(promotion_view(registry_root, reference))
         promoted_ids = list(dict.fromkeys(row["build_id"] for view in promotions for row in view["candidates"]))
         snapshot = (catalog(registry_root, limit=max(20, min(1000, len(promoted_ids))),
@@ -332,6 +333,7 @@ def install_campaign_policy(directory, *, release_sha256=None):
             "version": VERSION, "controller": "one research planner, shared feature/model feedback",
             "candidates": candidates, "feedback": feature_feedback(directory, candidates),
             "champion_promotions": promotions,
+            "unavailable_references": unavailable_references,
             "reference_status": "pinned_completed_champions" if promotions else "awaiting_complete_champion_identity",
             "build_counts": snapshot.get("counts", {}),
             "definition_examples": [definition.model_dump(mode="json") for definition in

@@ -3,6 +3,7 @@ from copy import deepcopy
 import json
 
 import pytest
+from unittest.mock import patch
 
 from ima.dataset_registry import _write_json
 from ima.feature_lifecycle import FeatureLifecycle
@@ -106,3 +107,39 @@ def test_cross_runtime_history_is_visible_without_becoming_current_reference_evi
     assert promotion_view(tmp_path, incompatible)['related_reference_transfer_evidence'] == []
     assert promotion_view(tmp_path, prior)['related_reference_transfer_evidence'] == []
     assert promotion_view(tmp_path, prior)['transfer_evidence'][0]['transfers'][0]['result'] == result
+
+
+def test_unavailable_historical_dataset_is_reported_without_becoming_a_reference(tmp_path):
+    from ima.feature_promotion import campaign_references
+    champion = {'attempt_id': 'missing-history', 'recipe': {'dataset_ref': 'dataset-' + 'a' * 64}}
+    rows = [{'attempt_id': 'missing-history', 'result': {}}]
+    unavailable = []
+    with patch('ima.experiment_discipline.attempt_rows', return_value=rows), patch(
+            'ima.research_telemetry.champions', return_value={'champions_by_contract': {'contract': champion}}):
+        assert campaign_references(tmp_path/'registry', tmp_path/'campaign', unavailable=unavailable) == []
+    assert unavailable[0]['dataset_id'] == 'dataset-' + 'a' * 64
+    assert unavailable[0]['eligible_as_reference'] is False
+    assert unavailable[0]['reason'] == 'reference_dataset_unavailable'
+
+
+def test_corrupt_historical_dataset_does_not_get_silently_skipped(tmp_path):
+    from ima.feature_promotion import campaign_references
+    champion = {'attempt_id': 'bad-history', 'recipe': {'dataset_ref': 'dataset-' + 'b' * 64}}
+    with patch('ima.experiment_discipline.attempt_rows', return_value=[{'attempt_id': 'bad-history', 'result': {}}]), patch(
+            'ima.research_telemetry.champions', return_value={'champions_by_contract': {'contract': champion}}), patch(
+            'ima.dataset_registry.DatasetRegistry.verify', side_effect=ValueError('manifest checksum mismatch')):
+        with pytest.raises(ValueError, match='checksum mismatch'):
+            campaign_references(tmp_path/'registry', tmp_path/'campaign', unavailable=[])
+
+
+def test_missing_payload_of_existing_history_does_not_get_skipped(tmp_path):
+    from ima.feature_promotion import campaign_references
+    dataset_id = 'dataset-' + 'c' * 64
+    champion = {'attempt_id': 'broken-history', 'recipe': {'dataset_ref': dataset_id}}
+    missing_payload = tmp_path/'registry'/'datasets'/dataset_id/'features.parquet'
+    error = FileNotFoundError(2, 'missing payload', str(missing_payload))
+    with patch('ima.experiment_discipline.attempt_rows', return_value=[{'attempt_id': 'broken-history', 'result': {}}]), patch(
+            'ima.research_telemetry.champions', return_value={'champions_by_contract': {'contract': champion}}), patch(
+            'ima.dataset_registry.DatasetRegistry.verify', side_effect=error):
+        with pytest.raises(FileNotFoundError):
+            campaign_references(tmp_path/'registry', tmp_path/'campaign', unavailable=[])
