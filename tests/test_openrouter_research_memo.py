@@ -30,7 +30,7 @@ class ResearchMemoPromptRulesTests(unittest.TestCase):
                      "sum(programs[].max_trials) + sum(extensions.values()) + unallocated_trials = trial_budget"):
             with self.subTest(rule=rule):
                 self.assertIn(rule,instructions)
-        submitted = json.loads(messages[1]["content"])
+        submitted = {k: v for m in messages[1:3] for k, v in json.loads(m["content"]).items()}
         transmitted = submitted["evidence"]["capabilities"]["research_memo"]
         self.assertEqual(memo,transmitted)
         self.assertEqual(MEMO_PATH.read_text(),transmitted["content"])
