@@ -425,6 +425,20 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
         normalized = validate_selection_protocol(protocol, feature_schema=feature_schema,
             expected_output=asdict(node.output))
         parent_ids = tuple(node.inputs)
+        def parent_topology(lookup):
+            result = {}
+            def collect(identifier):
+                if identifier in result:
+                    return
+                parent = lookup[identifier]
+                result[identifier] = {"kind": parent.kind, "inputs": parent.inputs,
+                                      "output": asdict(parent.output), "fit_scope": parent.fit_scope}
+                for ancestor in parent.inputs:
+                    collect(ancestor)
+            for identifier in parent_ids:
+                collect(identifier)
+            return result
+        declared_topology = parent_topology(nodes)
         for candidate in normalized["candidate_graphs"]:
             candidate_nodes = {item["node_id"]: item for item in candidate["graph"]["nodes"]}
             if not set(parent_ids) <= set(candidate_nodes):
@@ -432,6 +446,8 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
             for parent_id in parent_ids:
                 if candidate_nodes[parent_id]["output"] != asdict(node.output):
                     raise ValueError("Candidate pool parent output contract mismatch")
+            if parent_topology({key: GraphNode.from_dict(value) for key, value in candidate_nodes.items()}) != declared_topology:
+                raise ValueError("Nested candidate parent topology differs from the declared outer parent topology")
         cutoff = pd.Timestamp(normalized["selection_cutoff"])
         unique = np.sort(pd.to_datetime(data[graph.date_column]).dt.normalize().unique())
         future_dates = unique[unique > cutoff]

@@ -93,9 +93,13 @@ class PipelineGraphTests(unittest.TestCase):
             "objective": "mean_meeting_log_loss"}
         spec = {"graph_id": "nested-pool", "output_node_id": "pool", "n_splits": 3,
             "min_train_dates": 2, "nodes": [
-                {"node_id": "benter", "kind": "estimator",
+                {"node_id": "benter_view", "kind": "feature_view", "parameters": {"features": ["ability"]},
+                 "output": {"kind": "feature_frame", "target": "features", "unit": "features"}},
+                {"node_id": "boosted_view", "kind": "feature_view", "parameters": {"features": ["context"]},
+                 "output": {"kind": "feature_frame", "target": "features", "unit": "features"}},
+                {"node_id": "benter", "kind": "estimator", "inputs": ["benter_view"],
                  "parameters": {"model_kind": "benter_conditional_logit"}},
-                {"node_id": "boosted", "kind": "estimator",
+                {"node_id": "boosted", "kind": "estimator", "inputs": ["boosted_view"],
                  "parameters": {"model_kind": "benter_conditional_logit"}},
                 {"node_id": "pool", "kind": "learned_probability_pool", "inputs": ["benter", "boosted"],
                  "parameters": {"selection_mode": "nested_selection",
@@ -135,6 +139,11 @@ class PipelineGraphTests(unittest.TestCase):
                 selection_source_context=source, selection_artifact_dir=second_dir)
             self.assertEqual(selection["selection_sha256"],
                 refitted.fit_report["selections"][0]["selection_sha256"])
+            incompatible = copy.deepcopy(spec)
+            next(node for node in incompatible["nodes"] if node["node_id"] == "benter")["inputs"] = []
+            with self.assertRaisesRegex(ValueError, "parent topology"):
+                fit_pipeline_graph(incompatible, frame, feature_schema=SCHEMA,
+                    selection_source_context=source, selection_artifact_dir=directory)
 
     def test_real_pool_primary_tuning_and_pickle(self):
         train, calibration, score = race_frame(20), race_frame(5, 20), race_frame(3, 25)
