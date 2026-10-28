@@ -130,6 +130,14 @@ class ResearchExpansionDeployTests(unittest.TestCase):
         self.assertIn('NOT a guaranteed hard billing bound', output)
         self.assertFalse((self.registry / 'locks').exists())
 
+    def test_missing_httpx_is_rejected_by_actual_launcher_preflight(self):
+        with patch('ima.research_runtime_preflight.import_module',
+                   side_effect=ModuleNotFoundError('httpx')):
+            with self.assertRaisesRegex(RuntimeError, 'Planner runtime is incomplete'):
+                self.check()
+        self.assertFalse((self.registry / 'locks').exists())
+        self.assertFalse((self.campaign / 'ledger.sqlite').exists())
+
     def test_shared_scratch_is_rejected_without_creating_state(self):
         scratch=Path(self.env['TMPDIR']);scratch.chmod(0o755)
         with self.assertRaisesRegex(SystemExit,'scratch must be private'):

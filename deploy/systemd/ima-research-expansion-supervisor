@@ -34,6 +34,7 @@ scope = (
     'docs/V6_RELIABILITY_AND_TRACE_REPAIR_PLAN.md',
 )
 required = {
+    'ima/research_runtime_preflight.py',
     'ima/research_expansion.py', 'ima/research_telemetry.py', 'ima/pipeline_graph.py',
     'ima/feature_expressions.py', 'ima/performance_probit.py', 'ima/betting_stakes.py',
     'scripts/optimize.py', 'scripts/run_research_expansion_canary.py',
@@ -142,6 +143,8 @@ import hashlib
 import json
 import math
 from pathlib import Path
+from ima.research_runtime_preflight import require_planner_transport
+require_planner_transport()
 import pandas as pd
 from ima.dataset_registry import DatasetRegistry, _digest, _keys, file_sha256
 from ima.optimizer import CampaignConfig
