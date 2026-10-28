@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from .feature_discovery_specs import DiscoverySpec, content_id
+from .research_storage import StorageBlocked, storage_writer, reserved_output_file
 
 
 def history_table(frame: pd.DataFrame, spec: DiscoverySpec, input_metadata=None) -> pd.DataFrame:
@@ -223,6 +224,7 @@ def synthesize(frame: pd.DataFrame, spec: DiscoverySpec, *, enumerate_only=False
     return output, manifest
 
 
+@storage_writer(stage='discovery_control',output=lambda a:a['cache'],estimate=lambda a:1024**2)
 def materialize(frame: pd.DataFrame, spec: DiscoverySpec, source_hash: str, cache: Path, *, shared=False, input_metadata=None):
     if shared:
         return _materialize_shared(frame,spec,source_hash,cache,input_metadata=input_metadata)
@@ -241,19 +243,93 @@ def materialize(frame: pd.DataFrame, spec: DiscoverySpec, source_hash: str, cach
                 raise ValueError("Corrupt discovery cache")
             matrix = pd.read_parquet(path)
         else:
-            matrix, manifest = synthesize(frame, spec)
-            temporary = directory / f"matrix-{os.getpid()}.parquet"
-            matrix.to_parquet(temporary)
-            os.replace(temporary, path)
-            manifest.update(matrix_id=identity, source_hash=source_hash, generator_spec=generator_spec, builder_hash=builder_hash, matrix_path=str(path.resolve()), matrix_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
-            manifest["catalog_shards"]=[{"shard_id":content_id(manifest["catalog"][start:start+64]),"feature_ids":[item["feature_id"] for item in manifest["catalog"][start:start+64]]} for start in range(0,len(manifest["catalog"]),64)]
-            temporary_meta = directory / "manifest.tmp"
-            temporary_meta.write_text(json.dumps(manifest, indent=2, sort_keys=True))
-            os.replace(temporary_meta, meta)
+            matrix,manifest=_build_private(frame,spec,source_hash,directory,
+                identity,generator_spec,builder_hash)
         if len(matrix) != len(frame):
             raise ValueError("Discovery cache runner count mismatch")
         manifest=dict(manifest,discovery_id=spec.discovery_id(),spec=spec.model_dump(mode="json"))
     return pd.concat([frame.reset_index(drop=True), matrix.reset_index(drop=True)], axis=1), manifest
+
+
+def _matrix_bytes(arguments):
+    return max(16*1024**2,len(arguments['frame'])*arguments['spec'].max_definitions*16)
+
+
+def _note_discovery_cleanup_failure(primary, path, cleanup_error):
+    primary.add_note(
+        f"Discovery cleanup failed for {path}; the path may remain "
+        f"({type(cleanup_error).__name__}: {cleanup_error})"
+    )
+
+
+def _cleanup_discovery_path(primary, path, *, directory=False):
+    try:
+        if directory:
+            _remove_discovery_payload_directory(path)
+        else:
+            path.unlink(missing_ok=True)
+    except FileNotFoundError:
+        pass
+    except BaseException as cleanup_error:
+        _note_discovery_cleanup_failure(primary, path, cleanup_error)
+
+
+def _remove_discovery_payload_directory(path):
+    """Remove known disposable payloads while the caller holds the matrix lock."""
+    import stat
+    path=Path(path)
+    directory=path.lstat()
+    entries=list(path.iterdir())
+    observed={entry:entry.lstat() for entry in entries}
+    if (not stat.S_ISDIR(directory.st_mode) or directory.st_uid!=os.getuid()
+            or directory.st_dev!=path.parent.stat().st_dev
+            or {entry.name for entry in entries}-{'matrix.joblib','manifest.json'}
+            or any(not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid()
+                   or info.st_nlink!=1 or info.st_dev!=directory.st_dev
+                   for info in observed.values())):
+        raise StorageBlocked('blocked_storage: unqualified discovery payload is held',
+                             {'stage':'discovery_cache_cleanup','output':str(path)})
+    for entry in sorted(entries,key=lambda entry:entry.name!='manifest.json'):
+        current=entry.lstat()
+        before=observed[entry]
+        if (current.st_dev,current.st_ino)!=(before.st_dev,before.st_ino):
+            raise StorageBlocked('blocked_storage: changed discovery payload is held')
+        entry.unlink()
+    path.rmdir()
+
+
+@storage_writer(stage='discovery_matrix',output=lambda a:a['directory'],estimate=_matrix_bytes)
+def _build_private(frame,spec,source_hash,directory,identity,generator_spec,builder_hash):
+    path=directory/'matrix.parquet'
+    temporary=directory/f'matrix-{os.getpid()}.parquet'
+    temporary_meta=directory/'manifest.tmp'
+    manifest_path=directory/'manifest.json'
+    try:
+        matrix,manifest=synthesize(frame,spec)
+        with reserved_output_file(temporary) as stream:
+            matrix.to_parquet(stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary,path)
+        manifest.update(matrix_id=identity,source_hash=source_hash,generator_spec=generator_spec,
+            builder_hash=builder_hash,matrix_path=str(path.resolve()),matrix_sha256=_file_sha256(path))
+        manifest['catalog_shards']=[{'shard_id':content_id(manifest['catalog'][start:start+64]),
+            'feature_ids':[item['feature_id'] for item in manifest['catalog'][start:start+64]]}
+            for start in range(0,len(manifest['catalog']),64)]
+        with reserved_output_file(temporary_meta,'w') as stream:
+            json.dump(manifest,stream,indent=2,sort_keys=True)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_meta,manifest_path)
+        directory_fd=os.open(directory,os.O_RDONLY)
+        try:os.fsync(directory_fd)
+        finally:os.close(directory_fd)
+        return matrix,manifest
+    except BaseException as primary:
+        for partial in (temporary,temporary_meta,path,manifest_path):
+            _cleanup_discovery_path(primary,partial)
+        raise
+
 
 
 @dataclass(frozen=True)
@@ -350,30 +426,47 @@ def _materialize_shared(frame,spec,source_hash,cache,*,input_metadata=None):
             if manifest["runner_keys"] != row_keys:
                 raise ValueError("Shared matrix runner keys mismatch")
         except (OSError,ValueError,KeyError,EOFError):
-            if directory.exists():
-                shutil.rmtree(directory)
-            temporary = Path(tempfile.mkdtemp(dir=root,prefix=identity+"-"))
-            try:
-                matrix,manifest = synthesize(frame,spec,input_metadata=input_metadata)
-                array = np.ascontiguousarray(matrix.to_numpy(dtype="float64"))
-                joblib.dump(array,temporary/"matrix.joblib",compress=0)
-                manifest.update(matrix_id=identity,source_hash=source_hash,generator_spec=generator_spec,builder_hash=builder_hash,runner_keys=row_keys,feature_names=list(matrix.columns),shape=list(array.shape),dtype=str(array.dtype),nbytes=array.nbytes,shared_bytes=array.nbytes,matrix_path=str((directory/"matrix.joblib").absolute()),matrix_sha256=_file_sha256(temporary/"matrix.joblib"),storage="joblib-readonly-numeric")
-                with open(temporary/"manifest.json","w") as stream:
-                    json.dump(manifest,stream,sort_keys=True)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                with open(temporary/"matrix.joblib","rb") as stream:
-                    os.fsync(stream.fileno())
-                os.replace(temporary,directory)
-                directory_fd = os.open(root,os.O_RDONLY)
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
-                artifact = DiscoveryMatrixArtifact(str(root),identity,"miss")
-                artifact.load()
-            finally:
-                if temporary.exists():
-                    shutil.rmtree(temporary)
+            artifact=_build_shared(frame,spec,source_hash,root,directory,identity,
+                generator_spec,builder_hash,row_keys,input_metadata=input_metadata)
+            manifest=artifact.manifest()
         manifest = dict(manifest,discovery_id=spec.discovery_id(),spec=spec.model_dump(mode="json"),cache_status=artifact.cache_status,shared_bytes=manifest["nbytes"],artifact_descriptor={"root":artifact.root,"matrix_id":artifact.matrix_id,"cache_status":artifact.cache_status})
         return artifact,manifest
+
+
+@storage_writer(stage='discovery_shared_matrix',output=lambda a:a['root'],estimate=_matrix_bytes)
+def _build_shared(frame,spec,source_hash,root,directory,identity,generator_spec,
+                  builder_hash,row_keys,*,input_metadata=None):
+    import joblib
+    if directory.exists():
+        _remove_discovery_payload_directory(directory)
+    temporary=Path(tempfile.mkdtemp(dir=root,prefix=identity+'-'))
+    published=False
+    try:
+        matrix,manifest=synthesize(frame,spec,input_metadata=input_metadata)
+        array=np.ascontiguousarray(matrix.to_numpy(dtype='float64'))
+        with reserved_output_file(temporary/'matrix.joblib') as stream:
+            joblib.dump(array,stream,compress=0)
+            stream.flush()
+            os.fsync(stream.fileno())
+        manifest.update(matrix_id=identity,source_hash=source_hash,generator_spec=generator_spec,
+            builder_hash=builder_hash,runner_keys=row_keys,feature_names=list(matrix.columns),
+            shape=list(array.shape),dtype=str(array.dtype),nbytes=array.nbytes,shared_bytes=array.nbytes,
+            matrix_path=str((directory/'matrix.joblib').absolute()),
+            matrix_sha256=_file_sha256(temporary/'matrix.joblib'),storage='joblib-readonly-numeric')
+        with reserved_output_file(temporary/'manifest.json','w') as stream:
+            json.dump(manifest,stream,sort_keys=True)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary,directory)
+        published=True
+        directory_fd=os.open(root,os.O_RDONLY)
+        try:os.fsync(directory_fd)
+        finally:os.close(directory_fd)
+        artifact=DiscoveryMatrixArtifact(str(root),identity,'miss')
+        artifact.load()
+        return artifact
+    except BaseException as primary:
+        if published:
+            _cleanup_discovery_path(primary,directory,directory=True)
+        _cleanup_discovery_path(primary,temporary,directory=True)
+        raise
