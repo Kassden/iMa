@@ -33,9 +33,17 @@ The scratch failure exposed a startup configuration requirement: launch now
 requires a canonical own-user private TMPDIR on the admitted filesystem before
 SDK initialization. Normal research, feature exploration and acquisition remain
 held pending the complete restart gates. OpenRouter authentication succeeded
-through Tailscale, but the account reported zero usable credits; no generation
-request was sent. This funding blocker affects paid planning, not independent
-implementation or qualification.
+through Tailscale. The initial zero-credit blocker was resolved by a top-up;
+a subsequent read-only check reported US$16.784208275 available. A bounded
+real-data controller qualification uses DeepSeek Flash, a US$1 planner cap,
+four completed fits maximum and two concurrent fit slots. This qualification
+does not replace the unlimited-service handover gate.
+
+Its first launcher mistakenly used loopback for MLflow, which listens on the
+Tailscale address. Readback established zero decisions, zero attempts and no
+evidence file before that qualification unit alone was stopped. Records were
+preserved. The successor uses the healthy Tailscale endpoint and sealed code
+`dded2d0`; normal services and old campaigns were not restarted.
 
 The independent phase-3 review supports original-format writer admission;
 bounded native Scrapy/Queuelib, SQLite/Optuna and cache fixtures cover the
@@ -59,6 +67,58 @@ rehash-verified in this audit. Unknown publication is not backdated.
 The dated sections below retain the incident history, including superseded
 access blockers. Read the later checkpoints and `.mega` task outcomes for
 current acceptance; old checkpoint tables are not a fresh live-state claim.
+
+## Completed Component Study: 2026-10-28
+
+Three fixed controls used the champion's unchanged dataset, outer protocol and
+scored population. Independent readback verified supervisor nonces, result
+hashes, exact archived source files and paired reports. The original saved
+champion package remains unchanged.
+
+| Pipeline | Stored development objective | Paired race-mean delta against reproduced champion |
+|---|---:|---:|
+| Reproduced 35% Benter / 65% boosted | 2.1494157523 | Reference |
+| Pure Benter | 2.1667156197 | +0.0172804659 |
+| Pure boosted | 2.1550922950 | +0.0056875961 |
+| Equal-weight pool | 2.1501587033 | +0.0007385202 |
+
+Positive deltas are worse. Both pure controls were worse in the exploratory
+race bootstrap and meeting sensitivity checks; the equal-weight result was
+inconclusive. Stored objectives average fold metrics, while paired reports use
+the full race population, so their aggregation differs slightly. These are
+adaptively selected development comparisons, not independent confirmation.
+
+All fits completed before the harness's final stdout serialization failed
+(`json.dumps` received an unsupported `flush` argument). The result file was
+already durable. This harness error is preserved separately from accepted model
+outcomes. Its bundled source inventory included 171 entries outside the archive;
+those entries are unqualified. Independent verification instead used exact Git
+archive members, all of which matched the running release.
+
+A separate learned-pool qualification is fitting simplex weights on inner
+forward prediction blocks, with later outer evaluation. It uses explicit
+`development_selected` lineage; nested model-selection independence remains
+unqualified. No score or improvement is claimed before accepted readback.
+
+## Latest Offline Qualification
+
+The complete committed suite at `48993ee` passed 2,080 tests and 792 subtests,
+with seven local-evidence/data skips. Subsequent exact-index tests qualified the
+transformed graph-transfer correction (20 tests), study seals and existing
+confirmation consumers (30 tests), and lifecycle admission/collision protection
+(31 tests). These overlapping sets must not be summed as unique coverage.
+
+Graph transfers use eligibility-filtered feature views, preserve fixed registered
+transforms, and route a bundle only to its declared estimator. The test completes
+a transformed graph reference, matched control/candidate, null and leave-one-out
+fits, with bit-exact original/control predictions. Adaptive discovery and unfrozen
+definitions remain rejected for fixed transfers.
+
+Study seals bind supplied exposure inventories and immutable prospective locks,
+wait for labels and exercise actual later evaluation. Scientific identifiers
+remain explicitly caller asserted; this foundation does not establish complete
+historical exposure or training independence. Phases 4 through 9 remain open
+unless their separate task outcomes qualify the requested full scope.
 
 ## Historical Verdict: 2026-10-20
 
