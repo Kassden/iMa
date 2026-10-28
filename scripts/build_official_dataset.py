@@ -202,6 +202,12 @@ def merge_country(countries, horse, country, document):
 def build(args):
     _mkdir_admitted(args.output.parent)
     with FileLock(args.output.parent/'snapshot-build.lock',timeout=0):
+        if getattr(args,'storage_format','legacy') == 'objects-v2':
+            # The lease starts before the first object link and ends only after
+            # the immutable manifest and snapshot directory are durable.
+            from ima.research_object_lifecycle import object_publication_lease
+            with object_publication_lease(args.output.parent/'objects'):
+                return _build_locked(args)
         return _build_locked(args)
 
 
