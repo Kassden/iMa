@@ -300,12 +300,29 @@ class PipelineRecipe(StrictModel):
             if nested_pools:
                 if self.transforms or self.feature_discovery or self.feature_definitions or self.extra_numeric_features:
                     raise ValueError("nested_selection currently requires the shared graph feature schema without outer recipe transforms/discovery")
-                from .feature_sets import FEATURE_SCHEMAS, drop_feature_families
+                from .feature_sets import FEATURE_SCHEMAS, FeatureSchema, drop_feature_families
                 from .pool_selection import validate_selection_protocol
-                selection_schema = drop_feature_families(
+                declared_schema = drop_feature_families(
                     FEATURE_SCHEMAS[self.feature_schema], self.drop_feature_families)
                 for node in nested_pools:
-                    validate_selection_protocol(node.parameters["selection_protocol"],
+                    protocol = node.parameters["selection_protocol"]
+                    registered = protocol.get("registered_features") if isinstance(protocol, dict) else None
+                    # Dataset availability is unknown when parsing a recipe. The
+                    # declaration may omit unavailable registered predictors, but
+                    # cannot add, duplicate or reorder them. Execution still
+                    # requires exact equality with its actual eligible schema.
+                    if (not isinstance(registered, list) or not registered
+                            or any(not isinstance(name, str) for name in registered)
+                            or registered != [name for name in declared_schema.features
+                                              if name in registered]):
+                        raise ValueError("nested_selection registered_features must be a nonempty "
+                                         "ordered subset of the declared feature schema")
+                    selection_schema = FeatureSchema(
+                        declared_schema.name,
+                        tuple(name for name in declared_schema.numeric if name in registered),
+                        tuple(name for name in declared_schema.categorical if name in registered),
+                    )
+                    validate_selection_protocol(protocol,
                         feature_schema=selection_schema, expected_output={
                             "kind": "win_probability", "target": "win_probability",
                             "unit": "probability", "market": False,
