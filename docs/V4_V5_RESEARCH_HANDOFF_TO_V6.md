@@ -60,6 +60,23 @@ Do not repeat this tested parameter batch without a new justified hypothesis.
 The effective Benter settings are the outer primary-node overrides
 l2=0.0005375138620901271 and max_iter=918, not the obsolete graph-node defaults.
 
+A read-only error analysis exactly joined the eight saved prediction arms on
+1,502 races and 18,075 runner rows, with 17 predeclared slice cells. In the
+419 races with at least 14 runners, mean winner log losses were 2.2318867624
+for the fixed 35/65 anchor, 2.2624665080 for pure Benter, 2.2309433188 for pure
+boosted and 2.2354422640 for the equal pool. These descriptive slices suggest
+a global 20/80 versus 35/65 matched comparison; they do not establish a
+conditional-weight pipeline or significant improvement. A proposed budget is
+two current-code fits total, freezing both components, all features, transforms
+and folds. Define the full-population guard before fitting and treat the
+large-field result as diagnostic. Actual per-fit CPU, elapsed time and private
+memory are retained in the component-study and boosted-search receipts; do not
+substitute the much cheaper publication job's resource usage for training cost.
+The analysis evidence is
+`.mega/live-evidence/component-error-slices-and-fit-costs-20261028-v3.json`;
+its original remote source paths and digests are recorded there. This evidence
+is a proposed follow-up, not another completed experiment or a promotion.
+
 The learned pool's first forward block trained on only two meetings and then
 predicted a much longer block. Its Benter OOF loss was extremely poor, so the
 learner allocated roughly 94–95% to boosted. This is evidence of inadequate

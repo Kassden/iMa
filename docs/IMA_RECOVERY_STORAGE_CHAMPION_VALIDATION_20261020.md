@@ -5,7 +5,9 @@ Date: 2026-10-20. Task: `ima-recovery-storage-champion-20261020`.
 ## Current Status: 2026-10-28
 
 **Implementation and qualification continue; the full plan is not complete.**
-Obligations 1.1, 2.1, 3.1 and 3.2 are qualified. The first reclaim removed 320 selected
+Obligations 1.1 and 2.1 retain current proof. Phase 3 previously qualified
+the original-format cohort; its proof must now be refreshed after the cache-lock
+consumer correction. The full task remains open. The first reclaim removed 320 selected
 derived payloads and freed 55,674,880,000 measured bytes; twelve held payloads
 remain intact. Twenty empty temporary entries have since been moved into
 receipt-backed quarantine. The initial shared inventory registered 76 valid
@@ -29,21 +31,33 @@ active-process probe verified inherited policy, private scratch, and the kernel
 aggregate memory ceiling of 99,999,997,952 bytes (page-rounded below 100 GB).
 The cross-program refill test also passed, with budgets independent of capacity.
 
-The scratch failure exposed a startup configuration requirement: launch now
-requires a canonical own-user private TMPDIR on the admitted filesystem before
-SDK initialization. Normal research, feature exploration and acquisition remain
-held pending the complete restart gates. OpenRouter authentication succeeded
-through Tailscale. The initial zero-credit blocker was resolved by a top-up;
-a subsequent read-only check reported US$16.784208275 available. A bounded
-real-data controller qualification uses DeepSeek Flash, a US$1 planner cap,
-four completed fits maximum and two concurrent fit slots. This qualification
-does not replace the unlimited-service handover gate.
+The scratch failure exposed a startup configuration requirement: launch requires
+an own-user private TMPDIR on the admitted filesystem before SDK initialization.
+Normal research, feature exploration and acquisition remain held pending full
+restart qualification. OpenRouter authentication and paid planning have worked
+through Tailscale. The bounded real-data qualification uses DeepSeek Flash,
+a US$1 planner cap, four completed fits maximum and two concurrent fit slots;
+these are canary limits, not the final unattended campaign settings.
 
-Its first launcher mistakenly used loopback for MLflow, which listens on the
-Tailscale address. Readback established zero decisions, zero attempts and no
-evidence file before that qualification unit alone was stopped. Records were
-preserved. The successor uses the healthy Tailscale endpoint and sealed code
-`dded2d0`; normal services and old campaigns were not restarted.
+The latest r6 qualification accepted four planner decisions: 257,182 tokens and
+US$0.047371316 reported cost. Its actual HTTP payloads included the completed
+feature transfer, the 2.1478491411 candidate score and the different-reference
+qualification. Three model fits completed. Its remaining heteroscedastic probit
+attempt returned to reserved state after a storage interruption; it is not a
+fourth completed fit. At 20:40 China time on October 28 the r6 unit was inactive.
+
+The immediate blocker was a cache-lock deadlock, followed by insufficient disk
+reservation headroom. A preparation worker held the storage authority lock while
+trying to reserve space for missing legacy eviction-lock metadata, recursively
+waiting on the same authority lock. Birth/nonce-verified cleanup terminated only
+that preparation group. After the lock cleared, controller storage handling
+interrupted the remaining model attempt. Completed results remain preserved.
+The consumer fix provisions admitted lock metadata before taking the authority
+lock; the protected storage authority module is unchanged. Native Linux failure
+injection reproduced the old timeout and passed with the corrected consumer,
+including payload preservation, stable lock inode and drained reservations.
+Independent review accepted this fix. Restart still requires live capacity and
+protected-cache readback; this record does not assert it has happened.
 
 The independent phase-3 review supports original-format writer admission;
 bounded native Scrapy/Queuelib, SQLite/Optuna and cache fixtures cover the
@@ -95,18 +109,34 @@ outcomes. Its bundled source inventory included 171 entries outside the archive;
 those entries are unqualified. Independent verification instead used exact Git
 archive members, all of which matched the running release.
 
-A separate learned-pool qualification is fitting simplex weights on inner
-forward prediction blocks, with later outer evaluation. It uses explicit
-`development_selected` lineage; nested model-selection independence remains
-unqualified. No score or improvement is claimed before accepted readback.
+The completed learned pool scored **2.1535112489**, worse than the fixed
+reference on these selected development races; its paired interval was
+inconclusive. Its first forward block contained only two meetings, so the result
+motivates a better warmup rather than rejecting learned pools generally. A new
+nested selector is implemented and tested, but native qualification is still
+open after a rejected prefix-date fixture. No independent confirmation is claimed.
+
+The four-trial boosted-only study reproduced the control and found three worse
+candidates: 2.1586602219, 2.1575066676 and 2.1580751537. Component settings, pool
+weights, features and transforms outside the six boosted parameters stayed fixed.
+A separate analysis exactly joined 1,502 races / 18,075 runner rows across eight
+saved prediction arms and 17 declared slice cells. It motivates a matched 20/80
+versus 35/65 global-weight comparison, with a large-field diagnostic and a full
+population guard. This is a proposed follow-up, not an accepted improvement.
+
+The completed four-feature transfer scored **2.1478491411** against the fresh
+2.1494157523 control; all three paired fold deltas were negative. The null arm
+matched control predictions exactly, four leave-one-out arms were retained, and
+seven runs were published to MLflow. The paired race-mean delta was
+−0.0015675687. These are selected development results under their original
+source/reference identities, not independently confirmed champion promotion.
 
 ## Latest Offline Qualification
 
-The complete committed suite at `48993ee` passed 2,080 tests and 792 subtests,
-with seven local-evidence/data skips. Subsequent exact-index tests qualified the
-transformed graph-transfer correction (20 tests), study seals and existing
-confirmation consumers (30 tests), and lifecycle admission/collision protection
-(31 tests). These overlapping sets must not be summed as unique coverage.
+The complete sealed committed suite at `9e4df6d` passed **2,178 tests and
+802 subtests**, with seven skips. GitHub CI for that same revision passed
+(run 40687558828). This verifies the committed code; it does not establish full
+live rollout or scientific confirmation.
 
 Graph transfers use eligibility-filtered feature views, preserve fixed registered
 transforms, and route a bundle only to its declared estimator. The test completes
