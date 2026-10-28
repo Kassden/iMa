@@ -159,4 +159,5 @@ def test_expired_control_execution_gets_fresh_runtime_path(tmp_path):
         with pytest.raises(TimeoutError):
             explorer.baseline(ExpiringExecutor())
     assert paths[0] != paths[1]
-    assert paths[0].parent == paths[1].parent
+    assert paths[0].name == paths[1].name == "runtime.json"
+    assert paths[0].parent != paths[1].parent
