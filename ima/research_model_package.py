@@ -523,9 +523,13 @@ def load_research_package(path: Path) -> ResearchModelPackage:
         expected_selections = [dict(item) for item in package.manifest().selection_references]
         if manifest.get("selection_references", []) != expected_selections:
             raise ValueError("Package selection references do not match loaded fitted state")
-        stored_recipe = json.loads((path / "recipe.json").read_text(encoding="utf-8"))
-        if stored_recipe != package._recipe_package_payload():
-            raise ValueError("Package recipe/selected candidate contract does not match loaded fitted state")
+        recipe_path = path / "recipe.json"
+        if expected_selections and not recipe_path.is_file():
+            raise ValueError("Nested selection package requires its recipe/selected candidate contract")
+        if recipe_path.exists():
+            stored_recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+            if stored_recipe != package._recipe_package_payload():
+                raise ValueError("Package recipe/selected candidate contract does not match loaded fitted state")
         if package.recipe.schema_version == 3 and getattr(package, "feature_context", None) is not None:
             stored = json.loads((path / "feature-replay.json").read_text())
             if stored != json.loads(json.dumps(package.feature_context.contract())):

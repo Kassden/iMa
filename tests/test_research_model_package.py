@@ -94,6 +94,10 @@ class ResearchModelPackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "recipe/selected candidate contract"):
                 load_research_package(root)
             recipe_path.write_text(json.dumps(package._recipe_package_payload(), indent=2, sort_keys=True))
+            recipe_path.unlink()
+            with self.assertRaisesRegex(ValueError, "requires its recipe/selected candidate contract"):
+                load_research_package(root)
+            recipe_path.write_text(json.dumps(package._recipe_package_payload(), indent=2, sort_keys=True))
             manifest["selection_references"][0]["selection_id"] = "selection-forged"
             manifest_path.write_text(json.dumps(manifest))
             with self.assertRaisesRegex(ValueError, "manifest does not match|selection references"):
