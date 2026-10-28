@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any

@@ -1,4 +1,6 @@
 import json
+from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -110,3 +112,97 @@ def test_nested_delta_retains_declared_parent_replacements(tmp_path):
     source=grandchild/'features.delta.json'
     request=SimpleNamespace(dataset_path=source,recipe=PipelineRecipe())
     pd.testing.assert_frame_equal(_load_request_dataset(request),_load_dataset(source).drop(columns=['spare']))
+
+
+def test_trailing_three_year_delta_preparation_matches_full_and_skips_earlier_training_payload(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from ima import research_executor as executor
+    from ima.dataset_delta import write_feature_delta
+    from ima.research_executor import RecipeExecutionRequest, prepare_recipe_folds
+    from tests.test_research_executor_v6 import dataset
+
+    root=tmp_path.resolve()
+    source_dir=root/'source';source_dir.mkdir()
+    csv_path,frame=dataset(source_dir,races=26)
+    frame['date']=[pd.Timestamp('2018-01-01')+pd.Timedelta(days=100*race)
+                   for race in range(26) for _ in range(3)]
+    pq_path=csv_path.with_suffix('.parquet')
+    pq.write_table(pa.Table.from_pandas(frame,preserve_index=False),pq_path,row_group_size=10_000)
+    csv_path.unlink()
+
+    registry=root/'registry';parent=registry/'datasets/parent';parent.mkdir(parents=True)
+    parent_table=parent/'features.parquet';pq_path.replace(parent_table)
+    parent_manifest={'dataset_id':'parent','features_path':str(parent_table),
+        'files':{'features.parquet':digest(parent_table)},'predictor_catalog':{}}
+    (parent/'manifest.json').write_text(json.dumps(parent_manifest))
+    metadata={'unit':'1','dtype':'float64','temporal_scope':'pre_race','target_tainted':False,
+        'eligible':True,'source_family':'validated_formula','availability_proof':'fixture-derived'}
+    child=registry/'datasets/child'
+    enriched=frame.assign(delta_signal=frame.horse_rating*2)
+    write_feature_delta(parent/'manifest.json',child,enriched,registry_root=registry,
+        columns=['delta_signal'],catalog={'delta_signal':metadata})
+    delta_path=child/'features.delta.json'
+    (child/'manifest.json').write_text(json.dumps({'dataset_id':'child',
+        'features_path':str(delta_path), 'files':{'features.delta.json':digest(delta_path),
+        'feature-delta.parquet':digest(child/'feature-delta.parquet')},
+        'predictor_catalog':{'delta_signal':metadata}}))
+    materialized=root/'materialized';materialized.mkdir()
+    full_table=materialized/'features.parquet'
+    enriched.to_parquet(full_table,index=False)
+    (materialized/'manifest.json').write_text(json.dumps({'dataset_id':'full-comparator',
+        'features_path':str(full_table),'files':{'features.parquet':digest(full_table)},
+        'predictor_catalog':{'delta_signal':metadata}}))
+
+    recipe=PipelineRecipe(schema_version=3,extra_numeric_features=('delta_signal',),
+        train_window='trailing_3_years',blend={'kind':'none'})
+    protocol={'min_train_races':12,'calibration_races':3,'score_races':3,'max_folds':1,
+        'whole_meeting_boundaries':True}
+    projected_request=RecipeExecutionRequest('projected','trailing-window',0,recipe,delta_path,
+        root/'trials/projected',protocol,code_revision='fixture',environment_hash='fixture')
+    full_request=replace(projected_request,attempt_id='full',dataset_path=full_table,
+        output_dir=root/'trials/full')
+
+    positions=[];protocols=[]
+    from ima import dataset_delta
+    read_original=dataset_delta.read_feature_table
+    def observe_read(path,**kwargs):
+        if Path(path)==delta_path and kwargs.get('positions') is not None:
+            positions.extend(kwargs['positions'])
+        return read_original(path,**kwargs)
+    recipe_inputs=executor._recipe_fold_inputs
+    def observe_protocol(request,frame):
+        result=recipe_inputs(request,frame)
+        protocols.append(result[2])
+        return result
+
+    with patch.object(executor,'_supports_direct_parquet_fold_pushdown',return_value=True), \
+         patch.object(dataset_delta,'read_feature_table',side_effect=observe_read), \
+         patch.object(executor,'_recipe_fold_inputs',side_effect=observe_protocol):
+        projected=prepare_recipe_folds(projected_request)
+    with patch.object(executor,'_supports_direct_parquet_fold_pushdown',return_value=False):
+        full=prepare_recipe_folds(full_request)
+
+    assert len(protocols)==1 and positions
+    fold=protocols[0].folds[0]
+    calibration_dates=frame.loc[frame.race_id.astype(str).isin(fold.calibration_race_ids),'date']
+    cutoff=pd.to_datetime(calibration_dates).min()-pd.DateOffset(years=3)
+    earlier_train_ids=set(fold.train_race_ids)-set(
+        frame.loc[pd.to_datetime(frame.date).ge(cutoff),'race_id'].astype(str))
+    earlier_train_positions={index for index,row in enumerate(frame.itertuples(index=False))
+        if str(row.race_id) in earlier_train_ids}
+    assert earlier_train_ids
+    assert not earlier_train_positions.intersection(positions)
+    assert max(positions)<len(frame)
+    assert list(projected)==list(full)
+    for fold_id in projected:
+        projected_artifact,full_artifact=projected[fold_id],full[fold_id]
+        assert projected_artifact.manifest()['row_keys']==full_artifact.manifest()['row_keys']
+        projected_arrays,full_arrays=projected_artifact.load_arrays(),full_artifact.load_arrays()
+        assert set(projected_arrays)==set(full_arrays)
+        for name in projected_arrays:
+            import numpy as np
+            np.testing.assert_array_equal(projected_arrays[name],full_arrays[name])
+        train_keys=projected_artifact.manifest()['row_keys']['train']
+        assert all(json.loads(key)[0] not in earlier_train_ids for key in train_keys)
