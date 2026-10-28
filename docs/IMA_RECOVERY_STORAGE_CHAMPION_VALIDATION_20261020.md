@@ -5,21 +5,56 @@ Date: 2026-10-20. Task: `ima-recovery-storage-champion-20261020`.
 ## Current Status: 2026-10-28
 
 **Implementation and qualification continue; the full plan is not complete.**
-Obligations 1.1 and 2.1 are qualified. The first reclaim removed 320 selected
+Obligations 1.1, 2.1, 3.1 and 3.2 are qualified. The first reclaim removed 320 selected
 derived payloads and freed 55,674,880,000 measured bytes; twelve held payloads
 remain intact. Twenty empty temporary entries have since been moved into
 receipt-backed quarantine. The initial shared inventory registered 76 valid
 caches; new qualification caches are accounted for automatically as they grow.
 The pinned retained-cache policy and bounded control-intent store are installed.
 
-One actual-champion reproduction qualification is running as
-`ima-champion-reproduction-20261028.service`, using sealed code `6e66a31` and
-the saved recipe, original dataset and original protocol. It runs inside the
-own-user aggregate 100 GB decimal research slice with a separate 16 GB ceiling
-and four CPU threads for this qualification. Launch is recorded, not a passing
-training outcome. Normal research, feature exploration and acquisition services
-remain held. Actual successor environment/consumer qualification and the
-explicit cross-program refill test remain 3.1/3.2 gates.
+Actual-champion reproduction completed under sealed code `6e66a31`, using the
+saved recipe, original dataset and original protocol. Its fundamental race log
+loss was **2.1494157522885775**, compared with the saved **2.149415373890447**
+(difference +0.000000378398130607). It took 263.742 seconds and peaked at
+4,843,667,456 private bytes. This is close reproduction, not an improvement or
+independent confirmation. The saved champion package remains unchanged.
+
+An integrated native-controller recovery check preserved five accepted fits
+through an injected storage interruption and completed five more on resume,
+without redispatching an accepted fit. Actual MLflow SDK readback in a private
+qualification store found ten finished runs and twelve traces, including two
+error traces retaining the injected storage and scratch-configuration failures.
+Tracking, optimizer-tell and control-intent queues drained to zero. A separate
+active-process probe verified inherited policy, private scratch, and the kernel
+aggregate memory ceiling of 99,999,997,952 bytes (page-rounded below 100 GB).
+The cross-program refill test also passed, with budgets independent of capacity.
+
+The scratch failure exposed a startup configuration requirement: launch now
+requires a canonical own-user private TMPDIR on the admitted filesystem before
+SDK initialization. Normal research, feature exploration and acquisition remain
+held pending the complete restart gates. OpenRouter authentication succeeded
+through Tailscale, but the account reported zero usable credits; no generation
+request was sent. This funding blocker affects paid planning, not independent
+implementation or qualification.
+
+The independent phase-3 review supports original-format writer admission;
+bounded native Scrapy/Queuelib, SQLite/Optuna and cache fixtures cover the
+noncontroller paths. These canaries do not claim a physically full production
+filesystem test. The qualification joins 83 hash-bound inputs in each phase-3
+outcome. Other cache classes and objects-v2 remain separate qualifications.
+
+The additive object-lifecycle foundation passed 29 tests across archive,
+snapshot and dataset consumers. Review findings for symlinked shards and
+temporary-name collisions were fixed and tested. The planner holds every
+object while MLflow/history/pending reference adapters remain incomplete; no
+production shared-object deletion or external archive is qualified.
+
+The event-evidence audit now separates schema-default false identity flags
+from evidence of rejection. A live readback found 104,723 observations, 77,397
+full horse IDs and 27,326 unresolved IDs. All observations have source links,
+stored body hashes and capture timestamps; none has a verified publication
+timestamp. Stored hash presence does not mean original response bodies were
+rehash-verified in this audit. Unknown publication is not backdated.
 
 The dated sections below retain the incident history, including superseded
 access blockers. Read the later checkpoints and `.mega` task outcomes for
