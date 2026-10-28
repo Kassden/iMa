@@ -34,6 +34,8 @@ def _fake_runtime(tmp_path: Path) -> tuple[Path, Path]:
 def _supervisor_env(tmp_path: Path, interpreter: Path) -> dict[str, str]:
     release = tmp_path / "release"
     release.mkdir()
+    scratch=tmp_path/'scratch'
+    scratch.mkdir(mode=0o700)
     env = os.environ.copy()
     env.update(
         {
@@ -46,6 +48,7 @@ def _supervisor_env(tmp_path: Path, interpreter: Path) -> dict[str, str]:
             "IMA_V6_RESEARCH_POLICY": "expansion_v6",
             "IMA_CACHE_HOLD_POLICY": "/reviewed-fixture-policy.json",
             "IMA_CACHE_HOLD_POLICY_SHA256": "b" * 64,
+            "TMPDIR": str(scratch),
         }
     )
     return env
@@ -124,7 +127,7 @@ def test_supervisor_rejects_unpinned_holds_before_interpreter_or_campaign(tmp_pa
     env=_supervisor_env(tmp_path,interpreter)
     env.update(IMA_STORAGE_ROOT=CANONICAL_STORAGE_ROOT,IMA_FAKE_WORKER=str(worker),
                IMA_STORAGE_CAPTURE=str(tmp_path/'worker-env'))
-    for missing in ('IMA_CACHE_HOLD_POLICY','IMA_CACHE_HOLD_POLICY_SHA256'):
+    for missing in ('IMA_CACHE_HOLD_POLICY','IMA_CACHE_HOLD_POLICY_SHA256','TMPDIR'):
         selected=dict(env);selected.pop(missing)
         result=subprocess.run(['bash',str(LAUNCHER),'--check'],env=selected,text=True,capture_output=True)
         assert result.returncode!=0 and missing in result.stderr

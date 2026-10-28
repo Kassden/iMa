@@ -69,6 +69,8 @@ class ResearchExpansionDeployTests(unittest.TestCase):
         policy.chmod(0o400)
         self.env.update(IMA_CACHE_HOLD_POLICY=str(policy),
             IMA_CACHE_HOLD_POLICY_SHA256=hashlib.sha256(policy.read_bytes()).hexdigest())
+        scratch=self.base/'scratch';scratch.mkdir(mode=0o700)
+        self.env.update(TMPDIR=str(scratch),IMA_STORAGE_ROOT=str(self.base))
         self.seal()
 
     def seal(self):
@@ -127,6 +129,11 @@ class ResearchExpansionDeployTests(unittest.TestCase):
         self.assertIn('preflight passed', output)
         self.assertIn('NOT a guaranteed hard billing bound', output)
         self.assertFalse((self.registry / 'locks').exists())
+
+    def test_shared_scratch_is_rejected_without_creating_state(self):
+        scratch=Path(self.env['TMPDIR']);scratch.chmod(0o755)
+        with self.assertRaisesRegex(SystemExit,'scratch must be private'):
+            self.check()
 
     def test_v7_name_is_accepted_without_bypassing_provenance_checks(self):
         self.campaign_name = 'agentic_v7_mock'
