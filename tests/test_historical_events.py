@@ -52,6 +52,13 @@ def coverage(**changes):
 
 
 class HistoricalEventTests(unittest.TestCase):
+    def test_physical_identity_requires_literal_verified_boolean(self):
+        for supplied, expected in ((True, True), (False, False), ("false", False),
+                                   ("true", False), (1, False), (None, False)):
+            with self.subTest(supplied=supplied):
+                normalized = normalize_events([event(physical_identity_verified=supplied)])
+                self.assertEqual(bool(normalized.iloc[0].physical_identity_verified), expected)
+
     def test_future_only_fast_path_matches_unrelated_past_event_control(self):
         frame = runners("2026-09-03", "2026-09-10")
         future = event(first_seen_at="2026-10-02")
