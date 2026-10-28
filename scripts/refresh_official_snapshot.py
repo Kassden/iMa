@@ -40,6 +40,7 @@ def input_digest(archive, profiles, corpora):
     for name in ("scripts/build_official_dataset.py", "scripts/verify_official_snapshot.py",
                  "scripts/refresh_official_snapshot.py", "scrapper/official_corpus.py",
                  "scrapper/research_storage_io.py", "ima/research_storage.py", "ima/research_sqlite.py",
+                 "ima/research_objects.py", "ima/research_object_lifecycle.py", "ima/research_dataset_capacity.py",
                  "scrapper/historical/results.py", "scrapper/horse_pages.py",
                  "ima/rich_features.py", "ima/data.py", "ima/feature_sets.py"):
         digest.update(json.dumps([name, hashlib.sha256(Path(name).read_bytes()).hexdigest()]).encode())

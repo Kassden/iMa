@@ -71,11 +71,18 @@ def read_verified(path, url):
     safe = canonical_url(url)
     if not safe:
         raise ValueError("Source outside official public racing allowlist")
-    body = gzip.open(path, "rb").read()
+    captured = Path(path).read_bytes()
+    body = gzip.decompress(captured)
     response = HtmlResponse(url=safe, body=body, encoding="utf-8")
     record = parse_document(response)
     return record | {"source_url": safe, "raw_path": str(path.resolve()),
-                     "body_hash": hashlib.sha256(body).hexdigest()}
+                     "body_hash": hashlib.sha256(body).hexdigest(),
+                     "capture_file_sha256": hashlib.sha256(captured).hexdigest()}
+
+
+def _capture_lineage(document):
+    return {key: document[key] for key in
+            ("source_url", "raw_path", "body_hash", "capture_file_sha256")}
 
 
 def race_rows(document):
@@ -225,6 +232,7 @@ def _build_locked(args):
     for path in (Path(__file__), Path("scrapper/official_corpus.py"), Path("ima/rich_features.py"),
                  Path("scrapper/research_storage_io.py"), Path("ima/research_storage.py"), Path("ima/research_sqlite.py"),
                  Path("ima/research_objects.py"), Path("ima/research_dataset_capacity.py"),
+                 Path("ima/research_object_lifecycle.py"),
                  Path("ima/data.py"), Path("ima/feature_sets.py"),
                  Path("scrapper/historical/results.py"), Path("scrapper/horse_pages.py")):
         body = path.read_bytes()
@@ -258,17 +266,37 @@ def _build_locked(args):
                 cached_candidates.append({"race_date": path.parent.parent.name, "venue": path.parent.name,
                     "race_no": int(path.name.split(".")[0][1:]), "source_url": ROOT + "localresults?" +
                     f"RaceDate={path.parent.parent.name.replace('-', '/')}&Racecourse={path.parent.name}&RaceNo={path.name.split('.')[0][1:]}"})
-    else:
-        for normalized in sorted(args.archive.glob("normalized/*/*.json")):
-            cached_candidates.extend(json.loads(normalized.read_text()))
+    # A base is a reusable materialization, not a closed inventory of sources.
+    # Previously this scan ran only without a base, silently ignoring both new
+    # races and corrected captures on every incremental refresh.
+    for normalized in sorted(args.archive.glob("normalized/*/*.json")):
+        cached_candidates.extend(json.loads(normalized.read_text()))
+    previous_captures = {(record["source_url"], record.get("capture_file_sha256"), record["body_hash"])
+                         for record in lineage.values() if record.get("capture_file_sha256")}
+    seen_candidates = set()
     for cached in cached_candidates:
             path = args.archive / "raw" / cached["race_date"].replace("/", "-") / cached["venue"] / f"R{cached['race_no']}.html.gz"
+            candidate = (str(path), cached["source_url"])
+            if candidate in seen_candidates:
+                continue
+            seen_candidates.add(candidate)
             counts["cached_race_candidates"] += 1
             try:
+                race_id = f"HKJC:{cached['race_date'].replace('/', '-')}:{cached['venue']}:R{cached['race_no']}"
+                current_url = canonical_url(cached["source_url"])
+                capture_hash = _sha256_file(path)
+                if (race_id in records and all(
+                        row.get('source_url') == current_url and
+                        (current_url, capture_hash, row.get('source_body_hash')) in previous_captures
+                        for row in records[race_id])):
+                    counts["unchanged_cached_races_reused"] += 1
+                    continue
                 document = read_verified(path, cached["source_url"])
+                # Preserve the new replayable capture even when its parsed race
+                # is quarantined. Older captures remain in the inherited lineage.
+                lineage[document["body_hash"]] = _capture_lineage(document)
                 rows = race_rows(document)
                 records[rows[0]["race_id"]] = rows
-                lineage[document["body_hash"]] = {k: document[k] for k in ("source_url", "raw_path", "body_hash")}
                 identities.update(r["horse_id"] for r in rows)
             except (ValueError, OSError, KeyError, json.JSONDecodeError) as exc:
                 exclusions.append({"path": str(path), "reason": str(exc)})
@@ -293,7 +321,7 @@ def _build_locked(args):
                 "source_body_hash": document["body_hash"], "capture_time_status": "unknown_legacy_capture_time",
                 "mutable_attributes_policy": "snapshot_only; never substituted into historical races"}
             merge_country(countries, horse, profile.get("country"), document)
-            lineage[document["body_hash"]] = {k: document[k] for k in ("source_url", "raw_path", "body_hash")}
+            lineage[document["body_hash"]] = _capture_lineage(document)
             for form in profile.get("form_records", []):
                 merge_form(ratings, horse, form, document)
             counts["profiles_replayed"] += 1
@@ -308,7 +336,7 @@ def _build_locked(args):
             document = read_verified(raw, cached["source_url"])
             if document["body_hash"] != cached["body_hash"]:
                 raise ValueError(f"Corrupt corpus blob: {raw}")
-            lineage[document["body_hash"]] = {k: document[k] for k in ("source_url", "raw_path", "body_hash")} | {
+            lineage[document["body_hash"]] = _capture_lineage(document) | {
                 "fetched_at": cached["fetched_at"], "first_fetched_at": cached.get("first_fetched_at", cached["fetched_at"]),
                 "collector_revision": cached.get("collector_revision", "legacy_capture_without_collector_manifest")}
             for form in document.get("horse", {}).get("form_records", []):
