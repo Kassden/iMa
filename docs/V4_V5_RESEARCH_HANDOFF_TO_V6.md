@@ -12,7 +12,11 @@ The frozen reference uses dataset
 `dataset-19aaa959e948d6e145ce62c8160413087b46ba3c2578e0de15c452054d9a83db`
 (SHA256 `2321218048ffb1f2b9d9ea9a357ec8a753775420f9808385dc323741ad1795a1`),
 latest three whole-meeting folds with 9000 training / 500 calibration / 500 score
-races, scoring 1502 actual races. Historical source attempt
+races, scoring 1502 actual races. A direct October 28 chronology readback found
+the frozen 171,782-row table ends November 12, 2025, with no 2026 rows. Newer
+raw captures are not automatically part of this reference. Any successor with
+newer races requires its own dataset/population contract; do not compare its
+scalar minimum directly with this frozen development reference. Historical source attempt
 `attempt-09e8faabf8bcc228e8e4dce7d54b628502a894767ff4b54cfa1c90cec1087d9c`
 saved fundamental log loss 2.149415373890447. A fresh supervised reproduction
 scored 2.1494157522885775; use that fresh fit as the paired control, rather than

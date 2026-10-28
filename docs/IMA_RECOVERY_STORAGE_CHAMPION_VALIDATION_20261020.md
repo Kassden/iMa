@@ -131,6 +131,27 @@ seven runs were published to MLflow. The paired race-mean delta was
 −0.0015675687. These are selected development results under their original
 source/reference identities, not independently confirmed champion promotion.
 
+## Dataset chronology and rendered telemetry readback
+
+A direct Arrow read of the frozen `dataset-19aaa...` Parquet on October 28
+found 171,782 rows / 13,924 races, with dates from April 14, 2001 through
+**November 12, 2025**. There are no 2026 rows in this frozen feature dataset.
+The richer acquisition corpus is a different input; its capture dates do not
+extend the frozen training table automatically. The chronology audit retained
+per-year race counts and nonmissing win-odds/target counts, with unchanged file
+inode, size and modification timestamp. Successor dataset work must remain
+separate from reproduction on the frozen reference.
+
+Local headless Chromium loaded the actual MLflow 3.16.1 trace table over
+Tailscale. Paid decision D000004 displayed **72,906 tokens**. Selecting the
+native Display > Columns > Cost preference displayed **US$0.014588** for that
+decision; D000003 displayed 69,804 tokens / US$0.014196. Execution snapshots
+have no LLM token/call cost and display dashes. This is a rendered browser
+readback, not only API metadata. The display selection was local to the test
+browser; it does not change another browser's saved preferences. Screenshots,
+body readback and native column headers are under
+`.mega/live-evidence/mlflow-trace-ui-20261028/`.
+
 ## Latest Offline Qualification
 
 The complete sealed committed suite at `9e4df6d` passed **2,178 tests and
