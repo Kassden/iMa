@@ -3,6 +3,7 @@ import errno
 from pathlib import Path
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 import pandas as pd
 import pytest
 import ima.dataset_delta as delta_module
@@ -70,6 +71,45 @@ def test_multilayer_delta_preserves_parents_and_projects(tmp_path):
     (parent/'features.parquet').write_bytes(b'changed ancestor')
     with pytest.raises(ValueError,match='Parent table changed'):
         read_feature_table(grandchild/'features.delta.json')
+
+
+def test_delta_writer_rejects_duplicate_key_collision(tmp_path):
+    registry,parent,frame=parent_fixture(tmp_path)
+    colliding=frame.copy()
+    colliding.loc[1,['race_id','horse_no']]=colliding.loc[0,['race_id','horse_no']].to_numpy()
+    with pytest.raises(ValueError,match='Changed delta population'):
+        write_feature_delta(parent/'manifest.json',registry/'datasets/key-collision',
+            colliding.assign(y=[4.,5.]),registry_root=registry,columns=['y'],catalog={'y':predictor()})
+
+
+def test_delta_reader_rejects_cyclic_ancestor_chain(tmp_path):
+    registry,parent,frame=parent_fixture(tmp_path)
+    child=registry/'datasets/dataset-cycle'
+    child.mkdir()
+    pointer=child/'features.delta.json'
+    delta=child/'feature-delta.parquet'
+    pd.DataFrame({'race_id':frame.race_id,'horse_no':frame.horse_no,'y':[4.,5.]}).to_parquet(delta,index=False)
+    descriptor={'storage_format':delta_module.FORMAT,'registry_root':str(registry),
+        'parent_manifest_path':str(child/'manifest.json'),'parent_manifest_sha256':'bound',
+        'parent_dataset_id':'dataset-cycle','delta_sha256':'bound','delta_columns':['y'],
+        'replacements':[],'rows':len(frame),'columns':['race_id','horse_no','y'],
+        'ordered_keys_sha256':delta_module.key_digest(frame)}
+    pointer.write_text(json.dumps(descriptor))
+    (child/'manifest.json').write_text(json.dumps({'dataset_id':'dataset-cycle',
+        'features_path':str(pointer),'files':{'features.delta.json':'bound'}}))
+    with patch.object(delta_module,'digest',return_value='bound'):
+        with pytest.raises(ValueError,match='Dataset parent cycle'):
+            read_feature_table(pointer)
+
+
+def test_delta_reader_rejects_missing_ancestor_table(tmp_path):
+    registry,parent,frame=parent_fixture(tmp_path)
+    child=registry/'datasets/dataset-child'
+    write_feature_delta(parent/'manifest.json',child,frame.assign(y=frame.x*2),
+        registry_root=registry,columns=['y'],catalog={'y':predictor()})
+    (parent/'features.parquet').unlink()
+    with pytest.raises(FileNotFoundError):
+        read_feature_table(child/'features.delta.json')
 
 
 def test_replacement_requires_matching_units_and_protects_labels(tmp_path):
