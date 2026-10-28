@@ -1213,3 +1213,68 @@ review. Both retention-policy environment variables are required before the
 production interpreter starts; the preflight validates the actual nonempty
 hash-pinned policy. Those source checks are not a receipt for installation of
 the successor service environment.
+
+
+### Native paid-planner and resource readback, 2026-10-28
+
+The isolated combined builder/research runtime now imports the actual HTTPX
+transport and passes `pip check`. The original research and acquisition
+environments were not installation targets. Source startup preflight runs in
+the actual launch interpreter before campaign/request state is created; an
+import or incompatible transport version fails before an HTTP request.
+
+After account funding, the bounded real-data campaign at
+`paid-controller-e7611e74611e-20261028/campaign` completed four accepted Benter
+fits and preserved one failed Gaussian-probit fit. It exited successfully with
+no pending tells or tracking uploads. Four native MLflow runs read back as
+`FINISHED`, registered as versions 1371–1374. The best new fundamental race
+log loss was **2.1659502442341783**; this does **not** improve the reproduced
+35/65 reference at 2.1494157522885775. Six costed planner decisions consumed
+389,640 tokens and **USD 0.059303952** in total. All 29 recorded traces were
+readable through the native tracking API; paid decision traces expose
+`mlflow.trace.tokenUsage` and `mlflow.trace.cost`, including the rejected calls.
+The final execution snapshot's receipt cost is unknown because it is not an
+LLM call; aggregate known spend is separately present and fully resolved.
+See `.mega/live-evidence/paid-controller-readback-recovered-final-20261028.json`.
+
+This live test exposed two consumer/validation gaps. Paper actions assumed
+predictions lived directly in `trials/ATTEMPT`, whereas accepted supervised
+fits keep large artifacts in `.fit-episodes`. The corrected reader verifies
+the existing canonical supervisor receipt, admitted request, runtime nonce,
+all accepted scientific result fields and artifact checksums. Extra ledger
+bookkeeping is permitted; missing accepted fields, redirected artifacts and
+replaced runtime state are rejected. A read-only Linux replay of two actual
+completed fits passed paper preflight and four hypothetical pool calculations
+for one development race, without prices, wagers, model fitting or paid calls.
+See `.mega/live-evidence/native-paper-acceptance-recovered-20261028.json`.
+Stale proposal/dataset evidence is now checked inside the existing two-call
+planner repair envelope instead of failing only after the paid response returns.
+The exact-index combined acceptance/publication/planner suite passed 80 tests
+plus 62 subtests. Historical rejection and billing records remain unchanged.
+
+The native fold-loading benchmark preserved exact artifact IDs, arrays and
+row keys across three full protocol folds, but disproved a universal speedup.
+On the actual 171,782-row, 311-column single-row-group Parquet file, the old
+path took 28.82 s cold / 17.18 s warm versus 42.18 s / 27.87 s for repeated
+fold predicates. Sampled USS was also higher for the latter path. The default
+therefore retains full-read preparation for this layout; the predicate path
+requires multiple row groups. This condition does not prove that every
+multi-row-group dataset is faster. The fallback/projection/delta suite passed
+48 tests plus four subtests. The benchmark is retained at
+`.mega/live-evidence/fold-row-native-benchmark-recovered-20261028.json`.
+
+The first real learned-pool fit failed because the earliest forward training
+block had no speed-trend observations. The corrected serializable transform
+state freezes such stateless inputs as inactive and masks their later values;
+it does not learn from future blocks. Quantile clipping still refuses an
+empty training distribution, and previous nonempty/infinity behavior remains
+unchanged. Transform/graph/pool checks passed 59 tests plus 19 subtests.
+The sealed retry is a separate attempt and is not yet a successful result.
+
+Linux legacy/objects-v2/CSV-opt-in builder, unchanged refresh, dataset registry
+and restored-object consumers passed on small fixtures. Their copied receipts
+are hash-indexed under `.mega/live-evidence/native-builder-20261028/`. Independent
+review identified a remaining changed-raw-capture retention/provenance readback
+gap; that qualification is still open. Full-corpus migration, complete shared
+reference adapters, independent confirmation, normal service handover and
+whole-plan acceptance are not implied by these bounded checks.
