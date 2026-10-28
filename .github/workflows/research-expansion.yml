@@ -30,7 +30,7 @@ concurrency:
 jobs:
   research:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       OMP_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
@@ -66,7 +66,15 @@ jobs:
       - name: Verify successor canary CLI
         run: python -m scripts.run_research_expansion_canary --help
       - name: Run legacy and successor regression suite
-        run: python -m unittest discover -s tests
+        run: python -m pytest -q tests --junitxml="$RUNNER_TEMP/research-expansion-junit.xml"
+      - name: Upload regression test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-expansion-junit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/research-expansion-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
       - name: Verify committed deployment package
         env:
           RESEARCH_RELEASE_SHA: ${{ github.sha }}
