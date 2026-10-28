@@ -8,7 +8,7 @@ import json
 import math
 from pathlib import Path
 
-from .dataset_registry import _digest, _write_json
+from .dataset_registry import _digest, _write_json, file_sha256
 from .feature_lifecycle import FeatureLifecycle, _outcome
 
 
@@ -65,6 +65,39 @@ def _compatible(contract, reference):
     return contract == reference["comparison_contract"]
 
 
+def _related_transfer(row, path, reference):
+    """Keep cross-runtime evidence visible without weakening reference identity."""
+    plan = row.get("plan", {})
+    prior = plan.get("reference", {})
+    if (prior.get("parent_dataset_id") != reference["parent_dataset_id"]
+            or prior.get("comparison_contract") != reference["comparison_contract"]):
+        return None
+    result = row.get("result") or {}
+    paired = result.get("paired") or {}
+    summary = {
+        "transfer_id": row["transfer_id"], "build_id": row["build_id"],
+        "dataset_id": plan.get("dataset_id"), "status": row["status"],
+        "reference_id": row["reference_id"], "reference_match": False,
+        "reference_attempt_id": prior.get("attempt_id"),
+        "reference_code_revision": prior.get("code_revision"),
+        "reference_environment_hash": prior.get("environment_hash"),
+        "receipt_path": str(path.resolve()), "receipt_sha256": file_sha256(path),
+        "paired": {key: paired[key] for key in (
+            "paired_delta", "race_bootstrap_ci95", "meeting_equal_weight_sensitivity_ci95",
+            "fold_deltas", "races", "verdict", "caveat") if key in paired},
+        "scope": "Compatible protocol/population, different reference identity. Prior adaptive development evidence; requires a matched current-reference control and is not independent confirmation.",
+    }
+    for side in ("control", "candidate"):
+        fit = result.get(side) or {}
+        summary[side] = {key: fit[key] for key in (
+            "attempt_id", "recipe_hash", "objective_name", "objective_value", "lineage") if key in fit}
+    for suffix in ("attribution", "tracking"):
+        extra = path.with_name(path.stem + "-" + suffix + ".json")
+        if extra.is_file():
+            summary[suffix + "_receipt"] = {"path": str(extra.resolve()), "sha256": file_sha256(extra)}
+    return summary
+
+
 def promotion_view(registry_root, reference, *, limit=20):
     """Rank all persisted metadata before bounded hydration, without recency cuts."""
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
@@ -75,7 +108,7 @@ def promotion_view(registry_root, reference, *, limit=20):
     for path in sorted((lifecycle.root / "outcomes").glob("*.json")):
         row = json.loads(path.read_text())
         outcomes.setdefault(row["build_id"], []).append(row)
-    transfers = []
+    transfers, related = [], []
     for path in sorted((lifecycle.root / "transfers").glob("*.json")):
         row = json.loads(path.read_text())
         if "reference_id" not in row:
@@ -86,6 +119,10 @@ def promotion_view(registry_root, reference, *, limit=20):
                 if extra.exists():
                     row[suffix] = json.loads(extra.read_text())
             transfers.append(row)
+        else:
+            summary = _related_transfer(row, path, reference)
+            if summary is not None:
+                related.append(summary)
     by_build = {}
     for transfer in transfers:
         by_build.setdefault(transfer["build_id"], []).append(transfer)
@@ -131,6 +168,7 @@ def promotion_view(registry_root, reference, *, limit=20):
     result = {"reference_id": reference_id, "reference": deepcopy(reference),
               "candidates": ranked[:limit], "omitted_candidates": max(0, len(ranked)-limit),
               "pending": pending, "transfer_evidence": history,
+              "related_reference_transfer_evidence": related,
               "scope": "adaptive development only; no automatic promotion"}
     result["evidence_id"] = _digest(result)
     return result

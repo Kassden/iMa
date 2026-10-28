@@ -79,3 +79,30 @@ def test_repeated_screen_merit_uses_conservative_result_not_best_seed(tmp_path):
     repeat = json.loads(path.read_text()) | {"improvement": -.1, "outcome_id": "a-repeat"}
     _write_json(path.with_name("a-repeat.json"), repeat)
     assert promotion_view(tmp_path, reference())["candidates"][0]["screen_improvement"] == -.1
+
+
+def test_cross_runtime_history_is_visible_without_becoming_current_reference_evidence(tmp_path):
+    evidence(tmp_path, 'best', .8)
+    prior = reference()
+    plan = {'transfer_id': 'historical-transfer', 'reference_id': reference_identity(prior),
+            'reference': prior, 'build_id': 'best', 'dataset_id': 'best-dataset'}
+    result = {'paired': {'paired_delta': -.0015, 'race_bootstrap_ci95': [-.002, -.0001],
+                         'race_deltas': [{'race_id': 'r', 'delta': -.0015}]},
+              'control': {'attempt_id': 'actual-control', 'objective_value': 2.15},
+              'candidate': {'attempt_id': 'actual-candidate', 'objective_value': 2.1485}}
+    save_transfer(tmp_path, plan, status='completed', result=result)
+    current = dict(prior, code_revision='successor-code')
+    view = promotion_view(tmp_path, current)
+    assert view['candidates'][0]['build_id'] == 'best'
+    assert view['transfer_evidence'] == []
+    related = view['related_reference_transfer_evidence']
+    assert len(related) == 1 and related[0]['reference_match'] is False
+    assert related[0]['candidate']['attempt_id'] == 'actual-candidate'
+    assert related[0]['paired']['paired_delta'] == -.0015
+    assert 'race_deltas' not in related[0]['paired']
+    assert related[0]['receipt_sha256'] and related[0]['receipt_path']
+    incompatible = deepcopy(current)
+    incompatible['comparison_contract']['probability_basis'] = 'market'
+    assert promotion_view(tmp_path, incompatible)['related_reference_transfer_evidence'] == []
+    assert promotion_view(tmp_path, prior)['related_reference_transfer_evidence'] == []
+    assert promotion_view(tmp_path, prior)['transfer_evidence'][0]['transfers'][0]['result'] == result
