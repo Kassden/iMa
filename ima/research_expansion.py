@@ -29,6 +29,8 @@ from .research_betting import PaperResearchRequest
 from .research_external_planner import read_external_decision as _external_decision
 from .research_worker_runtime import BoundedFitExecutor, active_attempt_summary, cleanup_attempt_group, read_runtime
 from .research_runtime_history import RuntimeHistory, read_own_unit_journal
+from .research_storage import storage_writer
+from .research_dataset_capacity import dataset_storage_estimate
 
 
 class PlannerDecision(BaseModel):
@@ -557,6 +559,8 @@ def _worker(request, workload, threads):
     return result
 
 
+@storage_writer(stage='program_preparation',output=lambda a:Path(a['root']),
+                estimate=lambda a:max(64*1024**2,6*dataset_storage_estimate(Path(a['dataset']))))
 def _prepare_program(dataset, recipe, digest, root):
     from .research_resources import JobMonitor
     with JobMonitor() as monitor:
