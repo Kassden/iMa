@@ -1,5 +1,95 @@
 # V4/V5 Research Handoff to V6
 
+
+## Recovery evidence update — 2026-10-28
+
+This dated section supersedes older numerical reference summaries below only for
+its exact dataset, protocol, population and fundamental probability basis. It
+is selected development evidence, not independent confirmation, a profit claim,
+or permission to treat historical attempts as current-campaign parents.
+
+The frozen reference uses dataset
+`dataset-19aaa959e948d6e145ce62c8160413087b46ba3c2578e0de15c452054d9a83db`
+(SHA256 `2321218048ffb1f2b9d9ea9a357ec8a753775420f9808385dc323741ad1795a1`),
+latest three whole-meeting folds with 9000 training / 500 calibration / 500 score
+races, scoring 1502 actual races. Historical source attempt
+`attempt-09e8faabf8bcc228e8e4dce7d54b628502a894767ff4b54cfa1c90cec1087d9c`
+saved fundamental log loss 2.149415373890447. A fresh supervised reproduction
+scored 2.1494157522885775; use that fresh fit as the paired control, rather than
+subtracting an old rounded scalar.
+
+| Matched study | Fundamental race log loss | Interpretation |
+|---|---:|---|
+| Frozen 35% Benter / 65% boosted reference | 2.1494157522885775 | Fresh paired control |
+| Pure Benter component | 2.1667156197346262 | Worse than fixed pool on development |
+| Pure boosted component | 2.1550922950098346 | Worse than fixed pool on development |
+| Equal-weight component pool | 2.1501587033238523 | Worse than 35/65 reference |
+| Learned component pool | 2.1535112489263835 | Worse; early OOF warmup diagnostic below |
+| Four-feature bundle on fixed Benter branch of 35/65 graph | 2.1478491411233267 | Promising selected development result; fresh controls required for reuse |
+
+The complete four-feature build is
+`feature-build-6cd6f65b828d97b44bddb2273d70c2e0db939b2377a8ff747bb6eadff2e16317`,
+child dataset
+`dataset-c6a947fc8b47d9fae13322934d44832ee466fa04a9d5961b6921798015ccac1f`,
+transfer
+`feature-transfer-3021e831db2702b4201c7b3395316060fb55b87b811ce0a2b29cdae913167159`.
+Its registered formulas compare average past finishes with historical odds or
+jockey/trainer rates. Do not reconstruct these formulas from their names:
+resolve the persisted build definitions and their exact input/availability
+contracts. Candidate minus fresh-control paired race delta is
+-0.0015675687182328724, negative in each of three folds. The null arm reproduced
+control prediction bytes exactly. Four leave-one-out scores were
+2.1479252087396876, 2.149189765509077, 2.147865498006945 and
+2.1478855442287768. Their attribution concerns this complete fixed bundle;
+it is not proof that an isolated feature always improves another pipeline.
+The original registry is unchanged; the isolated study registry is
+`/home/imaopt/research-v2/canaries/champion-feature-transfer-8eb7a6103a95-20261028-r2/registry`.
+Resolve verified candidates in the campaign's configured registry; a private
+study path is evidence, not an automatically available campaign dataset.
+Cross-runtime compatible evidence stays visible with its original reference
+identity; it does not become a matched current-code control automatically.
+
+A four-trial Optuna study tuned only the boosted branch's learning_rate,
+max_iter, max_leaf_nodes, max_depth, min_samples_leaf and l2_regularization.
+The other estimator, transforms, feature set and pool weights stayed fixed.
+Original-settings trial 0 reproduced 2.1494157522885775 exactly. Trials 1–3
+scored 2.1586602218905235, 2.1575066675950243 and 2.1580751537260503;
+all were worse, and their saved paired reports reject them. Their MLflow
+versions are 1386–1389 in `ima-agentic-v6-research-candidates-win-probability`.
+Do not repeat this tested parameter batch without a new justified hypothesis.
+The effective Benter settings are the outer primary-node overrides
+l2=0.0005375138620901271 and max_iter=918, not the obsolete graph-node defaults.
+
+The learned pool's first forward block trained on only two meetings and then
+predicted a much longer block. Its Benter OOF loss was extremely poor, so the
+learner allocated roughly 94–95% to boosted. This is evidence of inadequate
+warmup for that study, not proof that learned pools cannot help. Specify and
+validate a sufficient earlier selection/training prefix and whole-meeting OOF
+coverage before comparing another learned pool. Nested selection must freeze
+its declared finite candidate graph on the prefix before subsequent OOF rows;
+its package and predictions must retain verified selector identity and cutoffs.
+
+Historical fitness availability remains a separate limit. The raw-source
+review covered seven event observations across all seven snapshot families
+using six unique cached HKJC bodies, whose body hashes matched. All sampled
+captures were in October 2026. No historical publication or physical-grouping
+proof was established. Workouts, trials and veterinary/movement observations
+must remain prospective-only under strict policy when earlier availability is
+unproven. Any explicitly retrospective experiment needs a separate availability
+contract, diagnostic limitations, and reference bucket. Never turn unavailable
+history into zero activity or silently combine retrospective and strict scores.
+
+Operational qualification is distinct from research progress. The first
+feature-aware controller could plan but all preparation subprocesses failed
+because parent-only lifecycle globals were absent after a fresh import.
+It was stopped with its billing/failure records preserved. The repaired entry
+points now initialize in fresh worker processes, and real supervised model
+fits have completed. Planner request readback confirms that completed bundle
+evidence, its objective and reference qualification are actually transmitted.
+Native USD/token fields and model versions are checked separately. These facts
+do not constitute a new scientific champion or independent confirmation.
+
+
 Read-only server audit, 2026-10-04, legacy observations through 13:06:55 UTC; V6 checkpoint refreshed at 13:11:19 UTC.
 Recipient: Luna V6 High, orchestrator `01a106f3-d5e3-71e2-bba4-37773eb3149f`, via parent relay.
 This is research evidence and proposed matched tests, not permission to promote models, resume V5, or place wagers.
