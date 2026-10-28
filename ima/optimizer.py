@@ -108,6 +108,9 @@ class CampaignConfig:
     gates: MetricGates = field(default_factory=MetricGates)
 
     def validate(self) -> None:
+        if self.policy == "agentic" and self.planner_mode == "openrouter":
+            from .research_runtime_preflight import require_planner_transport
+            require_planner_transport()
         if self.policy not in {"local", "openrouter", "agentic"}:
             raise ValueError("policy must be local, openrouter, or agentic")
         if self.research_policy not in {"legacy", "benter_v3", "feature_v4", "discovery_v5", "expansion_v6"}:
