@@ -203,3 +203,34 @@ def test_restore_collision_never_removes_preexisting_temporary(tmp_path, monkeyp
     with pytest.raises(FileExistsError):
         restore_object(archive_path=archive, object_root=store.root, reference=ref, authority=authority)
     assert collision.read_bytes() == b"belongs to another publisher"
+
+def test_archive_collision_never_removes_preexisting_temporary(tmp_path, monkeypatch):
+    import ima.research_object_lifecycle as lifecycle
+    store = ObjectStore(tmp_path / "objects")
+    ref = store.publish_table(frame())["partitions"][0]
+    authority = StorageAuthority(tmp_path / "authority", headroom_bytes=0, headroom_inodes=0)
+    archive = tmp_path / "archive"
+    collision = tmp_path / ".archive.0000000000000000.tmp"
+    collision.write_bytes(b"belongs to another publisher")
+    monkeypatch.setattr(lifecycle.os, "urandom", lambda size: bytes(size))
+    with pytest.raises(FileExistsError):
+        archive_object(object_root=store.root, reference=ref, destination=archive, authority=authority)
+    assert collision.read_bytes() == b"belongs to another publisher"
+    assert not archive.exists()
+
+def test_new_lifecycle_lock_is_admitted_before_creation(tmp_path, monkeypatch):
+    import ima.research_object_lifecycle as lifecycle
+    from ima.research_storage import StorageBlocked
+    from contextlib import contextmanager
+    store = ObjectStore(tmp_path / "objects")
+    lock = tmp_path / ".ima-object-lifecycle.lock"
+    @contextmanager
+    def denied(*args, **kwargs):
+        assert not lock.exists()
+        raise StorageBlocked("denied lock admission")
+        yield
+    monkeypatch.setattr(lifecycle, "admitted_output", denied)
+    with pytest.raises(StorageBlocked, match="denied lock admission"):
+        with lifecycle_lease(store.root):
+            pass
+    assert not lock.exists()

@@ -9,6 +9,7 @@ import fcntl, hashlib, json, os, shutil, stat, time
 import threading
 from pathlib import Path
 from .research_objects import ObjectStore, read_snapshot_table
+from .research_storage import admitted_output
 
 GRACE_SECONDS = 7 * 86400
 SNAPSHOT_FORMAT = "ima.snapshot.objects.v2"
@@ -51,7 +52,23 @@ def lifecycle_lease(object_root, *, exclusive=False):
         return
     if not path.parent.is_dir() or path.parent.resolve() != path.parent:
         raise ValueError("Lifecycle lock parent must be a canonical existing directory")
-    fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except FileNotFoundError:
+        with admitted_output(path, estimated_bytes=64 * 1024, inodes=1,
+                             stage="object_lifecycle_lock"):
+            try:
+                fd = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError:
+                fd = os.open(path, flags)
+            else:
+                try:
+                    os.fsync(fd)
+                    _fsync_dir(path.parent)
+                except BaseException:
+                    os.close(fd)
+                    raise
     with os.fdopen(fd, "a+b") as stream:
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
@@ -230,15 +247,20 @@ def archive_object(*, object_root, reference, destination, authority):
         with authority.admitted(bytes_required=source.stat().st_size + 128 * 1024, inodes_required=1,
                                 stage="research_object_archive", output=dest):
             temporary = dest.with_name(f".{dest.name}.{os.urandom(8).hex()}.tmp")
+            created = False
             try:
-                with source.open("rb") as src, temporary.open("xb") as dst:
-                    shutil.copyfileobj(src, dst, 1024 * 1024); dst.flush(); os.fsync(dst.fileno())
+                with source.open("rb") as src:
+                    with temporary.open("xb") as dst:
+                        created = True
+                        shutil.copyfileobj(src, dst, 1024 * 1024); dst.flush(); os.fsync(dst.fileno())
                 if temporary.stat().st_size != ref["size"] or _sha256(temporary) != ref["sha256"]: raise ValueError("Archive copy checksum mismatch")
                 os.chmod(temporary, 0o400)
                 try: os.link(temporary, dest)
                 except FileExistsError as exc: raise ValueError("Archive destination already exists") from exc
                 _fsync_dir(dest.parent)
-            finally: temporary.unlink(missing_ok=True)
+            finally:
+                if created:
+                    temporary.unlink(missing_ok=True)
     same_fs = source.stat().st_dev == dest.stat().st_dev
     return {"reference": ref, "archive_path": str(dest), "sha256": _sha256(dest), "size": dest.stat().st_size,
             "same_filesystem": same_fs, "reclaimed_bytes": 0, "source_deleted": False, "status": "verified_copy_only"}
