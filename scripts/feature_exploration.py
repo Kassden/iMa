@@ -19,13 +19,31 @@ def main(argv=None):
     parser.add_argument("--native-threads", type=int, default=2)
     parser.add_argument("--fit-timeout", type=float, default=900)
     parser.add_argument("--disk-reserve-bytes", type=int, default=10_000_000_000)
-    parser.add_argument("command", choices=["run", "once", "refill", "status"])
+    parser.add_argument("command", choices=["run", "once", "refill", "status", "promotions", "transfer-plan", "transfer"])
     parser.add_argument("--max-steps", type=int)
+    parser.add_argument("--reference", type=Path, help="Pinned champion reference JSON")
+    parser.add_argument("--build-id")
+    parser.add_argument("--destination", help="Graph estimator node receiving the complete bundle")
+    parser.add_argument("--attribution", action="store_true", help="After full transfer, run null and leave-one-out controls")
     args = parser.parse_args(argv)
     if args.command == "status":
         path = args.root/"status.json"
         print(path.read_text() if path.is_file() else json.dumps({"operation": "not_started"}))
         return 0
+    if args.command in {"promotions", "transfer-plan", "transfer"}:
+        if not args.registry or not args.reference:
+            parser.error("--registry and --reference are required for champion work")
+        reference = json.loads(args.reference.read_text())
+        from ima.feature_promotion import promotion_view, save_transfer, transfer_plan
+        if args.command == "promotions":
+            print(json.dumps(promotion_view(args.registry, reference), indent=2, allow_nan=False))
+            return 0
+        if not args.build_id:
+            parser.error("--build-id is required for transfers")
+        if args.command == "transfer-plan":
+            plan = transfer_plan(args.registry, args.build_id, reference, destination=args.destination)
+            print(json.dumps(save_transfer(args.registry, plan), indent=2, allow_nan=False))
+            return 0
     if not args.parent_features or not args.registry:
         parser.error("--parent-features and --registry are required for feature work")
     from ima.feature_exploration import ExplorationConfig, FeatureExplorer
@@ -36,7 +54,14 @@ def main(argv=None):
         fit_timeout=args.fit_timeout, disk_reserve_bytes=args.disk_reserve_bytes))
     if args.max_steps is not None and args.max_steps < 1:
         parser.error("--max-steps must be positive; omit for continuous operation")
-    if args.command == "refill":
+    if args.command == "transfer":
+        from ima.feature_exploration import exploration_lock
+        from ima.research_worker_runtime import BoundedFitExecutor
+        with exploration_lock(args.root):
+            with BoundedFitExecutor(max_workers=1,max_tasks_per_child=1) as executor:
+                result = explorer.transfer(args.build_id, reference,destination=args.destination,
+                                           executor=executor,attribution=args.attribution)
+    elif args.command == "refill":
         from ima.feature_exploration import exploration_lock
         with exploration_lock(args.root):
             explorer.refill()
