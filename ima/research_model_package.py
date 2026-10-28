@@ -243,6 +243,51 @@ def _frame_hash(frame):
     return identity.hexdigest()
 
 
+def _selection_references(model) -> list[dict[str, str]]:
+    """Validate and return immutable selector identities carried by fitted graphs."""
+    fit_report = getattr(model, "fit_report", None)
+    if not isinstance(fit_report, dict):
+        return []
+    references = []
+    for pool in fit_report.get("learned_pools", []):
+        if pool.get("selection_mode") != "nested_selection":
+            continue
+        selection = pool.get("selection")
+        if not isinstance(selection, dict) or not isinstance(selection.get("artifact"), dict):
+            raise ValueError("Nested learned pool is missing its immutable selection artifact")
+        from .pool_selection import SelectionArtifact
+        artifact = SelectionArtifact.from_payload(selection["artifact"])
+        reference = {
+            "selection_id": artifact.selection_id,
+            "selection_sha256": artifact.selection_sha256,
+            "selection_contract_sha256": artifact.payload["protocol_sha256"],
+            "selected_candidate_id": artifact.payload["selected_candidate_id"],
+            "selection_cutoff": artifact.payload["selection_cutoff"],
+        }
+        if any(selection.get(key) != value for key, value in reference.items()):
+            raise ValueError("Nested learned pool selection state disagrees with its artifact")
+        references.append(reference)
+    if len({item["selection_id"] for item in references}) != len(references):
+        raise ValueError("Fitted graph contains duplicate nested selection identities")
+    return sorted(references, key=lambda item: item["selection_id"])
+
+
+def _selection_artifacts(model) -> list[dict[str, Any]]:
+    fit_report = getattr(model, "fit_report", None)
+    if not isinstance(fit_report, dict):
+        return []
+    artifacts = []
+    for pool in fit_report.get("learned_pools", []):
+        if pool.get("selection_mode") == "nested_selection":
+            artifact = pool.get("selection", {}).get("artifact")
+            from .pool_selection import SelectionArtifact
+            validated = SelectionArtifact.from_payload(artifact)
+            if not validated.payload.get("selected_graph"):
+                raise ValueError("Nested selection artifact lacks its selected graph contract")
+            artifacts.append(validated.to_dict())
+    return artifacts
+
+
 @dataclass(frozen=True)
 class ResearchPackageManifest:
     package_id: str
@@ -253,6 +298,7 @@ class ResearchPackageManifest:
     target_kind: str
     prediction_method: str
     portfolio_version: str | None = None
+    selection_references: tuple[dict, ...] = ()
     created_by: str = "ima-research-v2"
 
 
@@ -278,6 +324,9 @@ class ResearchModelPackage:
         context = getattr(self, "feature_context", None)
         if context is not None:
             identity["feature_replay_contract"] = context.contract()
+        selection_references = _selection_references(self.model)
+        if selection_references:
+            identity["selection_references"] = selection_references
         package_id = hashlib.sha256(
             json.dumps(identity, sort_keys=True).encode("utf-8")
         ).hexdigest()[:16]
@@ -295,8 +344,23 @@ class ResearchModelPackage:
                 else "predict_proba" if self.recipe.target.kind == "win_probability" else "predict"
             ),
             portfolio_version=self.portfolio_version,
+            selection_references=tuple(selection_references),
             created_by="ima-research-v6" if self.recipe.schema_version == 3 else "ima-research-v3" if self.portfolio_version else "ima-research-v2",
         )
+
+    def _recipe_package_payload(self) -> dict[str, Any]:
+        payload = self.recipe.canonical_payload()
+        artifacts = _selection_artifacts(self.model)
+        if artifacts:
+            payload["selection_references"] = _selection_references(self.model)
+            payload["selected_candidate_contracts"] = [{
+                "selection_id": item["selection_id"],
+                "selection_sha256": item["selection_sha256"],
+                "candidate_id": item["selected_candidate_id"],
+                "graph_sha256": item["selected_graph_sha256"],
+                "graph": item["selected_graph"],
+            } for item in artifacts]
+        return payload
 
     def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
         if self.recipe.target.kind != "win_probability":
@@ -396,7 +460,7 @@ class ResearchModelPackage:
                 encoding="utf-8",
             )
             (path / "recipe.json").write_text(
-                json.dumps(self.recipe.canonical_payload(), indent=2, sort_keys=True),
+                json.dumps(self._recipe_package_payload(), indent=2, sort_keys=True),
                 encoding="utf-8",
             )
             context = getattr(self, "feature_context", None)
@@ -430,7 +494,7 @@ class ResearchModelPackage:
                     stream.flush()
                     os.fsync(stream.fileno())
             with reserved_output_file(path/'recipe.json','w') as stream:
-                json.dump(self.recipe.canonical_payload(),stream,indent=2,sort_keys=True)
+                json.dump(self._recipe_package_payload(),stream,indent=2,sort_keys=True)
                 if admitted:
                     stream.flush()
                     os.fsync(stream.fileno())
@@ -456,6 +520,12 @@ def load_research_package(path: Path) -> ResearchModelPackage:
             raise TypeError("Loaded artifact is not a ResearchModelPackage")
         if manifest["package_id"] != package.manifest().package_id:
             raise ValueError("Package manifest does not match loaded model")
+        expected_selections = [dict(item) for item in package.manifest().selection_references]
+        if manifest.get("selection_references", []) != expected_selections:
+            raise ValueError("Package selection references do not match loaded fitted state")
+        stored_recipe = json.loads((path / "recipe.json").read_text(encoding="utf-8"))
+        if stored_recipe != package._recipe_package_payload():
+            raise ValueError("Package recipe/selected candidate contract does not match loaded fitted state")
         if package.recipe.schema_version == 3 and getattr(package, "feature_context", None) is not None:
             stored = json.loads((path / "feature-replay.json").read_text())
             if stored != json.loads(json.dumps(package.feature_context.contract())):
