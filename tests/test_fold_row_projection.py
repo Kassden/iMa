@@ -19,12 +19,12 @@ from tests.test_research_executor_v6 import dataset
 
 
 class FoldRowProjectionTests(unittest.TestCase):
-    def _parquet_request(self, root, *, recipe=None):
+    def _parquet_request(self, root, *, recipe=None, row_group_size=9):
         root.mkdir(parents=True, exist_ok=True)
         csv_path, frame = dataset(root)
         parquet_path = root / "features.parquet"
         table = pa.Table.from_pandas(frame, preserve_index=False)
-        pq.write_table(table, parquet_path, row_group_size=9)
+        pq.write_table(table, parquet_path, row_group_size=row_group_size)
         csv_path.unlink()
         request = RecipeExecutionRequest("projection", "fold-projection", 0,
             recipe or PipelineRecipe(schema_version=3, blend={"kind": "none"}),
@@ -74,6 +74,53 @@ class FoldRowProjectionTests(unittest.TestCase):
             self.assertTrue(filtered)
             self.assertTrue(all("horse_rating" in cols for cols, _, _ in filtered))
             self.assertTrue(all(rows < population[2] for _, _, rows in filtered))
+
+    def test_single_row_group_uses_full_read_and_matches_cached_fold_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            single_group, _ = self._parquet_request(root / "single", row_group_size=10_000)
+            full_read, _ = self._parquet_request(root / "full", row_group_size=10_000)
+            shutil.copyfile(single_group.dataset_path, full_read.dataset_path)
+            shutil.copyfile(single_group.dataset_path.parent / "manifest.json",
+                            full_read.dataset_path.parent / "manifest.json")
+            self.assertEqual(pq.ParquetFile(single_group.dataset_path).metadata.num_row_groups, 1)
+
+            reads = []
+            original_read = pd.read_parquet
+
+            def observed_read(*args, **kwargs):
+                value = original_read(*args, **kwargs)
+                reads.append((kwargs.get("filters"), len(value)))
+                return value
+
+            with patch.object(pd, "read_parquet", side_effect=observed_read):
+                projected_request_artifacts = prepare_recipe_folds(single_group)
+            with patch.object(executor, "_supports_direct_parquet_fold_pushdown", return_value=False):
+                full_request_artifacts = prepare_recipe_folds(full_read)
+
+            self.assertTrue(reads)
+            self.assertTrue(all(filters is None for filters, _ in reads))
+            self.assertEqual(list(full_request_artifacts), list(projected_request_artifacts))
+            for fold_id in full_request_artifacts:
+                full_artifact = full_request_artifacts[fold_id]
+                actual_artifact = projected_request_artifacts[fold_id]
+                self.assertEqual(full_artifact.artifact_id, actual_artifact.artifact_id)
+                self.assertEqual(full_artifact.manifest()["row_keys"], actual_artifact.manifest()["row_keys"])
+                full_arrays = full_artifact.load_arrays()
+                actual_arrays = actual_artifact.load_arrays()
+                self.assertEqual(set(full_arrays), set(actual_arrays))
+                for name in full_arrays:
+                    np.testing.assert_array_equal(full_arrays[name], actual_arrays[name])
+                    self.assertFalse(actual_arrays[name].flags.writeable)
+
+    def test_malformed_parquet_footer_fails_closed_without_fallback_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            request, _ = self._parquet_request(Path(directory))
+            request.dataset_path.write_bytes(request.dataset_path.read_bytes()[:-8])
+            with patch.object(pd, "read_parquet") as read:
+                with self.assertRaises(Exception):
+                    prepare_recipe_folds(request)
+            read.assert_not_called()
 
     def test_invalid_unselected_population_data_is_still_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

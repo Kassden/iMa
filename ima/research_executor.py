@@ -342,13 +342,19 @@ def prepare_recipe_folds(request: RecipeExecutionRequest) -> dict[str, Preparati
 
 def _supports_direct_parquet_fold_pushdown(request):
     recipe = request.recipe
-    return (recipe.schema_version == 3
+    eligible = (recipe.schema_version == 3
         and recipe.target.kind == "win_probability"
         and Path(request.dataset_path).suffix == ".parquet"
         and Path(request.dataset_path).is_file()
         and not (recipe.feature_discovery or recipe.transforms or recipe.feature_definitions
                  or recipe.pipeline_graph or recipe.performance_distribution
                  or recipe.extra_numeric_features))
+    if not eligible:
+        return False
+    # A predicate cannot prune I/O within a single row group. Avoid the extra
+    # population pass when the file layout offers no row-group pruning opportunity.
+    import pyarrow.parquet as pq
+    return pq.ParquetFile(request.dataset_path).metadata.num_row_groups > 1
 
 
 def _prepare_direct_parquet_folds(request, dependency_id):
