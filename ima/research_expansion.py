@@ -29,7 +29,7 @@ from .research_betting import PaperResearchRequest
 from .research_external_planner import read_external_decision as _external_decision
 from .research_worker_runtime import BoundedFitExecutor, active_attempt_summary, cleanup_attempt_group, read_runtime
 from .research_runtime_history import RuntimeHistory, read_own_unit_journal
-from .research_storage import storage_writer
+from .research_storage import StorageBlocked, storage_writer
 from .research_dataset_capacity import dataset_storage_estimate
 
 
@@ -605,7 +605,13 @@ class _FoldDependencies:
         for error in self.errors.values():
             if not isinstance(error,dict) or not isinstance(error.get("failures"),int) or error["failures"] < 1:
                 raise ValueError("Invalid fold dependency failure count")
-            error["blocked"] = error["failures"] >= 3
+            diagnostic=error.get('diagnostic')
+            legacy=0 if isinstance(diagnostic,dict) and diagnostic.get('failure_kind')=='infrastructure_storage' else error['failures']
+            scientific=error.get('scientific_failures',legacy)
+            if type(scientific) is not int or not 0<=scientific<=error['failures']:
+                raise ValueError('Invalid fold scientific failure count')
+            error['scientific_failures']=scientific
+            error["blocked"] = scientific >= 3
         self.ready, self._pins, self._stamps = {}, {}, {}
         # Finalization covers campaign returns without changing the executor lifetime.
         self._finalizer = weakref.finalize(self,type(self)._release_pins,self._pins)
@@ -633,11 +639,18 @@ class _FoldDependencies:
 
     def failed(self, dependency, pid, exc):
         self.invalidate(dependency)
-        failures = self.errors.get(dependency,{}).get("failures",0)+1
+        previous=self.errors.get(dependency,{})
+        failures = previous.get("failures",0)+1
+        scientific_failures=previous.get('scientific_failures',previous.get('failures',0))
+        if not isinstance(exc,StorageBlocked): scientific_failures+=1
         diagnostic = getattr(exc,"diagnostic",None)
         self.errors[dependency] = {"error":f"{type(exc).__name__}: {exc}","program_id":pid,
-            "failures":failures,"blocked":failures>=3,"last_failure_at_epoch":time.time(),
-            "retry_at_epoch":time.time()+30,"diagnostic":diagnostic}
+            "failures":failures,'scientific_failures':scientific_failures,
+            "blocked":scientific_failures>=3,"last_failure_at_epoch":time.time(),
+            # Storage backoff is owned by the durable operation ledger. This
+            # circuit only delays genuine preparation errors.
+            "retry_at_epoch":0 if isinstance(exc,StorageBlocked) else time.time()+30,
+            "diagnostic":diagnostic}
         self._save()
 
     def invalidate(self, dependency):
@@ -694,6 +707,49 @@ class _FoldDependencies:
             self._pins[dependency] = pins.pop_all()
             self._stamps[dependency] = stamps
             self.ready[dependency] = dict(artifacts)
+
+
+def _interrupted_runtime(path):
+    runtime=core._read_json(path) if path.exists() else {}
+    if runtime and runtime.get('status') not in {'failed','finished'}:
+        raise RuntimeError('Cannot defer a storage failure while its runtime may still be active')
+    return runtime
+
+
+def _defer_storage_fit(ledger,directory,attempt,error):
+    path=Path(directory)/'trials'/attempt/'runtime.json'
+    runtime=_interrupted_runtime(path)
+    return ledger.defer_infrastructure(attempt,{**error.diagnostic,'error':str(error)},
+                                      runtime_snapshot=runtime)
+
+
+def _defer_storage_operation(ledger,operation,path,error):
+    return ledger.defer_operation(operation,{**error.diagnostic,'error':str(error)},
+                                  runtime_snapshot=_interrupted_runtime(path))
+
+
+def _reset_operation_runtime(ledger,operation,path):
+    if not any(row['operation_id']==operation for row in ledger.operation_waits()):return
+    if path.exists():
+        current=core._read_json(path)
+        if current!=ledger.latest_infrastructure_runtime(operation):
+            raise ValueError('Runtime changed after its preserved infrastructure interruption')
+        # The old physical episode remains immutable in the ledger. Stable lock
+        # files are retained; only the inactive runtime pointer is reset.
+        path.unlink()
+
+
+def _reset_storage_retry_runtime(ledger,directory,attempt):
+    _reset_operation_runtime(ledger,attempt,Path(directory)/'trials'/attempt/'runtime.json')
+
+
+def _storage_wait_summary(ledger,fold_state):
+    return {'attempt_ids':[r['attempt_id'] for r in ledger.infrastructure_waits()],
+        'operation_ids':[r['operation_id'] for r in ledger.operation_waits()
+                         if r['operation_id'].startswith(('dataset:','program:','fold:'))],
+        'dependency_ids':sorted(key for key,row in fold_state.errors.items()
+            if (row.get('diagnostic') or {}).get('failure_kind')=='infrastructure_storage')}
+
 
 
 def _fail_fold_allocation(row, dependency, error, ledger, hypotheses, directory):
