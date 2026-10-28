@@ -12,16 +12,18 @@ from ima.research_storage import StorageAuthority, StorageBlocked
 
 
 def fixture(tmp_path, *, available=1000, inodes=1000):
+    from ima.research_preparation import PreparationCache
+    from tests.test_research_preparation import build, key
+
     root = tmp_path / 'fold-cache'
     root.mkdir(mode=0o700)
+    cache = PreparationCache(root)
     paths, allocated = [], {}
     for letter in ('a', 'b'):
-        path = root / (letter * 64)
-        path.mkdir()
-        for name in ('arrays.joblib', 'fitted.joblib', 'manifest.json'):
-            (path / name).write_bytes(b'fixture-derived-payload' * 1000)
-        (root / (path.name + '.lock')).touch()
-        (root / (path.name + '.pin.lock')).touch()
+        with ExitStack() as pins:
+            artifact = cache.prepare_fold(
+                key(source_content_hash=f'physical-capacity-{letter}'), build, pins=pins)
+        path = artifact.path
         paths.append(path)
         allocated[path] = sum(p.stat().st_blocks * 512 for p in path.iterdir())
     original_count = len(list(root.rglob('*')))

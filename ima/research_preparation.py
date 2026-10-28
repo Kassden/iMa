@@ -7,11 +7,12 @@ import io
 import json
 import math
 import os
+import stat
 import shutil
 import tempfile
 import time
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -69,6 +70,170 @@ def _checksum(path):
         for chunk in iter(lambda:stream.read(1024*1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _open_cache_directory(root, identity):
+    """Open and bind the cache root and one child directory without following links."""
+    root_fd = directory_fd = -1
+    try:
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        root_info = os.fstat(root_fd)
+        path_info = os.stat(root, follow_symlinks=False)
+        if (not stat.S_ISDIR(root_info.st_mode) or root_info.st_uid != os.getuid()
+                or (root_info.st_dev, root_info.st_ino) != (path_info.st_dev, path_info.st_ino)):
+            raise ValueError("Preparation cache root changed or is not an owned directory")
+        directory_fd = os.open(identity, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                               dir_fd=root_fd)
+        directory_info = os.fstat(directory_fd)
+        path_info = os.stat(identity, dir_fd=root_fd, follow_symlinks=False)
+        if (not stat.S_ISDIR(directory_info.st_mode) or directory_info.st_uid != os.getuid()
+                or directory_info.st_dev != root_info.st_dev
+                or (directory_info.st_dev, directory_info.st_ino) !=
+                   (path_info.st_dev, path_info.st_ino)):
+            raise ValueError("Preparation cache artifact changed or is not an owned directory")
+        return root_fd, directory_fd, (root_info.st_dev, root_info.st_ino), (
+            directory_info.st_dev, directory_info.st_ino)
+    except BaseException:
+        if directory_fd >= 0:
+            os.close(directory_fd)
+        if root_fd >= 0:
+            os.close(root_fd)
+        raise
+
+
+def _qualify_cache_directory(root, root_fd, directory_fd, identity, root_identity,
+                             directory_identity):
+    """Validate the exact manifest and entries through already-bound descriptors."""
+    try:
+        root_info = os.fstat(root_fd)
+        directory_info = os.fstat(directory_fd)
+        root_path_info = os.stat(root, follow_symlinks=False)
+        directory_path_info = os.stat(identity, dir_fd=root_fd, follow_symlinks=False)
+        if ((root_info.st_dev, root_info.st_ino) != root_identity
+                or (root_path_info.st_dev, root_path_info.st_ino) != root_identity
+                or (directory_info.st_dev, directory_info.st_ino) != directory_identity
+                or (directory_path_info.st_dev, directory_path_info.st_ino) != directory_identity):
+            return None
+
+        entries = {}
+        for name in os.listdir(directory_fd):
+            info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != os.getuid() or info.st_dev != root_info.st_dev):
+                return None
+            entries[name] = info
+
+        manifest_info = entries.get("manifest.json")
+        if manifest_info is None:
+            return None
+        descriptor = os.open("manifest.json", os.O_RDONLY | os.O_NOFOLLOW,
+                             dir_fd=directory_fd)
+        try:
+            opened_info = os.fstat(descriptor)
+            if (not stat.S_ISREG(opened_info.st_mode) or opened_info.st_nlink != 1
+                    or opened_info.st_uid != os.getuid()
+                    or opened_info.st_dev != root_info.st_dev
+                    or (opened_info.st_dev, opened_info.st_ino) !=
+                       (manifest_info.st_dev, manifest_info.st_ino)):
+                return None
+            with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
+                descriptor = -1
+                manifest = json.load(stream)
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+
+        if (not isinstance(manifest, dict) or manifest.get("schema_version") != 1
+                or manifest.get("artifact_id") != identity):
+            return None
+        checksums = manifest.get("checksums")
+        if not isinstance(checksums, dict) or "arrays.joblib" not in checksums:
+            return None
+        payload_names = set(checksums)
+        if not payload_names <= {"arrays.joblib", "fitted.joblib"}:
+            return None
+        if any(not isinstance(value, str) or len(value) != 64
+               or set(value) - set("0123456789abcdef") for value in checksums.values()):
+            return None
+        if set(entries) != payload_names | {"manifest.json"}:
+            return None
+        key = PreparationKey.model_validate(manifest.get("key"))
+        if key.cache_id() != identity:
+            return None
+        return {name: (info.st_dev, info.st_ino) for name, info in entries.items()}
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return None
+
+
+def _remove_known_cache_payload(root, identity):
+    """Remove only a structurally proven cache payload, using bound directory FDs."""
+    try:
+        root_fd, directory_fd, root_identity, directory_identity = _open_cache_directory(
+            root, identity)
+    except (OSError, ValueError) as exc:
+        raise ValueError("Refusing to rebuild preparation cache with unknown or linked contents") from exc
+    try:
+        entries = _qualify_cache_directory(root, root_fd, directory_fd, identity, root_identity,
+                                           directory_identity)
+        if entries is None:
+            raise ValueError("Refusing to rebuild preparation cache with unknown or linked contents")
+        for name, inode in sorted(entries.items()):
+            current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if (current.st_dev, current.st_ino) != inode:
+                raise ValueError("Preparation cache payload changed during safe cleanup")
+            os.unlink(name, dir_fd=directory_fd)
+        current = os.stat(identity, dir_fd=root_fd, follow_symlinks=False)
+        if (current.st_dev, current.st_ino) != directory_identity:
+            raise ValueError("Preparation cache directory changed during safe cleanup")
+        os.rmdir(identity, dir_fd=root_fd)
+    finally:
+        os.close(directory_fd)
+        os.close(root_fd)
+
+
+def _open_eviction_locks(root, identity):
+    """Open stable lock inodes, admitting all missing lock entries before creation."""
+    paths = (root / (identity + ".pin.lock"), root / (identity + ".lock"))
+    root_stat = root.stat()
+    missing = 0
+    for path in paths:
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            missing += 1
+            continue
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_uid != os.getuid() or info.st_dev != root_stat.st_dev):
+            return None
+
+    if missing:
+        from .research_storage import admitted_output
+        admission = admitted_output(root, estimated_bytes=missing * 4096,
+                                    stage="preparation_cache_eviction_locks", inodes=missing)
+    else:
+        admission = nullcontext()
+    with admission:
+        descriptors = []
+        try:
+            for path in paths:
+                try:
+                    descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_EXCL |
+                                         os.O_NOFOLLOW, 0o600)
+                except FileExistsError:
+                    descriptor = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+                info = os.fstat(descriptor)
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                        or info.st_uid != os.getuid() or info.st_dev != root_stat.st_dev):
+                    os.close(descriptor)
+                    for opened in descriptors:
+                        os.close(opened)
+                    return None
+                descriptors.append(descriptor)
+            return descriptors
+        except BaseException:
+            for descriptor in descriptors:
+                os.close(descriptor)
+            raise
 
 
 @dataclass(frozen=True)
@@ -351,8 +516,8 @@ class PreparationCache:
                 return artifact
             except (OSError,ValueError,KeyError,EOFError):
                 pass
-            if destination.exists():
-                shutil.rmtree(destination)
+            if destination.exists() or destination.is_symlink():
+                _remove_known_cache_payload(self.root, identity)
             temporary = Path(tempfile.mkdtemp(prefix=identity+"-",dir=self.root))
             primary = None
             try:
@@ -446,18 +611,54 @@ class PreparationCache:
     def evict(self, artifact_id):
         artifact = PreparationArtifact(str(self.root),artifact_id,"hit")
         artifact.path  # Validate identifier before forming the lock path.
-        with open(self.root/(artifact_id+'.pin.lock'),'a+b') as pin, open(self.root/(artifact_id+".lock"),"a+b") as stream:
+        root_fd = directory_fd = -1
+        descriptors = []
+        locked = []
+        try:
             try:
-                fcntl.flock(pin,fcntl.LOCK_EX | fcntl.LOCK_NB)
-                fcntl.flock(stream,fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
+                root_fd, directory_fd, root_identity, directory_identity = _open_cache_directory(
+                    self.root, artifact_id)
+            except (OSError, ValueError):
                 return False
-            try:
-                if artifact.path.exists():
-                    shutil.rmtree(artifact.path)
-                return True
-            finally:
-                fcntl.flock(stream,fcntl.LOCK_UN)
+            if _qualify_cache_directory(self.root, root_fd, directory_fd, artifact_id, root_identity,
+                                        directory_identity) is None:
+                return False
+            opened = _open_eviction_locks(self.root, artifact_id)
+            if opened is None:
+                return False
+            descriptors = opened
+            for descriptor in descriptors:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    return False
+                locked.append(descriptor)
+
+            # The candidate may have changed while lock files were opened. Do a
+            # complete second check while both stable locks exclude cooperators.
+            entries = _qualify_cache_directory(self.root, root_fd, directory_fd, artifact_id,
+                                                root_identity, directory_identity)
+            if entries is None:
+                return False
+            for name, inode in sorted(entries.items()):
+                current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                if (current.st_dev, current.st_ino) != inode:
+                    return False
+                os.unlink(name, dir_fd=directory_fd)
+            current = os.stat(artifact_id, dir_fd=root_fd, follow_symlinks=False)
+            if (current.st_dev, current.st_ino) != directory_identity:
+                return False
+            os.rmdir(artifact_id, dir_fd=root_fd)
+            return True
+        finally:
+            for descriptor in reversed(locked):
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            for descriptor in descriptors:
+                os.close(descriptor)
+            if directory_fd >= 0:
+                os.close(directory_fd)
+            if root_fd >= 0:
+                os.close(root_fd)
 
 
 def build_numeric_fold(train, calibration, score, *, base_features, label, row_keys, discovery_spec=None, target_kind="win_probability", dtype="float64"):
