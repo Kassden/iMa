@@ -76,6 +76,13 @@ class PaperResearchTests(unittest.TestCase):
         self.assertGreater(preflight['input_memory_bytes'], 0)
         self.assertGreater(preflight['cold_private_memory_bytes'], 512 * 1024**2)
 
+    def test_legacy_artifacts_through_a_parent_alias_keep_their_resolved_identity(self):
+        alias = self.campaign / 'root-alias'
+        alias.symlink_to(self.campaign, target_is_directory=True)
+        for name, value in self.rows[0]['result']['artifacts'].items():
+            self.rows[0]['result']['artifacts'][name] = str(alias / Path(value).relative_to(self.campaign))
+        self.assertEqual(self.run_request(pools=['WIN'])['status'], 'completed')
+
     def test_actual_supervisor_episode_is_a_valid_frozen_paper_input(self):
         from ima.research_executor import RecipeExecutionRequest
         from ima.research_specs import PipelineRecipe

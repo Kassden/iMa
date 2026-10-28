@@ -118,7 +118,7 @@ def _artifact(result, name, campaign, attempt, row):
     # Supervised workers publish only a canonical acceptance record. Their large
     # artifacts stay in the private physical episode; never infer acceptance from
     # the directory name or a caller-supplied artifact path.
-    if path.is_absolute() and path.parent != expected:
+    if path.is_absolute() and path.resolve().parent != expected:
         if path.parent.parent != campaign / ".fit-episodes":
             raise ValueError("Paper inputs must be actual current attempt output artifacts")
         from .research_publication import read_accepted
