@@ -141,3 +141,40 @@ def test_failed_atomic_pin_setup_keeps_no_extra_descriptor(tmp_path, monkeypatch
         assert duplicate_calls == []
     else:
         assert pins and all(pin.closed for pin in pins)
+
+
+def test_legacy_missing_pin_metadata_does_not_deadlock_shared_authority(tmp_path):
+    """A separate interpreter bounds the actual flock/admission reentrancy case."""
+    import subprocess
+    import sys
+    code = r'''
+import os,sys
+from pathlib import Path
+from types import SimpleNamespace
+import ima.research_storage as storage
+from ima.research_preparation import PreparationCache
+from ima.research_cache_capacity import trim_for_capacity
+from tests.test_research_preparation import build,key
+root=Path(sys.argv[1]);cache=PreparationCache(root/'cache')
+artifact=cache.prepare_fold(key(),build)
+pin=cache.root/(artifact.artifact_id+'.pin.lock')
+assert not pin.exists()
+allocated=sum(p.stat().st_blocks*512 for p in artifact.path.iterdir())
+def space(_):
+ return SimpleNamespace(f_bavail=10_000+(allocated if not artifact.path.exists() else 0),
+                        f_frsize=1,f_favail=1000)
+authority=storage.StorageAuthority(root/'control',headroom_bytes=1000,
+    headroom_inodes=1,cache_limit_bytes=1024**3,statvfs=space)
+authority.record_cache(cache.root,artifact.artifact_id,allocated)
+os.environ['IMA_STORAGE_ROOT']=str(authority.root)
+storage.StorageAuthority=lambda control:authority
+receipt=trim_for_capacity(authority,required_bytes=18_000,required_inodes=1)
+assert receipt['evicted']==[str(artifact.path)],receipt
+assert pin.exists() and not artifact.path.exists()
+assert authority.status()['reserved_bytes']==0
+print('legacy eviction completed without nested authority admission')
+'''
+    run = subprocess.run([sys.executable, '-B', '-c', code, str(tmp_path)],
+                         capture_output=True, text=True, timeout=15)
+    assert run.returncode == 0, run.stderr
+    assert 'without nested authority admission' in run.stdout

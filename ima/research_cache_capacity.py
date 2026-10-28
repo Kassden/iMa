@@ -18,8 +18,26 @@ def trim_for_capacity(authority, *, required_bytes=0, required_inodes=8,
     for value in (required_bytes, required_inodes, cache_growth_bytes):
         if type(value) is not int or value < 0:
             raise ValueError('Nonnegative integer capacity demand required')
-    quota = authority.trim_caches(cache_growth_bytes)
     from .research_preparation import PreparationCache
+    # Lock creation itself requires admission. Do it before the coarse authority
+    # lock; eviction inside trim_caches/physical sweep must be read-only until
+    # the existing nonblocking locks have been obtained.
+    snapshot = authority.status()
+    pending = sum(row.get("cache_growth_bytes", 0) for row in snapshot["reservations"].values())
+    needs_trim = (snapshot["cache_bytes"] + pending + cache_growth_bytes > authority.cache_soft_bytes
+                  or snapshot["headroom_bytes"] + snapshot["reserved_bytes"] + required_bytes > snapshot["available_bytes"]
+                  or snapshot["headroom_inodes"] + snapshot["reserved_inodes"] + required_inodes > snapshot["available_inodes"])
+    if needs_trim:
+        with authority._locked() as state:
+            candidates = [(row["root"], row["artifact_id"]) for row in state["caches"].values()]
+        for root, artifact_id in candidates:
+            try:
+                PreparationCache(root).prepare_eviction(artifact_id)
+            except StorageBlocked:
+                # A cache without admitted lock metadata stays held; another
+                # already-qualified inactive cache may still restore capacity.
+                continue
+    quota = authority.trim_caches(cache_growth_bytes)
 
     with authority._locked() as state:
         authority._reconcile(state)

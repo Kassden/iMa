@@ -94,8 +94,12 @@ def test_capacity_denial_precedes_missing_eviction_lock_creation(tmp_path, monke
         raise StorageBlocked("eviction lock inode admission denied")
 
     monkeypatch.setattr("ima.research_storage.StorageAuthority", deny_capacity)
+    # Plain configured eviction holds missing metadata without trying to
+    # recursively reserve under an authority lock. Explicit provisioning owns
+    # the admitted creation path, outside the authority critical section.
+    assert cache.evict(artifact.artifact_id) is False
     with pytest.raises(StorageBlocked, match="inode admission denied"):
-        cache.evict(artifact.artifact_id)
+        cache.prepare_eviction(artifact.artifact_id)
 
     assert not pin_lock.exists()
     assert (key_lock.stat().st_dev, key_lock.stat().st_ino) == key_lock_inode

@@ -195,8 +195,10 @@ def _remove_known_cache_payload(root, identity):
         os.close(root_fd)
 
 
-def _open_eviction_locks(root, identity):
-    """Open stable lock inodes, admitting all missing lock entries before creation."""
+def _open_eviction_locks(root, identity, *, allow_create=None):
+    """Open stable locks; configured eviction never creates them under authority locks."""
+    if allow_create is None:
+        allow_create = not bool(os.environ.get("IMA_STORAGE_ROOT"))
     paths = (root / (identity + ".pin.lock"), root / (identity + ".lock"))
     root_stat = root.stat()
     missing = 0
@@ -210,6 +212,8 @@ def _open_eviction_locks(root, identity):
                 or info.st_uid != os.getuid() or info.st_dev != root_stat.st_dev):
             return None
 
+    if missing and not allow_create:
+        return None
     if missing:
         from .research_storage import admitted_output
         admission = admitted_output(root, estimated_bytes=missing * 4096,
@@ -611,6 +615,36 @@ class PreparationCache:
         with self._lock(artifact.artifact_id,shared=True,stage="pinning"):
             artifact.manifest()
             yield artifact
+
+    def prepare_eviction(self, artifact_id):
+        """Provision missing stable metadata before the caller takes authority.lock.
+
+        This never removes payloads. Admission failure leaves the cache held.
+        """
+        artifact = PreparationArtifact(str(self.root), artifact_id, "hit")
+        artifact.path
+        from .research_cache_policy import cache_is_held
+        if cache_is_held(artifact.path):
+            return False
+        root_fd = directory_fd = -1
+        try:
+            root_fd, directory_fd, root_identity, directory_identity = _open_cache_directory(self.root, artifact_id)
+            if _qualify_cache_directory(self.root, root_fd, directory_fd, artifact_id,
+                                        root_identity, directory_identity) is None:
+                return False
+            descriptors = _open_eviction_locks(self.root, artifact_id, allow_create=True)
+            if descriptors is None:
+                return False
+            for descriptor in descriptors:
+                os.close(descriptor)
+            return True
+        except (OSError, ValueError):
+            return False
+        finally:
+            if directory_fd >= 0:
+                os.close(directory_fd)
+            if root_fd >= 0:
+                os.close(root_fd)
 
     def evict(self, artifact_id):
         artifact = PreparationArtifact(str(self.root),artifact_id,"hit")
