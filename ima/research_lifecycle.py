@@ -152,6 +152,17 @@ def feature_feedback(directory, candidates):
             "interpretation": "Feature builds are not model improvements. Compare matched population, protocol, target and probability basis; confirm separately."}
 
 
+def _install_probit_callback(probit):
+    """Install once per interpreter without ever capturing the wrapper itself."""
+    if probit.fit_probit is lifecycle_probit_fit:
+        original = getattr(probit, "_lifecycle_original_fit", None)
+        if original is None or original is lifecycle_probit_fit:
+            raise ValueError("Probit lifecycle callback has no independent original fitter")
+        return
+    probit._lifecycle_original_fit = probit.fit_probit
+    probit.fit_probit = lifecycle_probit_fit
+
+
 def lifecycle_worker(request, workload, threads):
     from . import research_expansion as expansion
     token = _REQUEST.set(request)
@@ -159,9 +170,7 @@ def lifecycle_worker(request, workload, threads):
     profile_token = _PROFILES.set(profiles)
     try:
         from . import performance_probit as probit
-        if not hasattr(probit, "_lifecycle_original_fit"):
-            probit._lifecycle_original_fit = probit.fit_probit
-            probit.fit_probit = lifecycle_probit_fit
+        _install_probit_callback(probit)
         original_worker = getattr(expansion, "_lifecycle_original_worker", expansion._worker)
         result = original_worker(request, workload, threads)
         result.metrics["research_lifecycle"] = {"version": VERSION,
@@ -297,8 +306,7 @@ def install_campaign_policy(directory, *, release_sha256=None):
     expansion._lifecycle_release_hash = release_sha256
     if release_sha256 is not None:
         os.environ["IMA_LIFECYCLE_RELEASE_SHA256"] = release_sha256
-    probit._lifecycle_original_fit = probit.fit_probit
-    probit.fit_probit = lifecycle_probit_fit
+    _install_probit_callback(probit)
     from . import mlflow_tracking
     original_parameters = mlflow_tracking.research_run_parameters
 

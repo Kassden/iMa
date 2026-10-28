@@ -221,3 +221,18 @@ def test_feature_preparation_reads_controller_campaign_configuration(tmp_path):
     assert build.call_args.kwargs['registry_root'] == config['dataset_registry_path']
     assert build.call_args.kwargs['tracking_uri'] == config['mlflow_tracking_uri']
     assert json.loads((tmp_path/'feature-builds/recipe.json').read_text())['build_id'] == 'build'
+
+
+def test_reinstalling_probit_callback_never_captures_itself():
+    from ima import performance_probit as probit
+    from ima.research_lifecycle import _install_probit_callback
+    from unittest.mock import Mock
+    original = Mock(return_value='original-fit')
+    with patch.object(probit, 'fit_probit', original), \
+         patch.object(probit, '_lifecycle_original_fit', None, create=True):
+        _install_probit_callback(probit)
+        _install_probit_callback(probit)
+        assert probit._lifecycle_original_fit is original
+        assert probit.fit_probit is lifecycle_probit_fit
+        assert probit.fit_probit('train', 'schema', {}) == 'original-fit'
+        original.assert_called_once_with('train', 'schema', {})
