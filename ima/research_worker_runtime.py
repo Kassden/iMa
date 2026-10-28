@@ -341,6 +341,8 @@ def _signal_verified(identity, sig):
 
 def _task_guard_path(identity, boot_id):
     key = hashlib.sha256(json.dumps([boot_id, identity], sort_keys=True).encode()).hexdigest()
+    if os.environ.get('IMA_STORAGE_ROOT'):
+        return Path(os.environ['IMA_STORAGE_ROOT']).absolute()/'worker-guards'/f'{key}.json'
     return Path(tempfile.gettempdir())/f"ima-worker-{os.getuid()}-{key}.json"
 
 
