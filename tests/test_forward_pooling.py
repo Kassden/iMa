@@ -87,14 +87,14 @@ def test_selection_cutoff_is_separate_from_fit_cutoff():
     frame, blocks = mixture_data()
     with pytest.raises(ValueError, match="explicit selection_cutoff"):
         fit_pool(frame, blocks, selection_mode="nested_selection")
-    with pytest.raises(ValueError, match="source-linked"):
+    with pytest.raises(ValueError, match="selection_protocol"):
         fit_pool(frame, blocks, selection_mode="nested_selection", selection_cutoff=frame.date.min())
     with pytest.raises(ValueError, match="outer training"):
         fit_pool(frame, blocks, selection_cutoff=frame.date.max()+pd.Timedelta(days=1))
     for block in blocks:
         for artifact in block:
             artifact.metadata.update(selection_mode="nested_selection", selection_cutoff="2020-01-01")
-    with pytest.raises(ValueError, match='source-linked'):
+    with pytest.raises(ValueError, match='selection_protocol'):
         fit_pool(frame, blocks, selection_mode="nested_selection", selection_cutoff="2020-01-01")
 
 

@@ -12,13 +12,13 @@ from .prediction_store import frame_fingerprint, prediction_key
 SELECTION_MODES = {"development_selected", "nested_selection"}
 
 
-def validate_selection(mode, cutoff):
+def validate_selection(mode, cutoff, selection_protocol=None):
     if mode not in SELECTION_MODES:
         raise ValueError("Unknown pool selection mode")
     if mode == "nested_selection" and cutoff is None:
         raise ValueError("nested_selection requires an explicit selection_cutoff")
-    if mode == 'nested_selection':
-        raise ValueError('nested_selection is not qualified: source-linked component/feature selection evidence is required; use development_selected')
+    if mode == "nested_selection" and not isinstance(selection_protocol, dict):
+        raise ValueError("nested_selection requires an explicit selection_protocol")
     if cutoff is not None and pd.isna(pd.Timestamp(cutoff)):
         raise ValueError("Invalid selection_cutoff")
 
@@ -41,8 +41,14 @@ class ForwardSimplexPool:
     @classmethod
     def fit(cls, frame, blocks, *, horse_column="horse_id", date_column="date",
             selection_mode="development_selected", selection_cutoff=None,
-            outer_training_cutoff):
-        validate_selection(selection_mode, selection_cutoff)
+            outer_training_cutoff, selection_artifact=None, selection_protocol=None):
+        validate_selection(selection_mode, selection_cutoff, selection_protocol)
+        if selection_mode == "nested_selection":
+            from .pool_selection import SelectionArtifact
+            selection_artifact = (selection_artifact if isinstance(selection_artifact, SelectionArtifact)
+                                  else SelectionArtifact.from_payload(selection_artifact))
+            if selection_artifact.payload["selection_cutoff"] != pd.Timestamp(selection_cutoff).date().isoformat():
+                raise ValueError("Nested pool selection artifact cutoff mismatch")
         cutoff = pd.Timestamp(outer_training_cutoff)
         selected = pd.Timestamp(selection_cutoff) if selection_cutoff is not None else cutoff
         dates = pd.to_datetime(frame[date_column], errors="raise")
@@ -94,6 +100,16 @@ class ForwardSimplexPool:
                 output_contract = declared_output
                 if metadata["selection_mode"] != selection_mode or pd.Timestamp(metadata["selection_cutoff"]) != selected:
                     raise ValueError("Forward prediction selection lineage differs from pool contract")
+                if selection_mode == "nested_selection":
+                    expected_selection = {
+                        "selection_id": selection_artifact.selection_id,
+                        "selection_sha256": selection_artifact.selection_sha256,
+                        "selection_cutoff": selected.date().isoformat(),
+                        "selection_contract_sha256": selection_artifact.payload["protocol_sha256"],
+                        "selected_candidate_id": selection_artifact.payload["selected_candidate_id"],
+                    }
+                    if any(metadata.get(key) != value for key, value in expected_selection.items()):
+                        raise ValueError("Forward prediction selection artifact lineage mismatch")
                 if (metadata["prediction_fingerprint"] != frame_fingerprint(scoring)
                     or pd.Timestamp(metadata["prediction_start"]).normalize() != start
                     or pd.Timestamp(metadata["training_cutoff"]).normalize() >= start):
@@ -127,12 +143,22 @@ class ForwardSimplexPool:
             raise ValueError("Invalid pool race labels")
         races = frame.race_id.nunique()
         tiny = np.finfo(float).tiny
+        if selection_mode == "nested_selection":
+            meeting_by_race = frame.groupby("race_id", sort=False)[date_column].first()
+            normalized_meetings = pd.to_datetime(meeting_by_race).dt.normalize()
+            races_per_meeting = meeting_by_race.groupby(
+                normalized_meetings, sort=False).transform("size")
+            race_weight = 1.0 / (normalized_meetings.nunique() * races_per_meeting.to_numpy(float))
+            per_race_weights = dict(zip(meeting_by_race.index, race_weight))
+            row_weights = frame["race_id"].map(per_race_weights).to_numpy(float)
+        else:
+            row_weights = np.full(len(frame), 1.0 / races)
 
         def objective(weights):
-            return -float(labels @ np.log(np.maximum(matrix @ weights, tiny))) / races
+            return -float((row_weights * labels) @ np.log(np.maximum(matrix @ weights, tiny)))
 
         def gradient(weights):
-            return -(matrix.T @ (labels / np.maximum(matrix @ weights, tiny))) / races
+            return -(matrix.T @ ((row_weights * labels) / np.maximum(matrix @ weights, tiny)))
 
         count = matrix.shape[1]
         result = minimize(objective, np.full(count, 1/count), jac=gradient, method="SLSQP",
@@ -149,10 +175,25 @@ class ForwardSimplexPool:
                     **{f"pure_{i}": objective(w) for i, w in enumerate(np.eye(count))}}
         report = {"selection_mode": selection_mode, "selection_cutoff": str(selected),
                   "fit_label_cutoff": str(dates.max()), "outer_training_cutoff": str(cutoff),
-                  "weights": weights.tolist(), "race_log_loss": objective(weights),
+                  "weights": weights.tolist(),
+                  "race_log_loss": -float(labels @ np.log(np.maximum(matrix @ weights, tiny))) / races,
+                  "objective_value": objective(weights),
+                  "objective": "mean_meeting_log_loss" if selection_mode == "nested_selection" else "mean_race_log_loss",
                   "controls": controls, "rows": len(frame), "races": races,
                   "components": identities, "forward_blocks": receipts,
                   "optimizer": "scipy.SLSQP", "iterations": int(result.nit)}
+        if selection_mode == "nested_selection":
+            report["selection"] = {
+                "selection_id": selection_artifact.selection_id,
+                "selection_sha256": selection_artifact.selection_sha256,
+                "selection_cutoff": selection_artifact.payload["selection_cutoff"],
+                "selection_contract_sha256": selection_artifact.payload["protocol_sha256"],
+                "selected_candidate_id": selection_artifact.payload["selected_candidate_id"],
+                "artifact": selection_artifact.to_dict(),
+                "prefix_meetings": selection_artifact.payload["prefix"]["training_meetings"]
+                    + selection_artifact.payload["prefix"]["validation_meetings"],
+                "oof_meetings": int(pd.to_datetime(frame[date_column]).dt.normalize().nunique()),
+            }
         return cls(weights, report)
 
     def predict(self, outputs, frame):
