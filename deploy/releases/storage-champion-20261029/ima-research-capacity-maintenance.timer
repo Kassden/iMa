@@ -1,0 +1,11 @@
+[Unit]
+Description=Maintain iMa operating headroom between research tasks
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=60sec
+AccuracySec=5sec
+Unit=ima-research-capacity-maintenance.service
+
+[Install]
+WantedBy=timers.target
