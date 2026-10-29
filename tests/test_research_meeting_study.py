@@ -195,6 +195,21 @@ class MeetingStudyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exposure inventory"):
             study.collection_status(self.lock, self.root / "versions")
 
+    def test_legacy_native_manifest_missing_empty_selection_refs_replays(self):
+        path = self.packages[0] / "manifest.json"
+        saved = json.loads(path.read_text())
+        saved.pop("selection_references", None)
+        write_json(path, saved)
+        identity = study._verify_package(self.packages[0], self.source_root)
+        self.assertNotIn("selection_references", identity["manifest"])
+        _, _, inputs = self._inputs(0)
+        frame = pd.read_parquet(json.loads(inputs.read_text())["feature_input_path"])
+        predictions = study._package_predictions(identity, frame)
+        self.assertEqual([float(row["model_probability"]) for row in predictions], [0.6, 0.4])
+        self.assertEqual(identity["manifest_sha256"], hashlib.sha256(path.read_bytes()).hexdigest())
+        self.assertFalse(study._manifest_matches(dict(saved, selection_references=[{"id": "changed"}]), saved))
+        self.assertFalse(study._manifest_matches(dict(saved, selection_references=[]), dict(saved, recipe_hash="changed")))
+
     def _inputs(self, index, *, leak=False, mismatch=False, two_races=False):
         meeting = self.meetings[index]; rid = meeting["races"][0]["race_id"]
         races = list(meeting["races"])

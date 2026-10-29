@@ -177,6 +177,14 @@ def _package_hashes(directory: Path, trusted_root: Path) -> dict[str, str | None
     return hashes
 
 
+def _manifest_matches(loaded: Mapping[str, Any], saved: Mapping[str, Any]) -> bool:
+    # Older native writers omit this optional empty field. Keep the original
+    # manifest bytes/hash pinned while comparing its documented default.
+    expected = dict(saved)
+    expected.setdefault("selection_references", [])
+    return dict(loaded) == expected
+
+
 def _verify_package(path: str | Path, trusted_root: str | Path,
                     expected: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Load the native research package only inside an explicit owned trust root."""
@@ -212,7 +220,7 @@ def _verify_package(path: str | Path, trusted_root: str | Path,
     except Exception as exc:
         raise ValueError(f"Native research package loader failed: {type(exc).__name__}: {exc}") from exc
     loaded_manifest = json.loads(json.dumps(package.manifest().__dict__))
-    if loaded_manifest != manifest:
+    if not _manifest_matches(loaded_manifest, manifest):
         raise ValueError("Native package loader manifest readback mismatch")
     if package.recipe.target.kind != "win_probability":
         raise ValueError("Loaded package recipe is not a win_probability target")
@@ -703,7 +711,7 @@ def _package_predictions(identity: Mapping[str, Any], frame: pd.DataFrame) -> li
     from .research_model_package import load_research_package
     package = load_research_package(directory)
     manifest = json.loads(json.dumps(package.manifest().__dict__))
-    if manifest != identity["manifest"]:
+    if not _manifest_matches(manifest, identity["manifest"]):
         raise ValueError("Loaded model package does not match the locked native manifest")
     probabilities = np.asarray(package.predict_proba(frame), dtype=float)
     if len(probabilities) != len(frame) or not np.isfinite(probabilities).all():
