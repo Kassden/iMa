@@ -33,7 +33,7 @@ ROUTES = {
     "trackworkresult", "trackworksearch", "trackworkhorsesearch", "localtrackwork", "trackworkonedayresult",
     "ovehorse", "veterinaryrecord", "veterinaryrecords", "localvetrecord",
     "movementrecords", "horsemovementrecords", "btresult", "btresultsearch",
-    "localresults", "results", "racingcalendar", "fixtures", "racecard",
+    "localresults", "results", "racingcalendar", "fixture", "fixtures", "racecard",
     "racingincidentreport", "incidentreport", "comments", "formline",
     "sectional", "sectionaltime", "displaysectionaltime", "trackwork", "horseform", "newhorse",
     "racereportfull", "racereportext", "corunning", "trackworkotherresult", "oveotherhorse",

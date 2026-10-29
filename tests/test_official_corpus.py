@@ -7,6 +7,30 @@ from scrapper.official_corpus import CorpusSpider, canonical_url, parse_document
 
 
 class OfficialCorpusTests(unittest.TestCase):
+    def test_published_fixture_route_and_month_navigation_are_in_scope(self):
+        url = "https://racing.hkjc.com/en-us/local/information/fixture?calmonth=11&calyear=2026"
+        following = "https://racing.hkjc.com/en-us/local/information/fixture?calmonth=12&calyear=2026"
+        self.assertEqual(canonical_url(url), url)
+        self.assertEqual(family(url), "discovery")
+        self.assertIsNone(canonical_url(url.replace("racing.hkjc.com", "example.com")))
+        body = '<table><tr><td>11/2026</td><td>1</td></tr></table>' + \
+               '<a href="?calmonth=12&amp;calyear=2026">Dec</a>' + \
+               '<a href="https://example.com/fixture">External</a>'
+        with tempfile.TemporaryDirectory() as directory:
+            spider = CorpusSpider(seeds=[url], output=directory)
+            try:
+                requests = list(spider.parse(HtmlResponse(
+                    url, body=body.encode(), encoding="utf8", request=Request(url),
+                    headers={"Content-Type": "text/html; charset=utf-8"})))
+                self.assertIn(following, [request.url for request in requests])
+                self.assertTrue(all(canonical_url(request.url) for request in requests))
+                record = json.loads(spider.db.execute(
+                    "SELECT metadata_json FROM pages WHERE url=?", (url,)).fetchone()[0])
+                self.assertEqual(record["family"], "discovery")
+                self.assertIn("11/2026", str(record["tables"]))
+            finally:
+                spider.db.close()
+
     def test_movement_pdf_scope_is_exact(self):
         url = "https://racing.hkjc.com/general/-/media/Sites/JCRW/Page/content/conghua.pdf"
         self.assertIsNotNone(canonical_url(url))
