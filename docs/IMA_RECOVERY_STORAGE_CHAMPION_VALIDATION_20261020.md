@@ -7,19 +7,85 @@ Date: 2026-10-20. Task: `ima-recovery-storage-champion-20261020`.
 This dated checkpoint supersedes service-state and pending-build statements in
 the historical entries below. The whole plan remains open.
 
-The source-sealed continuing service
-`ima-continuing-storage-champion-20261029-r13.service` runs as **imaopt**, pinned
-to `9edf04466f1d458a9aa9b61f9faefb17ac91b0c7`. The 03:04 UTC readback recorded
-21 completed fits, no failed attempts, five accepted OpenRouter decisions,
-45 readable native MLflow traces, and USD 0.064384038 resolved aggregate planner
-cost. Decision traces carry native token and USD cost metadata. The model is
-`deepseek/deepseek-v4.1-flash`; provider selection is unpinned. Completed trials
-have no campaign-wide count limit. The planner chooses a budget up to 260 per
-decision; the scheduler admits up to 26 concurrent fits according to measured
-capacity. These are distinct controls. The shared research slice remains capped
-at 100 decimal GB and 26 CPU threads. The temporary split gives the continuing
-campaign 84 GB/22 threads and qualification work 16 GB/four threads. This is a
-capacity ceiling, not a claim that 26 fits are always active.
+The source-sealed continuing controller is the persistent own-user
+`ima-storage-champion.service`, enabled under **imaopt**, with the existing
+`Linger=yes`. The R15 successor was started at 05:46 UTC, pinned to
+`9d64fcd14d7ccedc1238ce4c80687350f75f0ea0`, with campaign name
+`agentic_v7_clean_storage_champion_20261029_r15`. The standalone confirmation
+helper remains independently pinned to `ff5e26e68dac601d731184cdff7d32992842ae9c`.
+A host reboot was not performed. Paid planning uses
+`deepseek/deepseek-v4.1-flash`, with unpinned provider selection. Its first
+accepted decision chose 24 trials, allocated 20 across seven programs, and
+explicitly left four unallocated. The successor completed three real fits:
+two pure Benter programs and one 35/65 Benter/boosted graph. Decisions D1/D3/D4
+were accepted; D2 was correctly rejected because it supplied only experimental
+ancestry for a required Benter refill, after which the planner corrected its
+proposal. A failed planner decision is preserved separately from model-fit
+failures. This is selected development operation, not a confirmed improvement.
+
+A final dependency audit found that the prior discovery canary included the
+qualified vendor namespace but the continuing service did not. At a verified
+safe checkpoint, all three completed fits and the same code/data/protocol/config
+were preserved while the service resumed with an isolated optional Featuretools
+namespace. No active interpreter or base environment files were modified. The
+namespace contains Featuretools1.31.0, Woodwork0.31.0, holidays and required
+packaging/resource helpers; its 2,172 source files are checked before startup.
+The native canary imported the engine, generated and reused a six-row/three-column
+read-only shared matrix, reproduced direct synthesis and passed `pip check`.
+All 209 prior distribution versions and metadata paths were unchanged after
+optional imports, including NumPy, pandas, SciPy, scikit-learn and HTTP transport.
+This is a new recorded runtime invocation, not an unchanged dependency environment;
+previous trials retain their original identities. Real post-resume fit/refill
+readback and independent operational acceptance are being checked.
+
+The predecessor stopped with 13 completed fits, eight accepted decisions and
+50 native traces. Its last readback verifies no pending tells/tracking and no
+active fits; the source-bound ledger and trace-outbox also drained. The source415
+checkpoint, STOP marker and prior exact unit are preserved. No productive fit
+was cancelled. The earlier controller's apparent idle capacity had two causes:
+physical headroom below producer demand, then mandatory-lane starvation. At
+13 allocations the strict 80/20 scheduler required Benter, while all remaining
+programs had experimental ancestry. Mixed Benter/boosted graphs correctly remain
+experimental. The repair checks actual lane capacity before any durable
+admission, excludes canonical duplicates and execution-exhausted extensions,
+retains explicit zero-allocation holds and valid budget extensions, and stops
+paid retries after three consecutive lane-miss rejections with a truthful
+`awaiting_decision` state. The scheduler and numerical training calculations
+remain unchanged. Changed controller source received a new sealed campaign
+identity; the live research source was not patched in place.
+
+Completed trials have no campaign-wide count limit. The planner chooses up to
+260 trials per decision; the scheduler admits at most 26 simultaneous fits under
+the shared 100 decimal GB /26-thread slice. Warmup starts below the ceiling and
+ramps from measurements. The USD4.50 planner admission budget is not a provider
+billing guarantee. Token/cost metadata use native MLflow fields.
+
+A separate source-pinned `ima-research-capacity-maintenance.timer` is enabled.
+It calls the existing protected cache retirement API once per minute with a
+four-GiB operating demand, without lowering the floor. The first two passes
+retired 32 inactive registered payloads totaling **4,179,718,144 allocated
+bytes**; subsequent healthy passes retired nothing. All 12 held payloads and
+36 files were rehashed unchanged. Exact retirement receipts live under
+`/home/imaopt/research-v2/storage-control/maintenance-receipts/` and are mirrored
+in the native qualification evidence. Models, raw inputs and unique history
+are outside this operation. `TimeoutStartSec=180` is the verified oneshot timeout;
+the initial ignored RuntimeMaxSec configuration was corrected. Every run verifies
+the maintenance script, the pinned research source files, and the hold policy.
+Headroom is not a reservation: each producer must still reserve its output.
+Unenumerated partial-failure retirement outcomes are reported `audit_incomplete`,
+not asserted empty; a crash-atomic deletion/receipt transaction is not claimed.
+
+The deployed research code `9d64fcd` passed GitHub research CI run
+`40824375587`: **2,256 tests and 807 subtests**, seven skips and zero
+failures/errors. The preceding sealed local full suite at `8affcee` passed
+2,255 tests and 807 subtests; the final membership-guard delta separately passed
+67 tests and 11 subtests before deployment. The maintenance CLI's own focused
+set passed 31 tests. Independent review found and verified the final admission,
+unknown trace-control and durable-drain corrections. Source-matched native
+execution and future statistical confirmation remain separate acceptance gates.
+The relevant maintenance commits are `1c9dd65` and `3c62b61`; the admission fixes
+are `8affcee` and `9d64fcd`. Exact own-user units and hashes are versioned under
+`deploy/releases/storage-champion-20261029/` and its `-r15` and `-r15-featuretools` successors.
 
 The completed fixed-reference canary used a 64 MiB outer output reservation
 instead of reserving multiple decoded input copies on disk. Actual output growth
@@ -69,8 +135,20 @@ prospective-only; an unavailable observation is not evidence of no activity.
 The separate official collector captured the singular HKJC fixture route through
 July 2027, verified 19 distinct bodies, and extracted 72 future meeting dates
 and venues. These calendar records do not assert individual runners or post
-times. The confirmation package/forecast/power contracts are being qualified
-separately before a real fixed-horizon study is locked.
+times. All 43 exact-helper development power horizons from 30 to 72 meetings
+were evaluated: maximum power is 0.6635, below the pinned 0.80 requirement.
+There is no adequately powered published horizon under this design, no valid
+study lock and no independent result. The actual meeting-lock CLI also rejected
+the truthful incomplete exposure inventory before starting its pilot. Unimported
+manual exposure sources remain unresolved. Future confirmation is held; no
+threshold was weakened and no completeness attestation was invented.
+
+The full successor availability inventory contains 288,020 events across 29
+family/season cells, with 20,159 unresolved IDs and zero proven historical
+publication timestamps. The 248 nonmissing trial-feature rows use same-horse
+captures before the October4/7 races (earliest capture October2): they are
+observed prospective inputs, not retroactively eligible historical observations.
+The earlier 104,723-event waterfall refers to the older snapshot scope.
 
 Retention remains conservative. The corrected native inventory reaches MLflow
 at its actual Tailscale-bound address; the earlier localhost connection refusal
