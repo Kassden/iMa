@@ -2,6 +2,119 @@
 
 Date: 2026-10-20. Task: `ima-recovery-storage-champion-20261020`.
 
+## Latest Verified Checkpoint: 2026-10-29
+
+This dated checkpoint supersedes service-state and pending-build statements in
+the historical entries below. The whole plan remains open.
+
+The source-sealed continuing service
+`ima-continuing-storage-champion-20261029-r13.service` runs as **imaopt**, pinned
+to `9edf04466f1d458a9aa9b61f9faefb17ac91b0c7`. The 03:04 UTC readback recorded
+21 completed fits, no failed attempts, five accepted OpenRouter decisions,
+45 readable native MLflow traces, and USD 0.064384038 resolved aggregate planner
+cost. Decision traces carry native token and USD cost metadata. The model is
+`deepseek/deepseek-v4.1-flash`; provider selection is unpinned. Completed trials
+have no campaign-wide count limit. The planner chooses a budget up to 260 per
+decision; the scheduler admits up to 26 concurrent fits according to measured
+capacity. These are distinct controls. The shared research slice remains capped
+at 100 decimal GB and 26 CPU threads. The temporary split gives the continuing
+campaign 84 GB/22 threads and qualification work 16 GB/four threads. This is a
+capacity ceiling, not a claim that 26 fits are always active.
+
+The completed fixed-reference canary used a 64 MiB outer output reservation
+instead of reserving multiple decoded input copies on disk. Actual output growth
+still requires admission before writing. It reproduced **2.1494157522885775**
+with zero paired prediction difference, and released its reservations. This
+qualifies the disk-reservation correction; it is not a measured RAM or training
+speed improvement. No new campaign result has beaten the selected-development
+feature-transfer candidate **2.1478491411233267** on that candidate's original
+population. None is independent confirmation.
+
+The full immutable snapshot build finished normally. Its manifest
+`19b20596bf9022d95afd85fc4e73577524adca7fc4995b3593ce60144b9d77bc`
+contains 231,906 runners in 18,635 races, from 1997-01-25 through 2026-10-07.
+All nine supplied raw roots were inventoried: 55,985 gzip payloads, including
+174 unresolved captures retained as raw holds. CSV export was not enabled, the
+prior snapshot remained unchanged, and a separate parent consumer verified the
+published manifest/objects plus 12 source rosters spanning the date range.
+That roster sample does not prove exhaustive website/parser coverage.
+
+The clean, strict-availability successor is
+`dataset-d130cbfc167617cb3c616d5ae78e8ecf88792cf18e9c1803cc5b830278f85212`:
+230,885 runners and 18,546 races after whole-race exclusions. Its matched 35/65
+Benter/boosted reference scored **2.172943896245181**. Removing the six selected
+past-race speed extras and three dependent transform specifications scored
+**2.18172609356163**; the availability/support control scored
+**2.1842606897074086**. The paired race-mean removal difference is +0.008806
+nats/race; it differs slightly from subtracting the fold-averaged objectives.
+The meeting-date block sensitivity interval is [0.000959, 0.015207]. Legacy speed
+and ratio inputs remain in the base schema. These exposed development results
+support retaining the selected speed measurements; they cannot be compared
+directly with the old dataset's 2.149 score. All three arms share 1,515 scored
+races. Final-fold package replay reproduced 6,339 rows within 9.89e-17.
+
+Native secondary-target smokes also completed: place-top-three Brier 0.164615,
+negative ranking NDCG@3 -0.753860, physical-speed MAE 0.129594 m/s with the
+distance-over-speed finish-time adapter, and recorded-final-odds log MAE
+0.506149. These are adapter/execution checks, not profitability or promotion
+claims. The receipts retain their actual generic objective names because those
+qualification recipes had no V6 portfolio version; their win selected and
+fundamental prediction streams are exactly equal and contain no market node.
+Future recipes should use the canonical portfolio version.
+
+Historical workout-speed observations remain missing. The raw-to-feature replay
+matched 140/140 sampled past-speed cells, but historical publication eligibility
+was not established for workout, veterinary or movement events. Such events stay
+prospective-only; an unavailable observation is not evidence of no activity.
+The separate official collector captured the singular HKJC fixture route through
+July 2027, verified 19 distinct bodies, and extracted 72 future meeting dates
+and venues. These calendar records do not assert individual runners or post
+times. The confirmation package/forecast/power contracts are being qualified
+separately before a real fixed-horizon study is locked.
+
+Retention remains conservative. The corrected native inventory reaches MLflow
+at its actual Tailscale-bound address; the earlier localhost connection refusal
+was not an MLflow outage. Multiple owned roots per protected class are retained
+in inventory. Opaque model, raw, hypothesis, confirmation, pending and unique
+history roots hold objects. No shared-object deletion is exposed. No durable
+external archival destination is available, so production archival and restore
+remain held. A later cache trim lacks exact victim-path receipts; no complete
+path-level audit of that trim is claimed.
+
+Current evidence is preserved under `.mega/live-evidence/`, especially
+`cooperating-output-native-readback-1793203747545505000.json`,
+`continuing-storage-champion-r13-readback-1793243058400377000.json`,
+`phase41-fullcorpus-final-extracted-20261029.json`,
+`full-snapshot-parent-consumer-r3-20261029.json`,
+`phase72-native-matched-result-20261029.json`,
+`phase72-paired-race-report-20261029.json`,
+`phase72-target-smoke-result-20261029.json`, and
+`official-prospective-meeting-calendar-20261029.json`.
+
+At 03:18 UTC, a later readback found R13 paused on discovery-matrix disk
+admission: only about 1.25 GB remained above the protected floor. The discovery
+miss path had not invoked the physical-capacity retirement used by fold
+preparation. An audited invocation of that existing mechanism retired 42
+inactive registered fold caches, reclaiming 3,215,720,448 allocated bytes.
+Every attempted/result path is retained in
+`r13-inactive-cache-capacity-receipts-20261029.jsonl`; the hold policy was
+unchanged. R13 subsequently left `blocked_storage` and issued planner request
+six. Its running source was not hotpatched. Commit `da62d78` adds the existing
+lock/hold-aware retirement before matrix-miss admission, preserves the final
+atomic reservation, and leaves hits read-only. The focused suite passed
+33 tests, including real inactive-cache retirement, pinned-cache refusal and
+producer-race checks. That patch still needs native successor qualification.
+
+The meeting-study CLI and package-replay implementation passed 65 combined
+tests plus five subtests. An independent review identified that a missing
+exposure ledger could not establish completeness. Lock creation now also
+requires a source-bound exposure inventory with no unresolved sources, checks
+it before and after the power pilot, and freezes its identity for collection.
+The correction passed independent source review. This is an attestation over
+inspected scopes, not a claim that hashing proves all prior human activity was
+inventoried. Real-package replay, actual-pair power and any eventual future
+study remain separately qualified outcomes.
+
 ## Current Status: 2026-10-28
 
 **Implementation and qualification continue; the full plan is not complete.**
