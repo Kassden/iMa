@@ -5,7 +5,9 @@ Date: 2026-10-20. Task: `ima-recovery-storage-champion-20261020`.
 ## Latest Verified Checkpoint: 2026-10-29
 
 This dated checkpoint supersedes service-state and pending-build statements in
-the historical entries below. The whole plan remains open.
+the historical entries below. The operational handover is qualified. The whole plan remains open only for
+the externally held archival and independent-confirmation obligations; neither
+hold stops the continuing research service.
 
 The source-sealed continuing controller is the persistent own-user
 `ima-storage-champion.service`, enabled under **imaopt**, with the existing
@@ -35,8 +37,18 @@ read-only shared matrix, reproduced direct synthesis and passed `pip check`.
 All 209 prior distribution versions and metadata paths were unchanged after
 optional imports, including NumPy, pandas, SciPy, scikit-learn and HTTP transport.
 This is a new recorded runtime invocation, not an unchanged dependency environment;
-previous trials retain their original identities. Real post-resume fit/refill
-readback and independent operational acceptance are being checked.
+previous trials retain their original identities. At the 06:27 UTC post-resume readback, five fits were complete and three were
+running, including two completions after the checkpoint restart. Pending
+tells, tracking and trace deliveries were zero, with no tracking errors or
+unknown trace-control state. The four accepted decisions D1/D3/D4/D5 and the
+valid D2 rejection are preserved. Five completed decision traces reconcile to
+951,908 tokens and USD0.097902474; an in-flight later call is not asserted billed
+or free. Three saved model packages reproduced exactly the same probabilities
+across ten races/121rows before and after optional engine imports, with each
+model bound to its own authoritative dataset. D5 received the actual earlier
+results and proposed parent-linked transform ablation, venue-speed family and
+feature-build transfer experiments. Independent review qualified the scoped
+9.2 deployment and observed operation; it did not certify whole-plan completion.
 
 The predecessor stopped with 13 completed fits, eight accepted decisions and
 50 native traces. Its last readback verifies no pending tells/tracking and no
@@ -158,6 +170,16 @@ history roots hold objects. No shared-object deletion is exposed. No durable
 external archival destination is available, so production archival and restore
 remain held. A later cache trim lacks exact victim-path receipts; no complete
 path-level audit of that trim is claimed.
+
+Final operational evidence also includes `r15-featuretools-runtime-activation-20261029.json`,
+`featuretools-overlay-native-canary-r3-20261029.json`,
+`optional-runtime-saved-package-prediction-parity-r3-20261029.json`,
+`lane-repaired-r15-native-readback-1793255251669988000.json`,
+`r15-downstream-result-consumer-readback-20261029.json`, and
+`held-after-featuretools-resume-20261029.json`. The independent review is
+`.mega/phase92-sealed-handover-independent-review-r2-20261029.json`.
+These native/private evidence files remain outside the Git release; the exact
+unit and runtime manifests and this result record are versioned in Git.
 
 Current evidence is preserved under `.mega/live-evidence/`, especially
 `cooperating-output-native-readback-1793203747545505000.json`,
