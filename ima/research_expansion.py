@@ -300,6 +300,7 @@ def apply_decision(decision, store, search, retired, config, evidence, profile):
         remaining = evidence.get("remaining_program_capacity", {})
         covered = any(
             pid not in excluded
+            and pid in remaining  # Missing IDs are execution-exhausted, not merely out of budget.
             and remaining.get(pid, 0) + decision.extensions.get(pid, 0) > 0
             and core._portfolio_identity(program.recipe, "expansion_v6")["lane"] == required
             for pid, program in search.programs.items()

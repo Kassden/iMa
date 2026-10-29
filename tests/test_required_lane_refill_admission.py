@@ -115,6 +115,18 @@ def test_extension_restores_exhausted_classical_capacity(admission):
     assert search.programs[pid].max_trials == 3
 
 
+def test_extension_of_execution_exhausted_program_cannot_cover_lane(admission):
+    _, search, _, config, evidence = admission
+    pid = search.register(proposal("no-unique-recipes", trials=2))
+    # The real controller omits execution-exhausted IDs from its capacity view;
+    # budget-exhausted IDs remain present with zero, as tested above.
+    assert pid not in evidence["remaining_program_capacity"]
+    before = snapshot(config.campaign_dir)
+    with pytest.raises(ValueError, match="required_lane_refill: zero eligible benter"):
+        apply(admission, decision(programs=(), extensions={pid: 1}))
+    assert snapshot(config.campaign_dir) == before
+
+
 @pytest.mark.parametrize("retired_now", [False, True])
 def test_retired_classical_capacity_does_not_cover_refill(admission, retired_now):
     _, search, retired, config, evidence = admission
