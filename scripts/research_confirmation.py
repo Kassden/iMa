@@ -1,10 +1,10 @@
-"""Lock and evaluate frozen predictions.
+"""Run research confirmation commands.
 
-Required prediction CSV columns: date, race_id, horse_no, model_probability.
-Retrospective files also need target_win. Prospective mode requires a separate
-labels CSV with date, race_id, horse_no, target_win after races have passed.
-field_size is optional. The cutoff is operator-declared; no mode verifies feature
-or training leakage or provides automatic promotion evidence.
+The legacy ``lock``/``evaluate`` commands consume frozen prediction CSVs and
+separate outcome labels. The ``meeting-*`` commands use hash-pinned native
+research packages, an official source-bound future calendar, and sealed package
+replay; they do not accept operator-supplied probability CSVs. Neither workflow
+provides automatic promotion evidence.
 """
 from __future__ import annotations
 
@@ -63,6 +63,26 @@ def build_parser() -> argparse.ArgumentParser:
     study.add_argument('--seal',type=Path,required=True)
     study.add_argument('--output',type=Path,required=True)
     study.add_argument('--labels',type=Path)
+    meeting_lock=commands.add_parser('meeting-lock',help='Verify native packages, official source calendar, exposure and power before locking a fixed horizon')
+    meeting_lock.add_argument('--manifest',type=Path,required=True,
+                              help='JSON manifest includes calendar/source-readback paths and a paired development CSV keyed to both package hashes')
+    meeting_lock.add_argument('--output',type=Path,required=True)
+    meeting_seal=commands.add_parser('meeting-seal',help='Replay locked native packages on pinned feature inputs and seal predictions before race deadlines')
+    meeting_seal.add_argument('--lock',type=Path,required=True)
+    meeting_seal.add_argument('--meeting-date',required=True)
+    meeting_seal.add_argument('--official-card',type=Path,required=True)
+    meeting_seal.add_argument('--runners',type=Path,required=True)
+    meeting_seal.add_argument('--inputs',type=Path,required=True,
+                              help='Label-free receipt for a hash-pinned Parquet feature frame')
+    meeting_seal.add_argument('--output-root',type=Path,required=True)
+    meeting_status=commands.add_parser('meeting-status',help='Report label-free forecast collection coverage and operational misses')
+    meeting_status.add_argument('--lock',type=Path,required=True)
+    meeting_status.add_argument('--versions-root',type=Path,required=True)
+    meeting_evaluate=commands.add_parser('meeting-evaluate',help='Evaluate the one fixed horizon after all locked outcomes are available')
+    meeting_evaluate.add_argument('--lock',type=Path,required=True)
+    meeting_evaluate.add_argument('--versions-root',type=Path,required=True)
+    meeting_evaluate.add_argument('--outcomes',type=Path,required=True)
+    meeting_evaluate.add_argument('--output',type=Path,required=True)
     return parser
 
 
@@ -97,7 +117,21 @@ def main(argv: list[str] | None = None) -> int:
             result=evaluate_study_seal(args.seal,args.output,labels_path=args.labels)
             print(json.dumps({'command':args.command,**result},sort_keys=True))
             return 0
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        elif args.command=='meeting-lock':
+            from ima.research_meeting_study import create_meeting_study
+            path=create_meeting_study(json.loads(args.manifest.read_text()),args.output)
+        elif args.command=='meeting-seal':
+            from ima.research_meeting_study import seal_meeting_version
+            path=seal_meeting_version(args.lock,args.meeting_date,args.official_card,args.runners,args.inputs,
+                                      args.output_root)
+        elif args.command=='meeting-status':
+            from ima.research_meeting_study import collection_status
+            print(json.dumps({'command':args.command,**collection_status(args.lock,args.versions_root)},sort_keys=True))
+            return 0
+        elif args.command=='meeting-evaluate':
+            from ima.research_meeting_study import evaluate_fixed_horizon
+            path=evaluate_fixed_horizon(args.lock,args.versions_root,args.outcomes,args.output)
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
     print(json.dumps({"command": args.command, "artifact": str(path)}, sort_keys=True))
     return 0
