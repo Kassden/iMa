@@ -255,6 +255,21 @@ def _matrix_bytes(arguments):
     return max(16*1024**2,len(arguments['frame'])*arguments['spec'].max_definitions*16)
 
 
+def _matrix_capacity(arguments):
+    estimate = _matrix_bytes(arguments)
+    control = os.environ.get('IMA_STORAGE_ROOT')
+    if control:
+        from .research_storage import StorageAuthority
+        from .research_cache_capacity import trim_for_capacity
+        # A discovery miss competes for physical space with regenerable fold
+        # preparations, even when their total is below the cache soft limit.
+        # The existing trim owns pins, holds and LRU selection. The following
+        # storage_writer still obtains the atomic reservation before synthesis.
+        trim_for_capacity(StorageAuthority(control), required_bytes=estimate,
+                          cache_growth_bytes=0)
+    return estimate
+
+
 def _note_discovery_cleanup_failure(primary, path, cleanup_error):
     primary.add_note(
         f"Discovery cleanup failed for {path}; the path may remain "
@@ -298,7 +313,7 @@ def _remove_discovery_payload_directory(path):
     path.rmdir()
 
 
-@storage_writer(stage='discovery_matrix',output=lambda a:a['directory'],estimate=_matrix_bytes)
+@storage_writer(stage='discovery_matrix',output=lambda a:a['directory'],estimate=_matrix_capacity)
 def _build_private(frame,spec,source_hash,directory,identity,generator_spec,builder_hash):
     path=directory/'matrix.parquet'
     temporary=directory/f'matrix-{os.getpid()}.parquet'
@@ -433,7 +448,7 @@ def _materialize_shared(frame,spec,source_hash,cache,*,input_metadata=None):
         return artifact,manifest
 
 
-@storage_writer(stage='discovery_shared_matrix',output=lambda a:a['root'],estimate=_matrix_bytes)
+@storage_writer(stage='discovery_shared_matrix',output=lambda a:a['root'],estimate=_matrix_capacity)
 def _build_shared(frame,spec,source_hash,root,directory,identity,generator_spec,
                   builder_hash,row_keys,*,input_metadata=None):
     import joblib

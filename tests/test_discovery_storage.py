@@ -114,7 +114,8 @@ def test_cache_hit_reads_original_format_under_pressure_without_matrix_reservati
         return original_reserve(**kwargs)
 
     monkeypatch.setattr(authority, "reserve", reject_producer_budget)
-    with patch("ima.feature_program.synthesize", side_effect=AssertionError("cache hit rebuilt")):
+    with patch("ima.feature_program.synthesize", side_effect=AssertionError("cache hit rebuilt")), \
+            patch("ima.research_cache_capacity.trim_for_capacity", side_effect=AssertionError("cache hit trimmed")):
         again, other = materialize(frame, spec, "source", tmp_path / "discovery", shared=shared)
     assert manifest["matrix_id"] == other["matrix_id"]
     assert "discovery_control" in reserved_stages
@@ -125,6 +126,50 @@ def test_cache_hit_reads_original_format_under_pressure_without_matrix_reservati
         assert again.load().flags.writeable is False
     else:
         pd.testing.assert_frame_equal(again, first)
+    assert authority.status()["reserved_bytes"] == 0
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_discovery_miss_reclaims_inactive_fold_capacity_below_cache_quota(
+    tmp_path, monkeypatch, shared
+):
+    from tests.test_cache_physical_capacity import fixture
+
+    authority, _, paths = fixture(tmp_path, available=17 * 1024**2 + 1000)
+    monkeypatch.setenv("IMA_STORAGE_ROOT", str(authority.root))
+    monkeypatch.setattr(storage, "StorageAuthority", lambda root: authority)
+    expected, _ = synthesize(discovery_fixture(), DiscoverySpecV2(windows_days=(90,)))
+    result, _ = materialize(discovery_fixture(), DiscoverySpecV2(windows_days=(90,)),
+                            "capacity-source", tmp_path / "discovery", shared=shared)
+    assert not paths[0].exists() and paths[1].exists()
+    assert authority.status()["reserved_bytes"] == 0
+    if shared:
+        np.testing.assert_allclose(result.load(), expected.to_numpy(), equal_nan=True)
+    else:
+        pd.testing.assert_frame_equal(result[expected.columns], expected)
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_discovery_miss_keeps_pinned_fold_capacity_and_denies_before_synthesis(
+    tmp_path, monkeypatch, shared
+):
+    import fcntl
+    from contextlib import ExitStack
+    from tests.test_cache_physical_capacity import fixture
+
+    authority, root, paths = fixture(tmp_path, available=17 * 1024**2 + 1000)
+    monkeypatch.setenv("IMA_STORAGE_ROOT", str(authority.root))
+    monkeypatch.setattr(storage, "StorageAuthority", lambda root: authority)
+    with ExitStack() as pins:
+        for path in paths:
+            stream = pins.enter_context((root / (path.name + ".lock")).open("rb"))
+            fcntl.flock(stream, fcntl.LOCK_SH)
+        with patch("ima.feature_program.synthesize") as build:
+            with pytest.raises(storage.StorageBlocked):
+                materialize(discovery_fixture(), DiscoverySpecV2(windows_days=(90,)),
+                            "pinned-source", tmp_path / "discovery", shared=shared)
+            build.assert_not_called()
+    assert all(path.exists() for path in paths)
     assert authority.status()["reserved_bytes"] == 0
 
 
