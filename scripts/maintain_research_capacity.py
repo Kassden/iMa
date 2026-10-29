@@ -71,6 +71,10 @@ def main(argv=None):
         except StorageBlocked as error:
             result.update(reason=str(error), diagnostic=error.diagnostic,
                           evicted=error.diagnostic.get('evicted', []))
+            if 'evicted' not in error.diagnostic:
+                # Some cache API failures can occur after a partial sweep.
+                # An absent retirement list is not proof that nothing moved.
+                result.update(status='audit_incomplete', retirement_outcome='unknown')
         except Exception as error:
             result.update(status='audit_incomplete', error_type=type(error).__name__,
                           retirement_outcome='unknown',

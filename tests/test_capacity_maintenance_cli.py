@@ -147,3 +147,15 @@ def test_source_api_failure_is_visible_and_closed(tmp_path, monkeypatch, capsys)
     assert messages[-1]['retirement_outcome'] == 'unknown'
     assert 'secret-must-not-be-printed' not in json.dumps(messages)
     assert all(p.exists() for p in paths) and not receipts.exists()
+
+
+def test_unenumerated_storage_failure_does_not_claim_zero_retirements(tmp_path, monkeypatch, capsys):
+    authority, paths, receipts, argv = setup(tmp_path, monkeypatch)
+    def failed(*args, **kwargs):
+        raise storage.StorageBlocked('post-sweep failure', {'stage': 'cache_quota'})
+    monkeypatch.setattr(cli, 'trim_for_capacity', failed)
+    assert cli.main(argv) == 2
+    completion = output(capsys)[-1]
+    assert completion['status'] == 'audit_incomplete'
+    assert completion['retirement_outcome'] == 'unknown'
+    assert not receipts.exists()
