@@ -290,6 +290,41 @@ def apply_decision(decision, store, search, retired, config, evidence, profile):
         raise ValueError("Fixed controls cannot be extended")
     if decision.trial_budget > config.proposal_batch_size:
         raise ValueError("Chosen trial budget exceeds the operator ceiling")
+    allocated = sum(p.max_trials for p in decision.programs) + sum(decision.extensions.values())
+    if (evidence.get("planning_reason") == "required_lane_refill" and allocated > 0
+            and store.action(decision.decision_id, "experiment-discipline:v1") is None):
+        required = evidence.get("next_required_lane")
+        if required not in {"benter", "experimental"}:
+            raise ValueError("required_lane_refill: explicit next_required_lane is required")
+        excluded = retired | set(decision.retire_program_ids)
+        remaining = evidence.get("remaining_program_capacity", {})
+        covered = any(
+            pid not in excluded
+            and remaining.get(pid, 0) + decision.extensions.get(pid, 0) > 0
+            and core._portfolio_identity(program.recipe, "expansion_v6")["lane"] == required
+            for pid, program in search.programs.items()
+        )
+        proposed_lanes = {
+            p.proposal_id: core._portfolio_identity(p.recipe, "expansion_v6")["lane"]
+            for p in decision.programs
+        }
+        # Match register() identity: renaming or increasing max_trials adds no capacity.
+        new_required = any(
+            proposed_lanes[p.proposal_id] == required
+            and not any(p.recipe.canonical_payload() == old.recipe.canonical_payload()
+                        and p.search_space == old.search_space
+                        and p.evidence_ids == old.evidence_ids
+                        and p.fixed_parameters == old.fixed_parameters
+                        for old in search.programs.values())
+            for p in decision.programs
+        )
+        if not covered and not new_required:
+            raise ValueError(
+                f"required_lane_refill: zero eligible {required} capacity; "
+                f"computed proposal lanes={proposed_lanes}. Mixed estimator ancestry is "
+                "experimental; canonical duplicates add no budget. Supply a new required-lane "
+                "program, a valid extension, or an explicit zero-allocation hold."
+            )
     betting = _preflight_betting_requests(decision,store,config,evidence)
     registry = _dataset_registry(config)
     requested = {}
@@ -1721,6 +1756,9 @@ def run_expansion_campaign(config):
                     elif config.planner_mode == "openrouter" and _unsent_failure_streak(directory)>=3:
                         last_error = "Planner pre-dispatch retry circuit open after three unsent failures"
                         last_plan = now
+                    elif config.planner_mode == "openrouter" and _required_lane_failure_streak(directory)>=3:
+                        last_error = "Required-lane retry circuit open after three rejected decisions; manual corrective decision required"
+                        last_plan = now
                     elif config.max_total_cost_usd is not None and spend["known_spend_usd"] >= config.max_total_cost_usd:
                         last_error = "Planner prior-spend admission threshold reached; not a provider-enforced billing cap"
                         last_plan = now
@@ -2449,6 +2487,19 @@ def _unsent_failure_streak(directory):
         if payload.get("planner_status")!="failed" or path.stem not in unsent:
             break
         count += 1
+    return count
+
+
+def _required_lane_failure_streak(directory):
+    count = 0
+    for path in reversed(sorted((Path(directory)/"decisions").glob("D*.json"))):
+        payload = core._read_json(path)
+        if (payload.get("planner_status") != "failed"
+                or not str(payload.get("error", "")).startswith("required_lane_refill:")):
+            break
+        count += 1
+        if count == 3:
+            break
     return count
 
 
