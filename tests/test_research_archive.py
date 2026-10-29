@@ -84,6 +84,47 @@ def test_missing_roots_incomplete_publication_and_grace_hold(tmp_path):
     with pytest.raises(LifecycleHold, match="Incomplete object publication"):
         plan_retention(object_root=store.root, protected_roots=roots(tmp_path))
 
+def test_inventory_accepts_and_reports_all_roots_per_protected_class(tmp_path):
+    store = ObjectStore(tmp_path / "objects")
+    store.put_table(frame())
+    protected = roots(tmp_path)
+    second_mlflow = tmp_path / "protected" / "mlflow-secondary"
+    second_mlflow.mkdir()
+    hypothesis_db = tmp_path / "protected" / "hypothesis.sqlite"
+    hypothesis_db.write_bytes(b"opaque protected database")
+    second_raw = tmp_path / "protected" / "raw-secondary"
+    second_raw.mkdir()
+    protected.extend((ProtectedRoot("mlflow", second_mlflow),
+                      ProtectedRoot("hypothesis", str(hypothesis_db)),
+                      ProtectedRoot("raw", second_raw)))
+
+    report = plan_retention(object_root=store.root, protected_roots=protected,
+                            now=time.time() + 30 * 86400)
+
+    assert report["protected_root_count"] == 10
+    assert {row["path"] for row in report["protected_roots"]} >= {
+        str(second_mlflow), str(hypothesis_db), str(second_raw)}
+    assert all(row["status"] == "held" for row in report["objects"])
+    assert report["review_eligible"] == []
+    assert report["deletion_performed"] is False
+
+def test_protected_root_inventory_rejects_missing_and_symlinked_paths(tmp_path):
+    store = ObjectStore(tmp_path / "objects")
+    protected = roots(tmp_path)
+    missing = tmp_path / "protected" / "missing-mlflow-root"
+    protected.append(ProtectedRoot("mlflow", missing))
+    with pytest.raises(LifecycleHold, match="unavailable"):
+        plan_retention(object_root=store.root, protected_roots=protected)
+
+    protected.pop()
+    target = tmp_path / "protected" / "raw-target"
+    target.mkdir()
+    alias = tmp_path / "protected" / "raw-alias"
+    alias.symlink_to(target, target_is_directory=True)
+    with pytest.raises(ValueError, match="canonical"):
+        # ProtectedRoot rejects the symlink before the planner can use it.
+        ProtectedRoot("raw", alias)
+
 def test_shared_lease_serializes_planner_and_crash_releases_kernel_lock(tmp_path):
     store = ObjectStore(tmp_path / "objects")
     entered, release, acquired = threading.Event(), threading.Event(), threading.Event()

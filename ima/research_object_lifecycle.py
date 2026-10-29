@@ -106,6 +106,7 @@ class ProtectedRoot:
         path = Path(self.path).absolute()
         if self.kind not in OPAQUE_ROOT_KINDS: raise ValueError(f"Unsupported protected-root kind: {self.kind}")
         if path != Path(self.path) or path.resolve() != path: raise ValueError(f"Protected root is not canonical: {path}")
+        object.__setattr__(self, "path", path)
 
 def _validate_ref(ref, object_root):
     if not isinstance(ref, dict) or set(ref) != {"sha256", "size", "format"}:
@@ -185,11 +186,26 @@ def plan_retention(*, object_root, snapshot_roots=(), dataset_registry_roots=(),
     if root.resolve() != root or not root.is_dir(): raise LifecycleHold("Existing canonical object root required")
     if type(grace_seconds) is not int or grace_seconds < 0: raise ValueError("Invalid grace period")
     roots = list(protected_roots)
-    by_kind = {entry.kind: entry for entry in roots}
-    if len(by_kind) != len(roots) or set(by_kind) != set(OPAQUE_ROOT_KINDS):
-        raise LifecycleHold("Explicit MLflow, hypothesis, confirmation, pending, model, raw, and unique-history roots required")
+    by_kind = {}
     for entry in roots:
-        if not entry.path.exists() or entry.path.is_symlink(): raise LifecycleHold(f"Protected {entry.kind} root missing or symlinked")
+        if not isinstance(entry, ProtectedRoot):
+            raise LifecycleHold("Protected-root inventory contains an untyped entry")
+        by_kind.setdefault(entry.kind, []).append(entry)
+    if set(by_kind) != set(OPAQUE_ROOT_KINDS) or any(not entries for entries in by_kind.values()):
+        raise LifecycleHold("Explicit MLflow, hypothesis, confirmation, pending, model, raw, and unique-history roots required")
+    protected_inventory = []
+    for entry in roots:
+        try:
+            info = entry.path.lstat()
+        except OSError as exc:
+            raise LifecycleHold(f"Protected {entry.kind} root unavailable: {entry.path}") from exc
+        if (stat.S_ISLNK(info.st_mode) or info.st_uid != os.getuid()
+                or not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode))):
+            raise LifecycleHold(f"Protected {entry.kind} root is not an owned real file or directory: {entry.path}")
+        protected_inventory.append({"kind": entry.kind, "path": str(entry.path),
+            "entry_type": "directory" if stat.S_ISDIR(info.st_mode) else "file",
+            "uid": info.st_uid, "mode": stat.S_IMODE(info.st_mode), "device": info.st_dev,
+            "size_bytes": info.st_size if stat.S_ISREG(info.st_mode) else None})
     now = time.time() if now is None else now
     if type(now) not in (int, float): raise ValueError("Invalid planner clock")
     with lifecycle_lease(root, exclusive=True):
@@ -226,6 +242,8 @@ def plan_retention(*, object_root, snapshot_roots=(), dataset_registry_roots=(),
                              "age_seconds": age, "hold_reasons": reasons, "status": "held"})
         return {"schema_version": 1, "mode": "read_only_dry_run", "approved": False, "object_root": str(root),
                 "reference_count": len(marked), "objects": rows, "review_eligible": [],
+                "protected_root_count": len(protected_inventory),
+                "protected_roots": protected_inventory,
                 "holds": ([f"{kind}: protected root is opaque; shared reference adapter not qualified" for kind in sorted(by_kind)]
                           + ["archive: no explicit external destination supplied"]),
                 "deletion_performed": False, "phase_complete": False}
