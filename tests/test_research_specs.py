@@ -153,6 +153,44 @@ class ResearchSpecTests(unittest.TestCase):
 
 
 class ResearchExpansionRecipeTests(unittest.TestCase):
+    def test_nested_pool_protocol_is_strict_and_development_recipe_stays_valid(self):
+        from ima.feature_sets import FEATURE_SCHEMAS
+        schema = FEATURE_SCHEMAS["baseline-v1"]
+        candidate = {"candidate_id": "baseline", "graph": {
+            "graph_id": "candidate", "output_node_id": "model",
+            "nodes": [{"node_id": "model", "kind": "estimator",
+                       "parameters": {"model_kind": "benter_conditional_logit"}}]}}
+        protocol = {"schema_version": 1, "selection_cutoff": "2020-01-10",
+            "validation_start": "2020-01-05", "min_prefix_train_meetings": 3,
+            "min_prefix_validation_meetings": 2, "registered_features": list(schema.features),
+            "candidate_graphs": [candidate], "selection_trial_budget": 1,
+            "seed": 42, "objective": "mean_meeting_log_loss"}
+        graph = {"graph_id": "nested", "primary_node_id": "model", "output_node_id": "pool",
+            "nodes": [
+                {"node_id": "model", "kind": "estimator",
+                 "parameters": {"model_kind": "benter_conditional_logit"}},
+                {"node_id": "pool", "kind": "learned_probability_pool", "inputs": ["model"],
+                 "parameters": {"selection_mode": "nested_selection",
+                                "selection_cutoff": "2020-01-10", "selection_protocol": protocol}},
+            ]}
+        valid = PipelineRecipe(schema_version=3, model={"kind": "benter_conditional_logit"},
+                               pipeline_graph=graph)
+        self.assertEqual("nested_selection",
+            valid.pipeline_graph["nodes"][1]["parameters"]["selection_mode"])
+        malformed = {**protocol, "unrecognized": True}
+        graph["nodes"][1]["parameters"]["selection_protocol"] = malformed
+        with self.assertRaisesRegex(ValueError, "keys invalid"):
+            PipelineRecipe(schema_version=3, pipeline_graph=graph)
+        dev = PipelineRecipe(schema_version=3, model={"kind": "benter_conditional_logit"}, pipeline_graph={
+            "graph_id": "development", "primary_node_id": "model", "output_node_id": "pool",
+            "nodes": [
+                {"node_id": "model", "kind": "estimator"},
+                {"node_id": "pool", "kind": "learned_probability_pool", "inputs": ["model"],
+                 "parameters": {"selection_mode": "development_selected",
+                                "selection_cutoff": "2020-01-10"}},
+            ]})
+        self.assertEqual("development_selected", dev.pipeline_graph["nodes"][1]["parameters"]["selection_mode"])
+
     def test_unused_graph_node_does_not_spend_the_experimental_lane(self):
         from ima.research_controller import _portfolio_identity
         recipe = PipelineRecipe(schema_version=3,

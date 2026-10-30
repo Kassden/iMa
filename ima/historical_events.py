@@ -157,7 +157,7 @@ def normalize_events(records) -> pd.DataFrame:
             source_url=url, source_body_sha256=digest, parser_version=raw.get("parser_version") or "legacy_unspecified",
             typed_values=values, correction_of=raw.get("correction_of"), coverage_id=raw.get("coverage_id"),
             valid_from=_iso(raw.get("valid_from")), valid_to=_iso(raw.get("valid_to")),
-            physical_identity_verified=bool(raw.get("physical_identity_verified", False)),
+            physical_identity_verified=raw.get("physical_identity_verified") is True,
             exclusion_reasons=tuple(reasons)).model_dump())
     by_id = {e["event_id"]: e for e in normalized}
     for event in normalized:

@@ -5,6 +5,7 @@ Description=iMa acquisition-only immutable official dataset build and independen
 Type=oneshot
 WorkingDirectory=/home/imaopt/acquisition/hkjc-20261002/snapshot-release-r5
 Environment=PYTHONUNBUFFERED=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+Environment=IMA_STORAGE_ROOT=/home/imaopt/research-v2/storage-control
 ExecStart=/home/imaopt/acquisition/hkjc-20261002/snapshot-venv-r5/bin/python -m scripts.refresh_official_snapshot \
   --archive /home/imaopt/iMa/data/historical/hkjc-2005-2025 \
   --profiles /home/imaopt/iMa/data/historical/horse-profiles \

@@ -125,8 +125,10 @@ class PlannerAPITests(unittest.TestCase):
         with patch("ima.openrouter_orchestrator._post_json", return_value=response) as post:
             actual = choose_research_decision(evidence, limits, OpenRouterConfig(api_key="test-only", model="test"))
         post.assert_called_once()
-        submitted = json.loads(post.call_args.args[1]["messages"][1]["content"])
-        self.assertEqual(submitted["evidence"], evidence)
+        submitted = {k: v for m in post.call_args.args[1]["messages"][1:3] for k, v in json.loads(m["content"]).items()}
+        self.assertEqual({key: submitted["evidence"][key] for key in evidence}, evidence)
+        self.assertIn("proposal_audit_feedback", submitted["evidence"])
+        self.assertNotIn("proposal_audit_feedback", evidence)
         self.assertEqual(submitted["limits"], limits)
         self.assertEqual(PlannerDecision.model_validate(actual["decision"]), item)
         self.assertEqual(actual["repair_count"], 0)
@@ -177,7 +179,7 @@ class PlannerAPITests(unittest.TestCase):
         self.assertEqual(feedback["errors"][0]["type"], "extra_forbidden")
         self.assertNotIn("input", feedback["errors"][0])
         self.assertEqual(actual["decision"]["programs"], valid["programs"])
-        bundle = json.loads(messages[1]["content"])
+        bundle = {k: v for m in messages[1:3] for k, v in json.loads(m["content"]).items()}
         self.assertEqual(len(bundle["adapter_recipe_examples"]), 3)
         self.assertIn("bare_regressor_win", bundle["model_target_guidance"])
 
@@ -486,6 +488,24 @@ class DecisionApplicationTests(unittest.TestCase):
         reopened = ProgramSearchController(self.root)
         self.assertEqual(list(reopened.programs), accepted)
         self.assertEqual(reopened.programs[accepted[0]].max_trials, 1)
+
+    def test_pending_clone_rejected_before_durable_decision(self):
+        original=decision(programs=(self.v6_proposal("pending"),))
+        self.apply(original)
+        clone=decision(decision_id="decision-2",programs=(self.v6_proposal("clone"),))
+        with self.assertRaisesRegex(ValueError,"Pending experiment"):
+            self.apply(clone)
+        import sqlite3
+        with sqlite3.connect(self.store.path) as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM decisions WHERE id='decision-2'").fetchone()[0],0)
+        self.assertEqual(len(self.search.programs),1)
+
+    def test_discipline_receipt_has_provisional_comparison_class(self):
+        item=decision(programs=(self.v6_proposal(),))
+        self.apply(item)
+        receipt=self.store.action(item.decision_id,"experiment-discipline:v1")
+        self.assertEqual(receipt["policy_version"],1)
+        self.assertEqual(receipt["proposals"][0]["gain_evidence"],"not_yet_observed")
         self.assertEqual(self.store.pending(), [])
 
     def test_extension_replay_after_crash_does_not_allocate_twice(self):

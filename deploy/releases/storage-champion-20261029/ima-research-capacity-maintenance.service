@@ -1,0 +1,19 @@
+[Unit]
+Description=iMa registered cache operating headroom maintenance
+
+[Service]
+Type=oneshot
+UMask=0077
+LimitCORE=0
+Slice=ima-research.slice
+MemoryMax=1000000000
+CPUQuota=100%
+TasksMax=64
+TimeoutStartSec=180
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="PYTHONPATH=/home/imaopt/research-v2/canaries/continuing-storage-champion-415b84e6c7f5-20261029-r14"
+Environment="IMA_STORAGE_ROOT=/home/imaopt/research-v2/storage-control"
+Environment="IMA_CACHE_HOLD_POLICY=/home/imaopt/research-v2/storage-control/retention-holds-20261028.json"
+Environment="IMA_CACHE_HOLD_POLICY_SHA256=cb3362b1982b9475f3658b12d60b0e13f988f521d76b5da542fcfd7ca0097568"
+ExecStartPre=/usr/bin/sha256sum --quiet --check /home/imaopt/research-v2/maintenance-releases/cache-capacity-e18f7b0f1228-20261029/SOURCE.sha256
+ExecStart=/home/imaopt/research-v2/canaries/builder-runtime-20261028/venv/bin/python -B /home/imaopt/research-v2/maintenance-releases/cache-capacity-e18f7b0f1228-20261029/maintain_research_capacity.py --authority /home/imaopt/research-v2/storage-control --required-bytes 4294967296 --receipts /home/imaopt/research-v2/storage-control/maintenance-receipts

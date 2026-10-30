@@ -2,6 +2,11 @@ import json
 import pickle
 import tempfile
 import unittest
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from unittest.mock import patch
+import os
 
 import numpy as np
 import pandas as pd
@@ -34,13 +39,35 @@ class FormulaTests(unittest.TestCase):
             registry = FeatureRegistry(root)
             identity = registry.register(formula(),self.meta)
             self.assertEqual(identity,registry.get(identity).content_id())
+            original = (Path(root)/(identity+".json")).read_bytes()
             self.assertEqual(identity,registry.register(formula(hypothesis="Different narrative result"),self.meta))
+            self.assertEqual(original,(Path(root)/(identity+".json")).read_bytes())
             path = registry.root/(identity+".json")
             payload = json.loads(path.read_text())
             payload["unit"] = "kg"
             path.write_text(json.dumps(payload))
             with self.assertRaises(ValueError):
                 registry.get(identity)
+
+    def test_concurrent_registration_preserves_the_first_published_definition(self):
+        with tempfile.TemporaryDirectory() as root:
+            registry=FeatureRegistry(root)
+            barrier=Barrier(2)
+            original_link=os.link
+            published=[]
+            def simultaneous_link(source,destination):
+                barrier.wait(timeout=5)
+                original_link(source,destination)
+                published.append(Path(destination).read_bytes())
+            with patch('ima.feature_definitions.os.link',side_effect=simultaneous_link):
+                with ThreadPoolExecutor(max_workers=2) as workers:
+                    jobs=[workers.submit(registry.register,formula(hypothesis=text),self.meta)
+                          for text in ('first narrative','second narrative')]
+                    identities=[job.result(timeout=10) for job in jobs]
+            self.assertEqual(identities[0],identities[1])
+            self.assertEqual(1,len(published))
+            self.assertEqual(published[0],(Path(root)/(identities[0]+'.json')).read_bytes())
+            self.assertEqual(identities[0],registry.get(identities[0]).content_id())
 
     def test_unit_target_and_temporal_taint(self):
         for field,value in (("target_tainted",True),("temporal_scope","current_outcome"),("temporal_scope","future")):

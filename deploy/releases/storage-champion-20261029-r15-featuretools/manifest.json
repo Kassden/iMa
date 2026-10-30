@@ -1,0 +1,43 @@
+{
+  "research_revision": "9d64fcd14d7ccedc1238ce4c80687350f75f0ea0",
+  "campaign": "/home/imaopt/research-v2/canaries/continuing-storage-champion-9d64fcd14d7c-20261029-r15/agentic_v7_clean_storage_champion_20261029_r15",
+  "unit_sha256": "3932e3ce35974be8c452074a6afd8490b11cf4a4d63894d6c4334ea42facea87",
+  "previous_unit_sha256": "d6caf164c1fe8505b587e04c2f472ae6680bdfdb66a665b69086afaeb8913c2c",
+  "optional_namespace": "/home/imaopt/research-v2/feature-dependencies/featuretools-1.31.0-py312-20261029-r3",
+  "namespace_manifest_sha256": "9e3cb24654214205070e87d84f6a7d2800608356a985d52b0acf6d2bcb62a4ae",
+  "namespace_checksum_sha256": "2d466c121593b46898caf3fed4eec6b69de59a3c2143d8ab69f6d2b4d904211b",
+  "optional_packages": {
+    "numpy": "2.5.3",
+    "pandas": "2.3.3",
+    "scipy": "1.18.1",
+    "scikit-learn": "1.9.1",
+    "optuna": "4.5.0",
+    "mlflow": "3.16.1",
+    "joblib": "1.6.0",
+    "httpx": "0.28.1",
+    "httpcore": "1.0.9",
+    "featuretools": "1.31.0",
+    "woodwork": "0.31.0",
+    "holidays": "0.105"
+  },
+  "source_files_pinned": 2172,
+  "base_distributions_preserved": 209,
+  "all_prior_model_and_transport_distribution_versions_and_metadata_paths_preserved": true,
+  "base_environment_files_mutated": false,
+  "config_hashes_unchanged": {
+    "/home/imaopt/research-v2/canaries/continuing-storage-champion-9d64fcd14d7c-20261029-r15/agentic_v7_clean_storage_champion_20261029_r15/campaign.json": "f76cba8b367aa5df6178c33a0ea2819f282ad5efc620705c49a47380bc727831",
+    "/home/imaopt/research-v2/canaries/continuing-storage-champion-9d64fcd14d7c-20261029-r15/agentic_v7_clean_storage_champion_20261029_r15/campaign-identity.json": "172f7644e043800dcefa53e69cf86293f8bf89dbd636f32b128b743afcfe52ca",
+    "/home/imaopt/research-v2/canaries/continuing-storage-champion-9d64fcd14d7c-20261029-r15/protocol.json": "957f1c305ccff949bb1596dfa999e9c89a49f2ad6c4d63c7998ba7b93281238a"
+  },
+  "before_completed": 3,
+  "productive_fits_cancelled": false,
+  "preserved_stop": "/home/imaopt/research-v2/canaries/continuing-storage-champion-9d64fcd14d7c-20261029-r15/agentic_v7_clean_storage_champion_20261029_r15/STOP-preserved-featuretools-runtime-20261029.json",
+  "preserved_stop_sha256": "7ea8a16f8d098cbd37c6414708be5cd0180aaeab5b69fda568f9a6c7b988afc7",
+  "scope": "Same code/data/protocol/config/checkpoint; new recorded runtime invocation adds qualified optional Featuretools namespace, not an unchanged environment. Prior trials are not relabeled. Numerical/runtime base packages unchanged; no installs or downloads.",
+  "rollback": "Drain at another verified safe checkpoint, then restore exact unit in ../storage-champion-20261029-r15/ with base PYTHONPATH. Preserve all optional feature outputs and runtime receipts. Optional Featuretools inference must retain the matching qualified namespace when replaying those new packages.",
+  "limits": [
+    "No host reboot test",
+    "No independent scientific confirmation or profit claim",
+    "No archive-removal qualification without an external durable destination"
+  ]
+}

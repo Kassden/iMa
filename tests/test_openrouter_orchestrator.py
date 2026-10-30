@@ -16,6 +16,42 @@ from ima.openrouter_orchestrator import (
 
 
 class OpenRouterOrchestratorTests(unittest.TestCase):
+    def test_stale_proposal_is_repaired_inside_same_costed_decision(self):
+        import copy
+        import json
+        from ima.openrouter_orchestrator import choose_research_decision
+        from tests.test_planner_request_guard import PlannerRequestGuardTests
+        evidence, response = PlannerRequestGuardTests().fixture()
+        valid = copy.deepcopy(response['decision'])
+        valid['programs'][0]['evidence_ids'] = [evidence['evidence_id']]
+        stale = copy.deepcopy(valid)
+        stale['programs'][0]['evidence_ids'] = ['old-evidence']
+        responses = [{'choices': [{'message': {'content': json.dumps(value)}}],
+                      'usage': {'cost': .001}} for value in (stale, valid)]
+        with mock.patch('ima.openrouter_orchestrator._post_json', side_effect=responses) as post:
+            result = choose_research_decision(evidence, {'trial_ceiling': 260, 'max_new_programs': 12},
+                                             OpenRouterConfig('unused', 'fixture/model'))
+        self.assertEqual(2, post.call_count)
+        self.assertEqual(.002, result['usage']['total_cost_usd'])
+        self.assertEqual(1, result['repair_count'])
+        self.assertEqual([evidence['evidence_id']], result['decision']['programs'][0]['evidence_ids'])
+
+    def test_static_prefix_is_identical_across_changing_evidence(self):
+        import json
+        from ima.openrouter_orchestrator import choose_research_decision
+        messages = []
+        for number in (1, 2):
+            evidence = {'decision_id':f'D{number:06d}', 'evidence_id':f'e{number}'}
+            response = {'choices':[{'message':{'content':json.dumps(dict(evidence, trial_budget=0,
+                review_reason='Wait for pending results'))}}], 'usage':{'prompt_tokens':100,'completion_tokens':50,'cost':.002}}
+            with mock.patch('ima.openrouter_orchestrator._post_json', return_value=response) as post:
+                choose_research_decision(evidence, {'trial_ceiling':260,'max_new_programs':12},
+                    OpenRouterConfig('key','test/model'))
+            messages.append(post.call_args.args[1]['messages'])
+        self.assertEqual(messages[0][:2], messages[1][:2])
+        self.assertNotEqual(messages[0][2], messages[1][2])
+        self.assertIn('172800', messages[0][0]['content'])
+
     def test_v6_decision_has_one_budget_and_structural_capability_schemas(self):
         import json
         from ima.openrouter_orchestrator import choose_research_decision
@@ -30,11 +66,13 @@ class OpenRouterOrchestratorTests(unittest.TestCase):
                 OpenRouterConfig("key", "test/model"),
             )
         self.assertEqual(1, post.call_count)
-        prompt = json.loads(post.call_args.args[1]["messages"][1]["content"])
+        prompt = {k: v for m in post.call_args.args[1]["messages"][1:3] for k, v in json.loads(m["content"]).items()}
         self.assertIn("expression_ast", prompt["feature_definition_schema"]["properties"])
         self.assertIn("protocol", prompt["dataset_request_schema"]["properties"])
         self.assertEqual(0, chosen["decision"]["trial_budget"])
         self.assertEqual(.002, chosen["usage"]["total_cost_usd"])
+        self.assertTrue(chosen["proposal_audit"]["advisory_only"])
+        self.assertEqual(1, chosen["context_projection"]["version"])
 
     def test_submit_batch_uses_current_v1_endpoint(self):
         captured = {}
@@ -106,12 +144,15 @@ class OpenRouterOrchestratorTests(unittest.TestCase):
             "completion_tokens": 30,
             "total_tokens": 150,
             "cost": 0.0042,
+            "prompt_tokens_details": {"cached_tokens": 80, "cache_write_tokens": 20},
         }})
         self.assertEqual(120, usage["input_tokens"])
         self.assertEqual(30, usage["output_tokens"])
         self.assertEqual(150, usage["total_tokens"])
         self.assertEqual(0.0042, usage["total_cost_usd"])
         self.assertEqual("reported", usage["cost_status"])
+        self.assertEqual(80, usage["cached_input_tokens"])
+        self.assertEqual(20, usage["cache_write_tokens"])
 
     def test_usage_normalization_supports_responses_names_and_missing_cost(self):
         usage = normalize_openrouter_usage({"usage": {

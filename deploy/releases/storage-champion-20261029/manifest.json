@@ -1,0 +1,24 @@
+{
+  "scope": "Exact native own-user unit readback. Research revision415 and maintenance revision3c are separate sealed components; no in-place research hotpatch.",
+  "research_revision": "415b84e6c7f59ac36995042537dabfe14ad2d511",
+  "maintenance_revision": "3c62b6130cea1eb0545771c92bab81adcb7c4728",
+  "confirmation_tool_revision": "ff5e26e68dac601d731184cdff7d32992842ae9c",
+  "native_unit_directory": "/home/imaopt/.config/systemd/user",
+  "unit_sha256": {
+    "ima-storage-champion.service": "5ca4feb7b05e8647d954f989b44029961c2fe3390a051b5135196ff9dd46a3c6",
+    "ima-research-capacity-maintenance.service": "f4cdf02eb8ac0ec5285710873a0633f3cf205108e1e01776505e41ee218dcce3",
+    "ima-research-capacity-maintenance.timer": "1cac25a90ebd40d0d419b50fe8a8df9c0c0a0fa7e2c49a7dff4c627f429e5788"
+  },
+  "maintenance_script_sha256": "e18f7b0f12284444a7d8458368a6602821ba665320272da1c287d5434f949ad2",
+  "global_memory_bytes": 100000000000,
+  "global_cpu_threads": 26,
+  "minimum_free_bytes": 50214916915,
+  "maintenance_operating_demand_bytes": 4294967296,
+  "rollback": "Disable only ima-research-capacity-maintenance.timer to withdraw upkeep. Drain controller at a recorded safe boundary before replacing its sealed source/config. Preserve original STOP records and immutable native receipts.",
+  "not_proven": [
+    "Host reboot survival not experimentally tested",
+    "No independent statistical confirmation",
+    "No archive/restore promotion without a durable external destination",
+    "Crash-atomic deletion/receipt audit not claimed"
+  ]
+}

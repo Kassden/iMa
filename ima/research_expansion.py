@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import multiprocessing
 import os
 import sqlite3
 import time
-from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +30,32 @@ from .research_betting import PaperResearchRequest
 from .research_external_planner import read_external_decision as _external_decision
 from .research_worker_runtime import BoundedFitExecutor, active_attempt_summary, cleanup_attempt_group, read_runtime
 from .research_runtime_history import RuntimeHistory, read_own_unit_journal
+from .research_planning import planning_reason, observe_material_result
+from .research_storage import StorageBlocked, as_storage_blocked, storage_writer
+from .research_dataset_capacity import cooperating_output_reservation
+from .experiment_discipline import admit_decision, lifecycle_snapshot, planner_view, resolve_reused_attempt, reconcile_reused_tells
+
+
+class _TrackingDiagnostics(list):
+    """Bound operational history without changing the controller's list consumers."""
+    max_entries = 100
+    max_entry_chars = 8192
+
+    def __init__(self, values=()):
+        super().__init__()
+        self.extend(values)
+
+    def append(self, value):
+        message = str(value)
+        if len(message) > self.max_entry_chars:
+            suffix = '... [truncated]'
+            message = message[:self.max_entry_chars-len(suffix)] + suffix
+        super().append(message)
+        del self[:-self.max_entries]
+
+    def extend(self, values):
+        for value in values:
+            self.append(value)
 
 
 class PlannerDecision(BaseModel):
@@ -68,18 +96,70 @@ class PlannerDecision(BaseModel):
 class DecisionStore:
     def __init__(self, path: Path):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, payload TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0)")
-            conn.execute("CREATE TABLE IF NOT EXISTS receipts (decision_id TEXT NOT NULL, action TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(decision_id,action))")
+        if os.environ.get("IMA_STORAGE_ROOT"):
+            with self._transaction(self._growth_bytes()) as conn:
+                self._create_schema(conn)
+        else:
+            # Keep the historical WAL behavior for stores outside admission.
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(self.path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                self._create_schema(conn)
+
+    @staticmethod
+    def _growth_bytes(*fields):
+        return 1024 * 1024 + 3 * sum(len(field.encode("utf-8")) for field in fields)
+
+    def _refuse_wal(self):
+        try:
+            with self.path.open("rb") as stream:
+                header = stream.read(20)
+        except FileNotFoundError:
+            return
+        if len(header) >= 20 and 2 in header[18:20]:
+            raise RuntimeError("SQLite WAL mode is unsupported for admitted DecisionStore operations")
+
+    @staticmethod
+    def _create_schema(conn):
+        conn.execute("CREATE TABLE IF NOT EXISTS decisions (id TEXT PRIMARY KEY, payload TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0)")
+        conn.execute("CREATE TABLE IF NOT EXISTS receipts (decision_id TEXT NOT NULL, action TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(decision_id,action))")
+
+    @contextmanager
+    def _transaction(self, estimated_growth_bytes):
+        if os.environ.get("IMA_STORAGE_ROOT"):
+            self._refuse_wal()
+            from .research_sqlite import admitted_sqlite
+            with admitted_sqlite(self.path, estimated_growth_bytes=estimated_growth_bytes,
+                                 stage="decision_store") as conn:
+                yield conn
+            return
+
+        conn = sqlite3.connect(self.path, timeout=30)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            yield conn
+            conn.commit()
+        except BaseException:
+            if conn.in_transaction:
+                conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    @contextmanager
+    def _read(self):
+        if os.environ.get("IMA_STORAGE_ROOT"):
+            self._refuse_wal()
+        from contextlib import closing
+        uri = self.path.absolute().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True, timeout=30)) as conn:
+            yield conn
 
     def record(self, decision: PlannerDecision, ceiling: int = 260) -> bool:
         if decision.trial_budget > ceiling:
             raise ValueError("Chosen trial budget exceeds the operator ceiling")
         payload = json.dumps(decision.model_dump(mode="json"), sort_keys=True)
-        with sqlite3.connect(self.path) as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        with self._transaction(self._growth_bytes(decision.decision_id, payload)) as conn:
             old = conn.execute("SELECT payload FROM decisions WHERE id=?", (decision.decision_id,)).fetchone()
             if old:
                 if old[0] != payload:
@@ -89,14 +169,13 @@ class DecisionStore:
             return True
 
     def pending(self) -> list[PlannerDecision]:
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             rows = conn.execute("SELECT payload FROM decisions WHERE applied=0 ORDER BY rowid").fetchall()
         return [PlannerDecision.model_validate_json(r[0]) for r in rows]
 
     def receipt(self, decision_id: str, action: str, payload: dict) -> dict:
         encoded = json.dumps(payload, sort_keys=True)
-        with sqlite3.connect(self.path) as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        with self._transaction(self._growth_bytes(decision_id, action, encoded)) as conn:
             if conn.execute("SELECT id FROM decisions WHERE id=?", (decision_id,)).fetchone() is None:
                 raise ValueError("Receipt references an unknown decision")
             old = conn.execute("SELECT payload FROM receipts WHERE decision_id=? AND action=?", (decision_id, action)).fetchone()
@@ -108,12 +187,12 @@ class DecisionStore:
         return payload
 
     def action(self, decision_id: str, action: str) -> dict | None:
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             row = conn.execute("SELECT payload FROM receipts WHERE decision_id=? AND action=?", (decision_id, action)).fetchone()
         return json.loads(row[0]) if row else None
 
     def complete(self, decision_id: str):
-        with sqlite3.connect(self.path) as conn:
+        with self._transaction(self._growth_bytes(decision_id)) as conn:
             if conn.execute("UPDATE decisions SET applied=1 WHERE id=?", (decision_id,)).rowcount != 1:
                 raise ValueError("Cannot complete an unknown decision")
 
@@ -121,7 +200,7 @@ class DecisionStore:
         return set(self.authorized_budgets())
 
     def authorized_budgets(self):
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             rows = conn.execute("SELECT r.action,r.payload FROM receipts r JOIN decisions d ON d.id=r.decision_id WHERE d.applied=1 ORDER BY d.rowid,r.rowid").fetchall()
         budgets = {}
         for action,encoded in rows:
@@ -133,12 +212,12 @@ class DecisionStore:
         return budgets
 
     def dataset_actions(self):
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             rows = conn.execute("SELECT r.payload FROM receipts r JOIN decisions d ON d.id=r.decision_id WHERE d.applied=1 AND r.action LIKE 'dataset:%' ORDER BY d.rowid,r.rowid").fetchall()
         return [json.loads(row[0])["request"] for row in rows]
 
     def betting_actions(self, *, pending_only=False):
-        with sqlite3.connect(self.path) as conn:
+        with self._read() as conn:
             rows = conn.execute("SELECT r.decision_id,r.action,r.payload FROM receipts r JOIN decisions d ON d.id=r.decision_id WHERE d.applied=1 AND r.action LIKE 'betting:%' ORDER BY d.rowid,r.rowid").fetchall()
         actions = []
         for decision_id,action,encoded in rows:
@@ -211,6 +290,42 @@ def apply_decision(decision, store, search, retired, config, evidence, profile):
         raise ValueError("Fixed controls cannot be extended")
     if decision.trial_budget > config.proposal_batch_size:
         raise ValueError("Chosen trial budget exceeds the operator ceiling")
+    allocated = sum(p.max_trials for p in decision.programs) + sum(decision.extensions.values())
+    if (evidence.get("planning_reason") == "required_lane_refill" and allocated > 0
+            and store.action(decision.decision_id, "experiment-discipline:v1") is None):
+        required = evidence.get("next_required_lane")
+        if required not in {"benter", "experimental"}:
+            raise ValueError("required_lane_refill: explicit next_required_lane is required")
+        excluded = retired | set(decision.retire_program_ids)
+        remaining = evidence.get("remaining_program_capacity", {})
+        covered = any(
+            pid not in excluded
+            and pid in remaining  # Missing IDs are execution-exhausted, not merely out of budget.
+            and remaining.get(pid, 0) + decision.extensions.get(pid, 0) > 0
+            and core._portfolio_identity(program.recipe, "expansion_v6")["lane"] == required
+            for pid, program in search.programs.items()
+        )
+        proposed_lanes = {
+            p.proposal_id: core._portfolio_identity(p.recipe, "expansion_v6")["lane"]
+            for p in decision.programs
+        }
+        # Match register() identity: renaming or increasing max_trials adds no capacity.
+        new_required = any(
+            proposed_lanes[p.proposal_id] == required
+            and not any(p.recipe.canonical_payload() == old.recipe.canonical_payload()
+                        and p.search_space == old.search_space
+                        and p.evidence_ids == old.evidence_ids
+                        and p.fixed_parameters == old.fixed_parameters
+                        for old in search.programs.values())
+            for p in decision.programs
+        )
+        if not covered and not new_required:
+            raise ValueError(
+                f"required_lane_refill: zero eligible {required} capacity; "
+                f"computed proposal lanes={proposed_lanes}. Mixed estimator ancestry is "
+                "experimental; canonical duplicates add no budget. Supply a new required-lane "
+                "program, a valid extension, or an explicit zero-allocation hold."
+            )
     betting = _preflight_betting_requests(decision,store,config,evidence)
     registry = _dataset_registry(config)
     requested = {}
@@ -254,6 +369,7 @@ def apply_decision(decision, store, search, retired, config, evidence, profile):
             error = profile.admission_error(checked)
             if error:
                 raise ValueError(error)
+    discipline = admit_decision(decision,store,search,retired,config,evidence)
     registrations = _decision_feature_definitions(decision,config,registry)
     from .feature_definitions import FeatureRegistry
     feature_registry = FeatureRegistry(registry.feature_registry)
@@ -265,6 +381,7 @@ def apply_decision(decision, store, search, retired, config, evidence, profile):
                 except (OSError,ValueError) as exc:
                     raise ValueError(f"Dataset request references an unknown feature definition: {identifier}") from exc
     store.record(decision, ceiling=config.proposal_batch_size)
+    store.receipt(decision.decision_id, "experiment-discipline:v1", discipline)
     for definition,metadata in registrations.values():
         feature_registry.register(definition,metadata)
     accepted = []
@@ -447,22 +564,35 @@ def _paper_evidence(store,directory,terminal):
             "pending":len(store.betting_actions(pending_only=True)),"scope":"Paper development research only; no independent strategy validation or wagers"}
 
 
-def _trace_paper_action(store,directory,action,config):
+def _trace_paper_action(store,directory,action,config,control_store=None):
     if store.action(action["decision_id"],"betting-traced:"+action["action_id"]) is not None:
         return
     completion = action["completion"]
     outbox = Path(directory)/"trace-outbox.sqlite"
     if outbox.is_file():
-        with sqlite3.connect(f"file:{outbox.resolve()}?mode=ro",uri=True) as conn:
-            exists = conn.execute("SELECT delivered FROM traces WHERE role='betting' AND number=?",(action["trace_number"],)).fetchone()
+        from .research_telemetry import _read_outbox
+        with _read_outbox(Path(directory)) as conn:
+            exists = conn.execute("SELECT delivered,payload,tracking_uri FROM traces WHERE role='betting' AND number=?",(action["trace_number"],)).fetchone()
         if exists is not None:
+            recorded=json.loads(exists['payload'])
+            if (exists['tracking_uri']!=config.mlflow_tracking_uri or
+                    recorded.get('action_id')!=action['action_id'] or
+                    recorded.get('decision_id')!=action['decision_id'] or
+                    recorded.get('request_id')!=action['request']['request_id']):
+                raise ValueError('Paper trace linkage differs from the recorded action')
+            if control_store is not None:
+                for raw in control_store.pending():
+                    body=json.loads(raw)
+                    if body['role']=='betting' and body['sequence']==action['trace_number']:
+                        control_store.acknowledge('betting',action['trace_number'])
             store.receipt(action["decision_id"],"betting-traced:"+action["action_id"],
                           {"status":"delivered" if exists[0] else "queued"})
             return
     payload = {"evidence_id":action["request"]["evidence_id"],"decision_id":action["decision_id"],
         "request_id":action["request"]["request_id"],"paper_only":True,"action_id":action["action_id"],
         "completion":completion,"native_planner_cost_usd":None,"additional_planner_calls":0}
-    linkage = log_snapshot(Path(directory),payload,config,role="betting",number=action["trace_number"])
+    linkage = _publish_campaign_trace(Path(directory),payload,config,role="betting",number=action["trace_number"],
+                                      control_store=control_store,signature=action['action_id'])
     store.receipt(action["decision_id"],"betting-traced:"+action["action_id"],{"trace":linkage})
 
 
@@ -505,6 +635,8 @@ def _worker(request, workload, threads):
     return result
 
 
+@storage_writer(stage='program_preparation',output=lambda a:Path(a['root']),
+                estimate=lambda a:cooperating_output_reservation(Path(a['dataset'])))
 def _prepare_program(dataset, recipe, digest, root):
     from .research_resources import JobMonitor
     with JobMonitor() as monitor:
@@ -549,7 +681,13 @@ class _FoldDependencies:
         for error in self.errors.values():
             if not isinstance(error,dict) or not isinstance(error.get("failures"),int) or error["failures"] < 1:
                 raise ValueError("Invalid fold dependency failure count")
-            error["blocked"] = error["failures"] >= 3
+            diagnostic=error.get('diagnostic')
+            legacy=0 if isinstance(diagnostic,dict) and diagnostic.get('failure_kind')=='infrastructure_storage' else error['failures']
+            scientific=error.get('scientific_failures',legacy)
+            if type(scientific) is not int or not 0<=scientific<=error['failures']:
+                raise ValueError('Invalid fold scientific failure count')
+            error['scientific_failures']=scientific
+            error["blocked"] = scientific >= 3
         self.ready, self._pins, self._stamps = {}, {}, {}
         # Finalization covers campaign returns without changing the executor lifetime.
         self._finalizer = weakref.finalize(self,type(self)._release_pins,self._pins)
@@ -577,11 +715,18 @@ class _FoldDependencies:
 
     def failed(self, dependency, pid, exc):
         self.invalidate(dependency)
-        failures = self.errors.get(dependency,{}).get("failures",0)+1
+        previous=self.errors.get(dependency,{})
+        failures = previous.get("failures",0)+1
+        scientific_failures=previous.get('scientific_failures',previous.get('failures',0))
+        if not isinstance(exc,StorageBlocked): scientific_failures+=1
         diagnostic = getattr(exc,"diagnostic",None)
         self.errors[dependency] = {"error":f"{type(exc).__name__}: {exc}","program_id":pid,
-            "failures":failures,"blocked":failures>=3,"last_failure_at_epoch":time.time(),
-            "retry_at_epoch":time.time()+30,"diagnostic":diagnostic}
+            "failures":failures,'scientific_failures':scientific_failures,
+            "blocked":scientific_failures>=3,"last_failure_at_epoch":time.time(),
+            # Storage backoff is owned by the durable operation ledger. This
+            # circuit only delays genuine preparation errors.
+            "retry_at_epoch":0 if isinstance(exc,StorageBlocked) else time.time()+30,
+            "diagnostic":diagnostic}
         self._save()
 
     def invalidate(self, dependency):
@@ -638,6 +783,60 @@ class _FoldDependencies:
             self._pins[dependency] = pins.pop_all()
             self._stamps[dependency] = stamps
             self.ready[dependency] = dict(artifacts)
+
+
+def _interrupted_runtime(path):
+    runtime=core._read_json(path) if path.exists() else {}
+    if runtime and runtime.get('status') not in {'failed','finished'}:
+        raise RuntimeError('Cannot defer a storage failure while its runtime may still be active')
+    return runtime
+
+
+def _defer_storage_fit(ledger,directory,attempt,error):
+    path=Path(directory)/'trials'/attempt/'runtime.json'
+    runtime=_interrupted_runtime(path)
+    return ledger.defer_infrastructure(attempt,{**error.diagnostic,'error':str(error)},
+                                      runtime_snapshot=runtime)
+
+
+def _defer_storage_operation(ledger,operation,path,error):
+    return ledger.defer_operation(operation,{**error.diagnostic,'error':str(error)},
+                                  runtime_snapshot=_interrupted_runtime(path))
+
+
+def _reset_operation_runtime(ledger,operation,path):
+    if not any(row['operation_id']==operation for row in ledger.operation_waits()):return
+    if path.exists():
+        current=core._read_json(path)
+        if current!=ledger.latest_infrastructure_runtime(operation):
+            raise ValueError('Runtime changed after its preserved infrastructure interruption')
+        # The old physical episode remains immutable in the ledger. Stable lock
+        # files are retained; only the inactive runtime pointer is reset.
+        path.unlink()
+
+
+def _reset_storage_retry_runtime(ledger,directory,attempt):
+    _reset_operation_runtime(ledger,attempt,Path(directory)/'trials'/attempt/'runtime.json')
+
+
+def _storage_wait_summary(ledger,fold_state):
+    return {'attempt_ids':[r['attempt_id'] for r in ledger.infrastructure_waits()],
+        'operation_ids':[r['operation_id'] for r in ledger.operation_waits()
+                         if r['operation_id'].startswith(('dataset:','program:','fold:'))],
+        'dependency_ids':sorted(key for key,row in fold_state.errors.items()
+            if (row.get('diagnostic') or {}).get('failure_kind')=='infrastructure_storage')}
+
+
+def _recover_published_attempt(ledger,directory,row):
+    """Commit an accepted physical episode before considering another fit."""
+    from .research_publication import read_accepted
+    accepted=read_accepted(directory,row)
+    if accepted is None:return None
+    recipe=PipelineRecipe.model_validate(row['payload']['recipe'])
+    accepted.update(core._portfolio_identity(recipe,'expansion_v6'),
+                    target_parameters=recipe.target.parameters)
+    ledger.complete_attempt(row['attempt_id'],accepted,status=accepted['status'])
+    return accepted
 
 
 def _fail_fold_allocation(row, dependency, error, ledger, hypotheses, directory):
@@ -810,6 +1009,9 @@ def _build_dataset(registry_root,request_id,source_snapshot,raw_manifest,feature
 
 def _recover_orphan_asks(search,ledger,contexts,authorized,revision,environment):
     """Bridge Optuna's durable ask to the execution ledger after an interrupted reserve."""
+    # A partial native ask is not an executable recipe. Reconcile its durable
+    # journal state before recovering fully materialized asks into the ledger.
+    search._reconcile_incomplete_asks()
     known = {(row["payload"]["program_id"],row["payload"]["trial_number"]) for row in ledger.reserved_attempts()}
     recovered = 0
     for pid in authorized:
@@ -821,10 +1023,12 @@ def _recover_orphan_asks(search,ledger,contexts,authorized,revision,environment)
             if trial.state.name != "RUNNING" or (pid,trial.number) in known:
                 continue
             value = trial.user_attrs.get("recipe")
-            if value is None:
-                model = proposal.recipe.model.model_copy(update={"parameters":dict(proposal.recipe.model.parameters)|trial.params})
-                value = proposal.recipe.model_copy(update={"model":model}).model_dump(mode="json")
+            if (value is None or trial.user_attrs.get('program_id') != pid
+                    or 'recipe_hash' not in trial.user_attrs):
+                continue
             recipe = PipelineRecipe.model_validate(value)
+            if recipe.recipe_hash() != trial.user_attrs['recipe_hash']:
+                raise ValueError('Recovered Optuna recipe hash mismatch')
             from .research_search import RecipeSuggestion
             suggestion = RecipeSuggestion(f"{pid}-{trial.number:06d}",trial.number,recipe,proposal.hypothesis,proposal.changed_axes,pid,proposal.proposal_id)
             signature = core._execution_signature(recipe,context["digest"],context["protocol"],revision,environment)
@@ -859,17 +1063,142 @@ def _upload_result_with_tracing_lock(config, dataset, attempt):
         return upload_result(config, dataset, attempt)
 
 
+@contextmanager
+def _trace_control_session(directory,config):
+    root=os.environ.get('IMA_STORAGE_ROOT')
+    if not root or not config.mlflow_tracking_uri:
+        yield None
+        return
+    from .research_control import ControlIntentStore
+    from .research_storage import StorageAuthority
+    try:
+        store=ControlIntentStore(StorageAuthority(root))
+    except FileNotFoundError as exc:
+        raise StorageBlocked('Trace control requires explicit healthy bootstrap',
+                             {'stage':'trace_control_startup','output':str(directory)}) from exc
+    with store.claim(directory,config.mlflow_tracking_uri):
+        yield store
+
+
+def _decision_control_identity(directory,evidence):
+    source=Path(directory)/'evidence'/(evidence['decision_id']+'.json')
+    if source.resolve().parent!=(Path(directory)/'evidence').resolve():
+        raise ValueError('Decision evidence escaped its immutable source directory')
+    encoded=source.read_bytes()
+    if json.dumps(json.loads(encoded),sort_keys=True,allow_nan=False)!=json.dumps(evidence,sort_keys=True,allow_nan=False):
+        raise ValueError('Planner input differs from its durable evidence')
+    return {'decision_id':evidence['decision_id'],'evidence_id':evidence['evidence_id'],
+            'evidence_source_sha256':hashlib.sha256(encoded).hexdigest()}
+
+
+def _publish_campaign_trace(directory,payload,config,*,role,number,control_store=None,
+                            signature=None,evidence=None):
+    if control_store is None:
+        return log_snapshot(directory,payload,config,role=role,number=number)
+    identity=None
+    if role=='decision':
+        if evidence is None:
+            evidence=core._read_json(Path(directory)/'evidence'/(payload['decision_id']+'.json'))
+        identity=_decision_control_identity(directory,evidence)
+    return log_snapshot(directory,payload,config,role=role,number=number,
+                        control_store=control_store,execution_signature=signature,
+                        decision_evidence_identity=identity)
+
+
+def _hydrate_control_queue(store,queue,active_decision=None):
+    unresolved=[]
+    if store is None:return unresolved
+    for raw in store.pending():
+        body=json.loads(raw)
+        key=(body['role'],body['sequence'])
+        if body['state']=='complete':
+            prior=queue.get(key,{}).get('control_envelope')
+            if prior is not None and prior!=raw:raise ValueError('Pending control intent changed')
+            queue[key]={'payload':body['payload'],'signature':body['signature'],'control_envelope':raw}
+        elif body['sequence']!=active_decision and key not in queue:
+            unresolved.append(body)
+    return unresolved
+
+
+def _recover_saved_planner_response(directory,store):
+    """Resume a validated saved paid response through the normal decision path."""
+    if store is None:return None
+    for raw in store.pending():
+        body=json.loads(raw)
+        if body['role']!='decision' or body['state']!='reserved':continue
+        identifier=f"D{body['sequence']:06d}"
+        response_path=Path(directory)/'planner-responses'/(identifier+'.json')
+        if not response_path.is_file():continue
+        evidence_path=Path(directory)/'evidence'/(identifier+'.json')
+        if (response_path.resolve()!=response_path or evidence_path.resolve()!=evidence_path):
+            raise ValueError('Saved planner recovery source is not canonical')
+        evidence=core._read_json(evidence_path)
+        if _decision_control_identity(directory,evidence)!=body['evidence_identity']:
+            raise ValueError('Saved planner evidence differs from its reserved identity')
+        saved=core._read_json(response_path)
+        response=saved.get('response')
+        if saved.get('evidence_id')!=evidence['evidence_id'] or not isinstance(response,dict):
+            raise ValueError('Saved planner response has invalid evidence identity')
+        decision=PlannerDecision.model_validate(response.get('decision'))
+        if decision.decision_id!=identifier or decision.evidence_id!=evidence['evidence_id']:
+            raise ValueError('Saved planner decision differs from its reserved identity')
+        future=Future()
+        future.saved_response_recovery=True
+        future.set_result(response)
+        return future,evidence
+    return None
+
+
+def _trace_phase(error):
+    return getattr(error,'trace_publication_phase',None) or getattr(error,'diagnostic',{}).get('trace_publication_phase')
+
+
+def _retain_trace_pressure(queue,role,number,payload,signature=None):
+    queue.setdefault((role,number),{'payload':json.loads(json.dumps(payload,allow_nan=False)),
+                                  'signature':signature})
+
+
+def _refresh_control_queue(store,queue,previous,active_decision=None):
+    try:
+        return _hydrate_control_queue(store,queue,active_decision),False,None
+    except StorageBlocked as exc:
+        return previous,True,str(exc)
+
+
+def _control_planner_spend(directory,unresolved,planning=None,*,control_state_unknown=False,control_store=None):
+    identifiers=[body['evidence_identity'].get('decision_id',f"D{body['sequence']:06d}")
+                 for body in unresolved]
+    if planning is not None:identifiers.append(planning[1]['decision_id'])
+    fallback=[]
+    if control_store is not None:
+        try:
+            for raw in control_store.pending():
+                body=json.loads(raw)
+                if body['role']=='decision' and body['state']=='complete':
+                    fallback.append(body['payload'])
+        except StorageBlocked:control_state_unknown=True
+    try:
+        spend = _planner_spend(directory,reserved_decision_ids=identifiers,
+            fallback_decisions=fallback,include_trace_receipts=control_store is not None)
+    except StorageBlocked:
+        spend = _planner_spend(directory,reserved_decision_ids=identifiers,fallback_decisions=fallback)
+        control_state_unknown=True
+    if control_state_unknown:
+        spend.update(total_cost_usd=None,spend_unknown=True,control_state_unknown=True)
+    return spend
+
+
 def run_expansion_campaign(config):
     """Continuous planning/preparation/fit/upload with deterministic resource dispatch."""
-    from .research_resources import JobEstimator, observe_cgroup, observe_process_tree, ProgressiveCapacity
+    from .research_resources import JobEstimator, observe_cgroup, observe_process_tree, ProgressiveCapacity, partition_worker_private
     from .research_scheduler import ResourceAdmission, fair_program_order, memory_budget_gib
     from .research_v5 import discovery_evidence
     config.validate()
     if not config.dataset_path or not config.protocol_path:
         raise ValueError("V6 requires immutable dataset and explicit protocol paths")
-    directory = Path(config.campaign_dir)
-    directory.mkdir(parents=True, exist_ok=True)
-    with core.campaign_lock(directory):
+    directory = Path(config.campaign_dir).resolve()
+    core._prepare_campaign_directory(directory)
+    with core.campaign_lock(directory), _trace_control_session(directory,config) as trace_control:
         campaign_started = time.monotonic()
         dataset = core._resolve_dataset(config, directory)
         digest, protocol = core._hash_file(dataset), core._protocol_parameters(config)
@@ -910,6 +1239,17 @@ def run_expansion_campaign(config):
         history_snapshot = history.startup(interrupted_attempts=[row["attempt_id"] for row in ledger.reserved_attempts() if row["status"]=="running"],
                                           journal_entries=read_own_unit_journal(history.unit))
         for row in ledger.reserved_attempts():
+            if row['status'] in {'running','reserved'}:
+                # Keep the durable storage backoff across controller restarts.
+                # A ready accepted publication is committed before worker cleanup;
+                # a blocked commit is deferred and retried by the normal pending loop.
+                if not ledger.retry_ready(row['attempt_id']):
+                    continue
+                try:
+                    _recover_published_attempt(ledger,directory,row)
+                except StorageBlocked as exc:
+                    _defer_storage_fit(ledger,directory,row['attempt_id'],exc)
+                    continue
             workload_path = directory/"trials"/row["attempt_id"]/"workload.json"
             if workload_path.is_file():
                 from .research_resources import JobWorkload
@@ -917,6 +1257,10 @@ def run_expansion_campaign(config):
             if row["status"] in {"running","reserved"}:
                 cleanup_attempt_group(directory/"trials"/row["attempt_id"]/"runtime.json")
         ledger.recover_running()
+        from .research_publication import pending_feedback,deliver_feedback
+        feedback_queue=pending_feedback(directory,ledger.reserved_attempts())
+        feedback_retry={attempt:0 for attempt in feedback_queue}
+        reconcile_reused_tells(directory,search)
         startup_tell_error = None
         try:
             core._reconcile_tells(ledger,search)
@@ -939,19 +1283,35 @@ def run_expansion_campaign(config):
         paper_retry_after = {}
         paper_errors = {}
         paper_trace_failures = {}
+        paper_trace_retry_after = {}
         paper_drain_started = None
         upload_failures = {}
+        upload_storage_blocked = {}
         trace_failures = 0
+        trace_storage_blocked = bool(config.mlflow_tracking_uri and _pending_trace_count(directory) is None)
+        pending_trace_enqueues = {}
+        unresolved_trace_controls=_hydrate_control_queue(trace_control,pending_trace_enqueues)
+        trace_control_state_unknown=False
+        trace_storage_blocked=trace_storage_blocked or bool(pending_trace_enqueues)
         tell_failures = 0
         next_upload_retry = next_trace_retry = 0.
-        tracking_errors = [startup_tell_error] if startup_tell_error else []
+        tracking_errors = _TrackingDiagnostics([startup_tell_error] if startup_tell_error else [])
         stop_mode = None
         last_error = None
+        if unresolved_trace_controls:last_error='Unresolved decision reservation; paid planning frozen'
         last_plan = last_snapshot = last_history = last_trace = last_journal = 0.
         last_summary_signature = None
         terminal_since_plan = 0
+        material_change = False
+        best_values = {key: value['objective_value'] for key, value in
+                       evidence_snapshot(ledger.terminal_results())['champions_by_contract'].items()}
         decision_number = 1 + max([int(p.stem[1:]) for p in (directory/"evidence").glob("D*.json")]+[0])
-        snapshot_number = next_trace_number(directory,"execution")
+        try:
+            snapshot_number = next_trace_number(directory,"execution")
+        except StorageBlocked as exc:
+            snapshot_number=None
+            trace_storage_blocked=True
+            tracking_errors.append(str(exc))
         jobs = config.max_concurrent_trials if isinstance(config.max_concurrent_trials, int) else config.cpu_thread_budget
         cpu = min(config.cpu_thread_budget, max(1, (psutil.cpu_count() or 1)-config.host_reserve_cpu_threads))
         budget_gib = min(memory_budget_gib(config.memory_budget_gb_decimal), config.ram_budget_gib)
@@ -1000,20 +1360,50 @@ def run_expansion_campaign(config):
                     history_snapshot = history.observe(cgroup=cgroup,
                         running_attempts=[value[0] for value in inflight.values()],attempt_measurements=measurements,journal_entries=journal)
                     last_history = now
-                observed = observe_process_tree().get("private_bytes",0)/1024**3
-                active_private = sum(item["runtime"].get("private_current_bytes",0) for item in active_runtime if item["status"]=="running")/1024**3
-                resources.resident_gib = max(residency,observed-active_private)
+                worker_runtimes = {attempt: read_runtime(directory/"trials"/attempt/"runtime.json")
+                                   for attempt,_,_ in inflight.values()}
+                worker_runtimes.update({f"prepare:{pid}": read_runtime(directory/"preparation-runtime"/pid/"runtime.json")
+                                        for pid in preparing.values()})
+                worker_runtimes.update({"fold:"+dependency: read_runtime(request.output_dir/"runtime.json")
+                                        for dependency,_,_,request in fold_preparing.values()})
+                worker_runtimes.update({"dataset:"+request_id: read_runtime(directory/"dataset-runtime"/request_id/"runtime.json")
+                                        for request_id,_ in building_datasets.values()})
+                if paper_future is not None:
+                    action = paper_future[1]
+                    worker_runtimes["paper:"+action["action_id"]] = read_runtime(
+                        directory/"paper-runtime"/action["action_id"]/f"attempt-{_paper_attempt_count(decisions,action)}.json")
+                worker_runtimes = {key: value for key, value in worker_runtimes.items() if key in resources.active}
+                memory_partition = partition_worker_private(observe_process_tree(), worker_runtimes)
+                resources.resident_gib = max(residency,memory_partition["resident_private_bytes"]/1024**3)
                 limit = cgroup.get("memory.max")
                 cgroup_headroom = (limit-cgroup.get("memory.current",0))/1024**3 if isinstance(limit,int) else None
+                # Start from this loop's fresh sample, then debit any newly observed
+                # worker peak growth so the following admission sees both facts.
                 resources.set_headroom(memory_available_gib=max(0,host.available/1024**3-config.host_reserve_ram_gib),
                     cgroup_available_gib=cgroup_headroom,
                     disk_available_bytes=psutil.disk_usage(directory).free)
+                for key, measured in memory_partition["workers"].items():
+                    if key in resources.active:
+                        resources.observe_private_peak(key, measured["private_peak_bytes"])
                 representative = [sample for sample in estimator.samples if not sample.failed and not sample.censored]
                 per_fit = max((s.private_peak_bytes/1024**3 for s in representative),default=2.)
                 remaining = budget_gib-resources.snapshot()["reserved_ram_gib"]-resources.resident_gib
                 ramp_state = ramp.observe(headroom_gib=min(remaining,host.available/1024**3,cgroup_headroom if cgroup_headroom is not None else remaining),private_per_fit_gib=per_fit,representative_folds=len(representative),now=now)
                 resources.max_fits = ramp.cap
                 resources.max_expensive_fits = max(1,ramp.cap-1)
+
+                if planning is None and trace_control is not None:
+                    try:
+                        planning=_recover_saved_planner_response(directory,trace_control)
+                    except StorageBlocked as exc:
+                        trace_storage_blocked=True
+                        trace_control_state_unknown=True
+                        tracking_errors.append(str(exc))
+                        next_trace_retry=now+(1 if stop_mode else 30)
+
+                    except (ValueError,FileNotFoundError) as exc:
+                        last_error='Saved planner response recovery rejected: '+str(exc)
+                        tracking_errors.append(last_error)
 
                 if uploading and uploading[0].done():
                     future, attempt = uploading
@@ -1022,19 +1412,29 @@ def run_expansion_campaign(config):
                         if not link:
                             raise ValueError("MLflow upload produced no run/model linkage")
                         ledger.mark_uploaded(attempt, json.dumps(link,sort_keys=True))
+                        upload_storage_blocked.pop(attempt,None)
                     except Exception as exc:
                         tracking_errors.append(str(exc))
-                        upload_failures[attempt] = upload_failures.get(attempt,0)+1
+                        storage = as_storage_blocked(exc,stage='model_upload',output=directory)
+                        if storage is not None:
+                            upload_storage_blocked[attempt] = storage.diagnostic
+                        else:
+                            upload_storage_blocked.pop(attempt,None)
+                            upload_failures[attempt] = upload_failures.get(attempt,0)+1
                         next_upload_retry = now+(1 if stop_mode else 30)
                     uploading = None
                 if tracing and tracing.done():
                     try:
                         report = tracing.result()
                         tracking_errors.extend(str(error) for error in report.get("errors",[]))
-                        trace_failures = trace_failures+1 if report.get("errors") else 0
+                        trace_storage_blocked=any(error.get('failure_kind')=='infrastructure_storage'
+                            for error in report.get('errors',[]) if isinstance(error,dict))
+                        if not trace_storage_blocked:
+                            trace_failures = trace_failures+1 if report.get("errors") else 0
                     except Exception as exc:
                         tracking_errors.append(str(exc))
-                        trace_failures += 1
+                        if isinstance(exc,StorageBlocked):trace_storage_blocked=True
+                        else:trace_failures += 1
                     tracing = None
                     next_trace_retry = now+(1 if stop_mode else 30)
                 if config.mlflow_tracking_uri and uploading is None and tracing is None and now>=next_upload_retry and not drain_expired:
@@ -1042,9 +1442,63 @@ def run_expansion_campaign(config):
                     feasible_outbox = [row for row in outbox if upload_failures.get(row["attempt_id"],0)<3]
                     if feasible_outbox:
                         uploading = (uploader.submit(_upload_result_with_tracing_lock,config,dataset,feasible_outbox[0]),feasible_outbox[0]["attempt_id"])
-                if config.mlflow_tracking_uri and uploading is None and tracing is None and now>=next_trace_retry and trace_failures<3 and not drain_expired and _pending_trace_count(directory):
-                    from .research_telemetry import drain_trace_outbox
-                    tracing = uploader.submit(drain_trace_outbox,directory,config,limit=20)
+                if config.mlflow_tracking_uri and uploading is None and tracing is None and now>=next_trace_retry and trace_failures<3 and not drain_expired:
+                    active_decision=int(planning[1]['decision_id'][1:]) if planning else None
+                    if trace_control is not None:
+                        unresolved_trace_controls,trace_control_state_unknown,control_error=_refresh_control_queue(
+                            trace_control,pending_trace_enqueues,unresolved_trace_controls,active_decision)
+                        if trace_control_state_unknown:
+                            trace_storage_blocked=True
+                            tracking_errors.append(control_error)
+                            next_trace_retry=now+(1 if stop_mode else 30)
+                    if snapshot_number is None:
+                        try:
+                            snapshot_number=next_trace_number(directory,'execution')
+                        except StorageBlocked as exc:
+                            trace_storage_blocked=True
+                            tracking_errors.append(str(exc))
+                            next_trace_retry=now+(1 if stop_mode else 30)
+                    queued=sorted(list(pending_trace_enqueues.items()),
+                                  key=lambda item:(not bool(item[1].get('control_envelope')),item[0]))
+                    for (role,number),pending in queued:
+                        try:
+                            if pending.get('control_envelope') is not None:
+                                from .research_telemetry import replay_control_trace
+                                replay_control_trace(trace_control,pending['control_envelope'],config)
+                            else:
+                                _publish_campaign_trace(directory,pending['payload'],config,role=role,number=number,
+                                    control_store=trace_control,signature=pending.get('signature'))
+                        except Exception as exc:
+                            tracking_errors.append(str(exc))
+                            if _trace_phase(exc)=='outbox_delivery':
+                                del pending_trace_enqueues[(role,number)]
+                                if role=='execution':
+                                    snapshot_number=max(snapshot_number or 0,number+1)
+                                    last_summary_signature=pending.get('signature')
+                            if isinstance(exc,StorageBlocked):trace_storage_blocked=True
+                            else:trace_failures+=1
+                            next_trace_retry=now+(1 if stop_mode else 30)
+                            break
+                        else:
+                            del pending_trace_enqueues[(role,number)]
+                            if role=='execution':
+                                snapshot_number=max(snapshot_number or 0,number+1)
+                                last_summary_signature=pending.get('signature')
+                                last_trace=now
+                    if trace_control is not None:
+                        unresolved_trace_controls,trace_control_state_unknown,control_error=_refresh_control_queue(
+                            trace_control,pending_trace_enqueues,unresolved_trace_controls,active_decision)
+                        if trace_control_state_unknown:
+                            trace_storage_blocked=True
+                            tracking_errors.append(control_error)
+                    pending_traces_now=_pending_trace_count(directory)
+                    if pending_traces_now==0 and not trace_control_state_unknown and not pending_trace_enqueues and snapshot_number is not None:
+                        trace_storage_blocked=False
+                        next_trace_retry=now+30
+                    elif now>=next_trace_retry:
+                        if pending_traces_now is None:trace_storage_blocked=True
+                        from .research_telemetry import drain_trace_outbox
+                        tracing = uploader.submit(drain_trace_outbox,directory,config,limit=20)
 
                 for future in list(building_datasets):
                     if not future.done():
@@ -1054,14 +1508,21 @@ def run_expansion_campaign(config):
                     resources.release("dataset:"+request_id)
                     try:
                         manifest = future.result()
+                        ledger.complete_operation('dataset:'+request_id)
                         actual = manifest.pop("worker_resources",None)
                         if actual and actual.get("supported"):
                             preparation_estimator.record(workload,actual)
                         dataset_errors.pop(request_id,None)
                         hypotheses.record("dataset:"+manifest["dataset_id"],request_id,"dataset_verified",{"dataset_id":manifest["dataset_id"],"validation":manifest["validation"]})
                     except Exception as exc:
-                        dataset_errors[request_id] = str(exc)
-                        hypotheses.record("dataset-rejected:"+request_id,request_id,"dataset_rejected",{"error":str(exc)})
+                        storage=as_storage_blocked(exc,stage='dataset_completion',output=directory)
+                        if storage is not None:
+                            _defer_storage_operation(ledger,'dataset:'+request_id,
+                                directory/'dataset-runtime'/request_id/'runtime.json',storage)
+                        else:
+                            dataset_errors[request_id] = str(exc)
+                            material_change = True
+                            hypotheses.record("dataset-rejected:"+request_id,request_id,"dataset_rejected",{"error":str(exc)})
 
                 for future in list(preparing):
                     if not future.done():
@@ -1071,15 +1532,23 @@ def run_expansion_campaign(config):
                     resources.release(f"prepare:{pid}")
                     try:
                         ready[pid] = future.result()
+                        ledger.complete_operation('program:'+pid)
                         actual = ready[pid].get("worker_resources",{})
                         if actual.get("supported"):
                             context = contexts[pid]
                             preparation_estimator.record(_workload(search.programs[pid].recipe,context["rows"],revision,environment,stage="feature_generation"),actual)
                         core._write_json_atomic(directory/"prepared-programs"/f"{pid}.json", ready[pid])
                     except Exception as exc:
-                        retired.add(pid)
-                        core._write_json_atomic(retired_path,sorted(retired))
-                        hypotheses.record(f"preparation:{pid}",pid,"preparation_rejected",{"error":str(exc)})
+                        storage=as_storage_blocked(exc,stage='program_completion',output=directory)
+                        if storage is not None:
+                            ready.pop(pid,None)
+                            _defer_storage_operation(ledger,'program:'+pid,
+                                directory/'preparation-runtime'/pid/'runtime.json',storage)
+                        else:
+                            retired.add(pid)
+                            core._write_json_atomic(retired_path,sorted(retired))
+                            hypotheses.record(f"preparation:{pid}",pid,"preparation_rejected",{"error":str(exc)})
+                            material_change = True
 
                 for future in list(fold_preparing):
                     if not future.done():
@@ -1090,8 +1559,13 @@ def run_expansion_campaign(config):
                     try:
                         outcome = future.result()
                         fold_state.publish(dependency,outcome["artifacts"])
+                        ledger.complete_operation('fold:'+dependency)
                     except Exception as exc:
-                        fold_state.failed(dependency,pid,exc)
+                        storage=as_storage_blocked(exc,stage='fold_completion',output=directory)
+                        fold_state.failed(dependency,pid,storage or exc)
+                        if storage is not None:
+                            _defer_storage_operation(ledger,'fold:'+dependency,request.output_dir/'runtime.json',storage)
+                        material_change = storage is None or material_change
                         if fold_state.blocked(dependency):
                             for candidate in contexts:
                                 context = contexts[candidate]
@@ -1112,9 +1586,17 @@ def run_expansion_campaign(config):
                     attempt,payload,workload = inflight.pop(future)
                     cleanup_attempt_group(directory/"trials"/attempt/"runtime.json")
                     resources.release(attempt)
+                    from .research_publication import read_accepted
+                    published=read_accepted(directory,{'attempt_id':attempt,'payload':payload})
                     try:
-                        result = future.result().serializable()
+                        # Publication can survive a later runtime fsync failure.
+                        # Recover it before treating transport/storage as a retry.
+                        result = published if published is not None else future.result().serializable()
                     except Exception as exc:
+                        storage=as_storage_blocked(exc,stage='fit_worker',output=directory/'trials'/attempt)
+                        if storage is not None:
+                            _defer_storage_fit(ledger,directory,attempt,storage)
+                            continue
                         runtime_path = directory/"trials"/attempt/"runtime.json"
                         if isinstance(exc,TimeoutError):
                             cleanup_attempt_group(runtime_path)
@@ -1137,7 +1619,17 @@ def run_expansion_campaign(config):
                     if result["metrics"].get("worker_resources",{}).get("supported"):
                         actual = dict(result["metrics"]["worker_resources"],failed=result["status"]!="completed")
                         estimator.record(workload,actual)
-                    ledger.complete_attempt(attempt,result,status=result["status"])
+                    try:
+                        ledger.complete_attempt(attempt,result,status=result["status"])
+                    except StorageBlocked as exc:
+                        # The supervisor's immutable result remains authoritative.
+                        # Back off the ledger write, never retrain this episode.
+                        _defer_storage_fit(ledger,directory,attempt,exc)
+                        continue
+                    if result['status']=='completed':
+                        feedback_queue.update(pending_feedback(directory,[
+                            {'attempt_id':attempt,'status':'completed','payload':payload}]))
+                        if attempt in feedback_queue:feedback_retry[attempt]=0
                     core._append_jsonl(directory/"trials.jsonl", result)
                     hypotheses.record(f"outcome:{attempt}",payload["program_id"],"evaluated",
                         {"attempt_id":attempt,"objective_value":result["objective_value"],"status":result["status"],"error":result.get("error")})
@@ -1146,6 +1638,19 @@ def run_expansion_campaign(config):
                     except Exception as exc:
                         tracking_errors.append(str(exc))
                     terminal_since_plan += 1
+                    material_change = observe_material_result(result, payload['recipe'], best_values) or material_change
+
+                for attempt in list(feedback_queue):
+                    if now<feedback_retry.get(attempt,0):continue
+                    try:
+                        deliver_feedback(directory,feedback_queue[attempt])
+                    except Exception as exc:
+                        tracking_errors.append('Accepted feature feedback '+attempt+': '+str(exc))
+                        feedback_retry[attempt]=now+30
+                    else:
+                        del feedback_queue[attempt]
+                        feedback_retry.pop(attempt,None)
+                    break
 
                 if paper_future and paper_future[0].done():
                     future,action,workload = paper_future
@@ -1204,14 +1709,22 @@ def run_expansion_campaign(config):
                     paper_future = (future,action,workload)
                 for action in decisions.betting_actions():
                     if action["completion"] is not None:
-                        if paper_trace_failures.get(action["action_id"],0)>=3:
+                        if paper_trace_failures.get(action["action_id"],0)>=3 or now<paper_trace_retry_after.get(action['action_id'],0):
                             continue
                         try:
-                            _trace_paper_action(decisions,directory,action,config)
+                            if trace_control is None:_trace_paper_action(decisions,directory,action,config)
+                            else:_trace_paper_action(decisions,directory,action,config,control_store=trace_control)
                         except Exception as exc:
                             tracking_errors.append(str(exc))
                             identifier = action["action_id"]
-                            paper_trace_failures[identifier] = paper_trace_failures.get(identifier,0)+1
+                            if isinstance(exc,StorageBlocked):
+                                trace_storage_blocked=True
+                                paper_trace_retry_after[identifier]=now+(1 if stop_mode else 30)
+                                next_trace_retry=now+(1 if stop_mode else 30)
+                                active_decision=int(planning[1]['decision_id'][1:]) if planning else None
+                                unresolved_trace_controls,trace_control_state_unknown,_=_refresh_control_queue(
+                                    trace_control,pending_trace_enqueues,unresolved_trace_controls,active_decision)
+                            else:paper_trace_failures[identifier] = paper_trace_failures.get(identifier,0)+1
 
                 budgets = decisions.authorized_budgets()
                 authorized = set(budgets)
@@ -1225,24 +1738,38 @@ def run_expansion_campaign(config):
                 preparation_capacity = dict(capacity)
                 preparation_capacity.update({pid:max(1,capacity.get(pid,0)) for pid in resumed_ids|orphan_ids})
                 programs_waiting = len({pid for pid,remaining in capacity.items() if remaining>0} | resumed_ids | orphan_ids)
-                needs_plan = (terminal_since_plan >= config.replan_every_terminal_trials or
-                    sum(capacity.values()) <= config.queue_low_watermark or
-                    _needs_lane_refill(capacity,search.programs,len(ledger.reserved_attempts())) or
-                    now-last_plan >= config.planning_checkpoint_seconds)
-                if not stop_mode and planning is None and needs_plan and now-last_plan >= (60 if last_error else 5):
-                    spend = _planner_spend(directory)
+                plan_reason = planning_reason(now=now, last_plan=last_plan,
+                    terminal_since_plan=terminal_since_plan, terminal_threshold=config.replan_every_terminal_trials,
+                    remaining_trials=sum(capacity.values()), low_watermark=config.queue_low_watermark,
+                    active_jobs=len(inflight)+len(preparing)+len(fold_preparing)+len(building_datasets)+int(paper_future is not None),
+                    available_program_slots=max(0,config.max_pending_programs-programs_waiting),
+                    checkpoint_seconds=config.planning_checkpoint_seconds,
+                    lane_refill_required=_needs_lane_refill(capacity,search.programs,len(ledger.reserved_attempts())),
+                    material_change=material_change)
+                needs_plan = plan_reason is not None
+                storage_waits=_storage_wait_summary(ledger,fold_state)
+                if not stop_mode and planning is None and needs_plan and not trace_control_state_unknown and not unresolved_trace_controls and not pending_trace_enqueues and not trace_storage_blocked and not upload_storage_blocked and not any(storage_waits.values()) and now-last_plan >= (60 if last_error else 5):
+                    spend = _control_planner_spend(directory,unresolved_trace_controls,
+                        control_state_unknown=trace_control_state_unknown,control_store=trace_control)
                     if config.planner_mode == "openrouter" and spend["spend_unknown"]:
                         last_error = "Planner call cost is unknown; further paid calls are frozen"
                         last_plan = now
                     elif config.planner_mode == "openrouter" and _unsent_failure_streak(directory)>=3:
                         last_error = "Planner pre-dispatch retry circuit open after three unsent failures"
                         last_plan = now
+                    elif config.planner_mode == "openrouter" and _required_lane_failure_streak(directory)>=3:
+                        last_error = "Required-lane retry circuit open after three rejected decisions; manual corrective decision required"
+                        last_plan = now
                     elif config.max_total_cost_usd is not None and spend["known_spend_usd"] >= config.max_total_cost_usd:
                         last_error = "Planner prior-spend admission threshold reached; not a provider-enforced billing cap"
                         last_plan = now
                     else:
                         terminal = ledger.terminal_results()
-                        evidence = evidence_snapshot(terminal,decision_id=f"D{decision_number:06d}",
+                        discipline = lifecycle_snapshot(directory,search,retired,
+                            remaining_capacity=capacity,references=references)
+                        core._write_json_atomic(directory/"experiment-discipline.json",discipline)
+                        evidence = evidence_snapshot(terminal,decision_id=f"D{decision_number:06d}", planning_reason=plan_reason,
+                            experiment_discipline=planner_view(discipline),
                             feature_profile=profile.summary, feature_evidence=discovery_evidence(terminal),
                             references=references, hypothesis_memory=hypotheses.retrieve(limit=30),
                             paper_research=_paper_evidence(decisions,directory,terminal),
@@ -1258,10 +1785,22 @@ def run_expansion_campaign(config):
                             dataset_registry={"states":[registry.get(value["request_id"]) for value in decisions.dataset_actions()],"building":list(item[0] for item in building_datasets.values()),"errors":dict(dataset_errors)},
                             capabilities=_capabilities(config,dataset,dataset_digest=digest,registry=registry))
                         core._write_json_atomic(directory/"evidence"/f"{evidence['decision_id']}.json",evidence)
-                        planning = (planner.submit(plan_decision,evidence,config),evidence)
-                        decision_number += 1
+                        try:
+                            if trace_control is not None:
+                                with trace_control.authority.admitted(
+                                        bytes_required=16*1024**2+8*trace_control.policy.max_envelope_bytes,
+                                        inodes_required=8,stage='planner_preflight',output=directory):
+                                    trace_control.reserve_decision(decision_number,
+                                        _decision_control_identity(directory,evidence))
+                            planning = (planner.submit(plan_decision,evidence,config),evidence)
+                            decision_number += 1
+                        except StorageBlocked as exc:
+                            trace_storage_blocked=True
+                            last_error=str(exc)
+                            tracking_errors.append(str(exc))
                         last_plan = now
                         terminal_since_plan = 0
+                        material_change = False
                 if planning and planning[0].done():
                     future,evidence = planning
                     payload = {"decision_id":evidence["decision_id"],"evidence_id":evidence["evidence_id"],
@@ -1271,7 +1810,9 @@ def run_expansion_campaign(config):
                         response = future.result()
                         core._write_json_atomic(directory/"planner-responses"/f"{evidence['decision_id']}.json",{"response":response,"evidence_id":evidence["evidence_id"]})
                         decision = PlannerDecision.model_validate(response["decision"])
-                        if programs_waiting+len(decision.programs)-len(decision.retire_program_ids) > config.max_pending_programs:
+                        replay=decisions.action(decision.decision_id,'experiment-discipline:v1') is not None
+                        additional_programs=0 if replay else len(decision.programs)
+                        if programs_waiting+additional_programs-len(decision.retire_program_ids) > config.max_pending_programs:
                             raise ValueError("Pending research-program backlog ceiling exceeded")
                         accepted = apply_decision(decision,decisions,search,retired,config,evidence,profile)
                         payload.update(decision.model_dump(mode="json"),program_ids=accepted,
@@ -1286,6 +1827,8 @@ def run_expansion_campaign(config):
                         calls = [normalize_openrouter_usage(core._read_json(p)["response"])
                                  for p in (directory/"planner-calls").glob(f"{evidence['decision_id']}-*.json")]
                         payload.update(planner_status="failed",error=last_error,planner_usage=response.get("usage",{}) if isinstance(response,dict) and response.get("usage") else _sum_planner_usage(calls) if calls else {})
+                    if getattr(future,'saved_response_recovery',False):
+                        payload.update(saved_response_recovered=True,additional_planner_calls=0)
                     from .openrouter_orchestrator import normalize_openrouter_usage, _sum_planner_usage
                     physical_calls = [normalize_openrouter_usage(core._read_json(path)["response"])
                         for path in (directory/"planner-calls").glob(f"{evidence['decision_id']}-*.json")]
@@ -1296,20 +1839,34 @@ def run_expansion_campaign(config):
                     dispatch = classify_transport_attempts([item.get("events") for item in transport_attempts])
                     payload.update(dispatch_status=dispatch,transport_attempts=transport_attempts,
                         transport_phase=transport_attempts[-1]["events"][-1]["phase"] if transport_attempts and transport_attempts[-1].get("events") else None)
-                    if not physical_calls and dispatch["classification"]=="not_dispatched":
+                    if response is None and not physical_calls and dispatch["classification"]=="not_dispatched":
                         payload["planner_usage"] = {"cost_status":"not_dispatched"}
-                    core._write_json_atomic(directory/"decisions"/f"{evidence['decision_id']}.json",payload)
                     try:
                         decision_snapshot = evidence_snapshot(ledger.terminal_results()) | payload
-                        decision_snapshot.update(code_revision=revision,planner_spend=_planner_spend(directory),
+                        if trace_control is not None:
+                            decision_snapshot['planner_response'] = response
+                        decision_snapshot.update(code_revision=revision,planner_spend=_control_planner_spend(directory,unresolved_trace_controls,planning if trace_control is not None else None,control_store=trace_control),
                             campaign_id=directory.name,resources=resources.snapshot(),capacity_ramp=ramp_state,max_fits=jobs,
                             invocation_id=history_snapshot["current_invocation_id"],invocation_history=history_snapshot["invocations"],
                             oom_history=history_snapshot["oom_facts"],restart_count=history_snapshot["restart_count"],
                             prior_champions_by_contract=reference_bests,active_trials=active_attempt_summary(directory,ledger.reserved_attempts()))
-                        log_snapshot(directory,decision_snapshot,config,
-                            role="decision",number=int(evidence["decision_id"][1:]))
+                        decision_snapshot=json.loads(json.dumps(decision_snapshot,allow_nan=False))
+                        _publish_campaign_trace(directory,decision_snapshot,config,
+                            role="decision",number=int(evidence["decision_id"][1:]),
+                            control_store=trace_control,evidence=evidence)
                     except Exception as exc:
                         tracking_errors.append(str(exc))
+                        if isinstance(exc,StorageBlocked):
+                            trace_storage_blocked=True
+                            if _trace_phase(exc)!='outbox_delivery':
+                                _retain_trace_pressure(pending_trace_enqueues,
+                                    'decision',int(evidence['decision_id'][1:]),decision_snapshot)
+                            next_trace_retry=now+(1 if stop_mode else 30)
+                    try:
+                        core._write_json_atomic(directory/"decisions"/f"{evidence['decision_id']}.json",payload)
+                    except StorageBlocked as exc:
+                        tracking_errors.append(str(exc))
+                        trace_storage_blocked=True
                     planning = None
 
                 # Preparation capacity is independent of proposal and fit budgets.
@@ -1323,11 +1880,14 @@ def run_expansion_campaign(config):
                         state = registry.submit(value)
                         if state["status"] == "verified" or request_id in dataset_errors or request_id in {item[0] for item in building_datasets.values()}:
                             continue
+                        operation='dataset:'+request_id
+                        if not ledger.retry_ready(operation):continue
                         source,raw = _dataset_build_inputs(config)
                         from .research_resources import JobWorkload
                         workload = JobWorkload(stage="feature_generation",family="official_dataset",rows=rows,generated_features=155,selected_features=155,implementation_revision=revision,dependency_versions={"environment":environment},search_settings={"request":state["request_fingerprint"]})
                         estimate = preparation_estimator.estimate(workload)
                         if _preparation_slot_available(config.max_active_preparations,search.programs,preparing.values(),len(building_datasets)) and resources.admits(estimate):
+                            _reset_operation_runtime(ledger,operation,directory/'dataset-runtime'/request_id/'runtime.json')
                             resources.reserve("dataset:"+request_id,estimate)
                             try:
                                 future = builders.submit(_build_dataset,str(registry.root),request_id,source,raw,str(registry.feature_registry),
@@ -1339,6 +1899,7 @@ def run_expansion_campaign(config):
                     for pid in _preparation_program_order(preparation_capacity,search.programs,ready,preparing.values(),ledger.reserved_attempts()):
                         if pid in ready or pid in preparing.values() or not preparation_capacity[pid]:
                             continue
+                        if not ledger.retry_ready('program:'+pid):continue
                         if pid not in contexts:
                             recipe = search.programs[pid].recipe
                             try:
@@ -1365,6 +1926,7 @@ def run_expansion_campaign(config):
                                     from .feature_program import DiscoveryMatrixArtifact
                                     DiscoveryMatrixArtifact(**persisted["artifact_descriptor"]).manifest()
                                 ready[pid] = persisted
+                                ledger.complete_operation('program:'+pid)
                                 continue
                             except (OSError, ValueError, TypeError):
                                 # A durable allocation survives eviction of its preparation artifact.
@@ -1372,6 +1934,7 @@ def run_expansion_campaign(config):
                         workload = _workload(search.programs[pid].recipe,context["rows"],revision,environment,stage="preparation")
                         estimate = preparation_estimator.estimate(workload)
                         if _preparation_slot_available(config.max_active_preparations,search.programs,preparing.values(),len(building_datasets),search.programs[pid].recipe) and resources.admits(estimate):
+                            _reset_operation_runtime(ledger,'program:'+pid,directory/'preparation-runtime'/pid/'runtime.json')
                             resources.reserve(f"prepare:{pid}",estimate)
                             try:
                                 future = builders.submit(_prepare_program,context["dataset"],search.programs[pid].recipe,context["digest"],directory,
@@ -1403,10 +1966,12 @@ def run_expansion_campaign(config):
                             continue
                         if not fold_state.can_prepare(dependency):
                             continue
+                        if not ledger.retry_ready('fold:'+dependency):continue
                         context = contexts[pid]
                         workload = _workload(request.recipe,context["rows"],revision,environment,stage="preparation")
                         estimate = preparation_estimator.estimate(workload)
                         if resources.admits(estimate):
+                            _reset_operation_runtime(ledger,'fold:'+dependency,request.output_dir/'runtime.json')
                             resources.reserve("fold:"+dependency,estimate)
                             try:
                                 future = builders.submit(_prepare_fold_dependency,request,workload,
@@ -1424,7 +1989,22 @@ def run_expansion_campaign(config):
                 for row in pending:
                     if stop_mode or len(inflight)>=jobs:
                         break
+                    if not ledger.retry_ready(row['attempt_id']):continue
                     payload = row["payload"]
+                    try:
+                        accepted=_recover_published_attempt(ledger,directory,row)
+                    except StorageBlocked as exc:
+                        _defer_storage_fit(ledger,directory,row['attempt_id'],exc)
+                        continue
+                    if accepted is not None:
+                        feedback_queue.update(pending_feedback(directory,[dict(row,status=accepted['status'])]))
+                        if row['attempt_id'] in feedback_queue:feedback_retry[row['attempt_id']]=0
+                        terminal_since_plan+=1
+                        try:
+                            core._reconcile_tells(ledger,search)
+                        except Exception as exc:
+                            tracking_errors.append(str(exc))
+                        continue
                     pid = payload["program_id"]
                     dependency,_ = _pending_fold_request(payload,contexts.get(pid,base_context),directory)
                     if fold_state.blocked(dependency):
@@ -1456,8 +2036,9 @@ def run_expansion_campaign(config):
                     if not resources.admits(estimate):
                         continue
                     attempt = row["attempt_id"]
+                    _reset_storage_retry_runtime(ledger,directory,attempt)
                     resources.reserve(attempt,estimate)
-                    request = RecipeExecutionRequest(attempt,payload["proposal_id"],payload["trial_number"],recipe,bound_dataset,directory/"trials"/attempt,payload["protocol_parameters"],payload["dataset_hash"],payload["code_revision"],payload["environment_hash"],V6_PORTFOLIO_VERSION)
+                    request = RecipeExecutionRequest(attempt,payload["proposal_id"],payload["trial_number"],recipe,bound_dataset,directory/"trials"/attempt,payload["protocol_parameters"],payload["dataset_hash"],payload["code_revision"],payload["environment_hash"],V6_PORTFOLIO_VERSION,supervised_fit=True)
                     core._write_json_atomic(request.output_dir/"workload.json",workload.model_dump(mode="json"))
                     try:
                         future = fits.submit(_worker,request,workload,estimate.cpu_threads,
@@ -1505,6 +2086,7 @@ def run_expansion_campaign(config):
                         "protocol_parameters":context["protocol"],"code_revision":revision,"environment_hash":environment,"dataset_path":str(context["dataset"])}
                     record = ledger.reserve_attempt(signature,payload)
                     if record.status in {"completed","failed","pruned"}:
+                        resolve_reused_attempt(ledger,search,hypotheses,record,suggestion)
                         capacity[pid] -= 1
                         continue
                     attempt = record.attempt_id
@@ -1516,7 +2098,7 @@ def run_expansion_campaign(config):
                         continue
                     resources.reserve(attempt,estimate)
                     request = RecipeExecutionRequest(attempt,suggestion.proposal_id,suggestion.trial_number,suggestion.recipe,
-                        context["dataset"],directory/"trials"/attempt,context["protocol"],context["digest"],revision,environment,V6_PORTFOLIO_VERSION)
+                        context["dataset"],directory/"trials"/attempt,context["protocol"],context["digest"],revision,environment,V6_PORTFOLIO_VERSION,supervised_fit=True)
                     core._write_json_atomic(request.output_dir/"workload.json",workloads[pid].model_dump(mode="json"))
                     try:
                         future = fits.submit(_worker,request,workloads[pid],estimate.cpu_threads,
@@ -1531,8 +2113,12 @@ def run_expansion_campaign(config):
                     capacity[pid] -= 1
 
                 counts = ledger.snapshot()
-                spend = _planner_spend(directory)
-                status = {"campaign_id":directory.name,"status":"draining" if stop_mode else "training" if inflight else "preparing" if preparing or fold_preparing else "planning" if planning else "awaiting_decision",
+                spend = _control_planner_spend(directory,unresolved_trace_controls,planning if trace_control is not None else None,
+                    control_state_unknown=trace_control_state_unknown,control_store=trace_control)
+                status = {"campaign_id":directory.name,"status":"draining" if stop_mode else "training" if inflight else "preparing" if preparing or fold_preparing else "planning" if planning else "blocked_tracking" if unresolved_trace_controls else "blocked_storage" if trace_storage_blocked or any(_storage_wait_summary(ledger,fold_state).values()) else "awaiting_decision",
+                    'blocked_storage':_storage_wait_summary(ledger,fold_state),
+                    'pending_feature_feedback':len(feedback_queue),
+                    "experiment_discipline_policy_version":1,
                     "updated_at":utc_now(),"decision":decision_number-1,"ledger":counts,
                     "resources":resources.snapshot(),"preparing_programs":list(preparing.values()),
                     "capacity_ramp":ramp_state,
@@ -1548,14 +2134,26 @@ def run_expansion_campaign(config):
                     "ready_programs":list(ready),"pending_programs":programs_waiting,
                     "planner_inflight":planning is not None,"last_planner_error":last_error,
                     "planner_spend":spend,"planner_spend_usd":spend["total_cost_usd"],"planner_spend_unknown":spend["spend_unknown"],"tracking_errors":tracking_errors[-10:],
+                    "upload_storage_blocked":dict(upload_storage_blocked),
                     "planner_spend_limit_scope":"Prior reported spend admission threshold; not a provider-enforced billing cap",
                     "pending_trace_delivery":_pending_trace_count(directory),
+                    "trace_storage_blocked":trace_storage_blocked,
+                    "pending_trace_enqueues":len(pending_trace_enqueues),
+                    "trace_control_enabled":trace_control is not None,
+                    "trace_control_state_unknown":trace_control_state_unknown,
+                    "pending_trace_control_reservations":None if trace_control is None or trace_control_state_unknown else len(unresolved_trace_controls),
+                    "unresolved_trace_control_decisions":[{'sequence':body['sequence'],
+                        'evidence_identity':body['evidence_identity']} for body in unresolved_trace_controls],
                     "host_resources":{"cpu_busy_percent":psutil.cpu_percent(),
                         "load_one_minute_percent":100*psutil.getloadavg()[0]/(psutil.cpu_count() or 1),
                         "available_ram_gib":host.available/1024**3,"cgroup":cgroup}}
                 core._write_json_atomic(directory/"status.json",status)
                 if now-last_snapshot>=30:
+                    discipline = lifecycle_snapshot(directory,search,retired,
+                        remaining_capacity=capacity,references=references)
+                    core._write_json_atomic(directory/"experiment-discipline.json",discipline)
                     snapshot = evidence_snapshot(ledger.terminal_results(),counts=counts,
+                        experiment_discipline=planner_view(discipline),
                         resources=status["resources"],pending_programs=programs_waiting,
                         preparing_programs=list(preparing.values()),planner_inflight=planning is not None,
                         latest_decision_id=f"D{decision_number-1:06d}")
@@ -1563,19 +2161,41 @@ def run_expansion_campaign(config):
                     from .research_summary import summary,summary_markdown
                     current_summary = summary(snapshot)
                     core._write_json_atomic(directory/"summary.json",current_summary)
-                    temporary = directory/"summary.md.tmp"
-                    temporary.write_text(summary_markdown(current_summary))
-                    temporary.replace(directory/"summary.md")
+                    core._write_text_atomic(directory/"summary.md",summary_markdown(current_summary))
                     signature = content_id({"counts":counts,"error":last_error,"ready":sorted(ready),
+                        'blocked_storage':status['blocked_storage'],
+                        'trace_storage_blocked':trace_storage_blocked,
+                        'pending_trace_enqueues':len(pending_trace_enqueues),
+                        'pending_trace_control_reservations':len(unresolved_trace_controls),
+                        'trace_control_state_unknown':trace_control_state_unknown,
+                        'tracking_error_signature':content_id(tracking_errors[-8:]),
+                        'pending_feature_feedback':len(feedback_queue),
                         "running":[(item["attempt_id"],item["status"],item["progress"].get("stage"),item["progress"].get("fold_id")) for item in status["active_trials"]],
                         "cap":ramp.cap,"decision":decision_number,"oom":len(history_snapshot["oom_facts"])})
-                    if signature!=last_summary_signature or now-last_trace>=300:
+                    from .research_summary import publish_execution_change
+                    if snapshot_number is not None and not any(role=='execution' for role,_ in pending_trace_enqueues) and publish_execution_change(signature,last_summary_signature):
                         try:
-                            log_snapshot(directory,snapshot,config,role="execution",number=snapshot_number)
+                            trace_snapshot=json.loads(json.dumps(snapshot,allow_nan=False))
+                            _publish_campaign_trace(directory,trace_snapshot,config,role="execution",number=snapshot_number,
+                                                    control_store=trace_control,signature=signature)
                         except Exception as exc:
                             tracking_errors.append(str(exc))
-                        snapshot_number += 1
-                        last_summary_signature = signature
+                            if isinstance(exc,StorageBlocked):
+                                trace_storage_blocked=True
+                                if _trace_phase(exc)!='outbox_delivery':
+                                    active_decision=int(planning[1]['decision_id'][1:]) if planning else None
+                                    _retain_trace_pressure(pending_trace_enqueues,
+                                        'execution',snapshot_number,trace_snapshot,signature)
+                                else:
+                                    snapshot_number+=1
+                                    last_summary_signature=signature
+                                next_trace_retry=now+(1 if stop_mode else 30)
+                            else:
+                                snapshot_number+=1
+                                last_summary_signature=signature
+                        else:
+                            snapshot_number+=1
+                            last_summary_signature=signature
                         last_trace = now
                     last_snapshot = now
                 if stop_mode and not inflight and not preparing and not fold_preparing and not building_datasets and paper_future is None and planning is None and uploading is None and tracing is None:
@@ -1596,11 +2216,11 @@ def run_expansion_campaign(config):
                     untraced_paper = [action for action in decisions.betting_actions()
                         if action["completion"] is not None and
                         decisions.action(action["decision_id"],"betting-traced:"+action["action_id"]) is None]
-                    tracking_blocked = (drain_expired or tell_failures>=3 or
+                    tracking_blocked = (drain_expired or tell_failures>=3 or trace_control_state_unknown or bool(unresolved_trace_controls) or
                         any(paper_trace_failures.get(action["action_id"],0)>=3 for action in untraced_paper) or
                         (config.mlflow_tracking_uri and pending_tracking and all(upload_failures.get(row["attempt_id"],0)>=3 for row in ledger.pending_outbox())) or
-                        (pending_traces and (trace_failures>=3 or not config.mlflow_tracking_uri)))
-                    if (config.mlflow_tracking_uri and pending_tracking) or pending_tells or pending_traces or untraced_paper:
+                        (pending_traces!=0 and (trace_failures>=3 or not config.mlflow_tracking_uri)))
+                    if (config.mlflow_tracking_uri and (pending_tracking or snapshot_number is None)) or pending_tells or pending_traces!=0 or pending_trace_enqueues or unresolved_trace_controls or trace_control_state_unknown or untraced_paper or feedback_queue:
                         if not tracking_blocked:
                             time.sleep(1)
                             continue
@@ -1610,9 +2230,14 @@ def run_expansion_campaign(config):
                                         if item["completion"] and item["completion"]["status"]=="failed"]
                         finish_mode = "blocked_paper" if pending_paper or failed_paper else stop_mode
                     finished = core._finish_payload(directory,ledger,search,decision_number-1,[],finish_mode,tracking_errors)
-                    spend = _planner_spend(directory)
+                    spend = _control_planner_spend(directory,unresolved_trace_controls,
+                        control_state_unknown=trace_control_state_unknown,control_store=trace_control)
                     finished.update(planner_spend_usd=spend["total_cost_usd"],planner_spend_unknown=spend["spend_unknown"],
                         pending_tracking=pending_tracking,pending_tells=pending_tells,pending_trace_delivery=pending_traces,
+                        pending_trace_enqueues=len(pending_trace_enqueues),
+                        trace_control_state_unknown=trace_control_state_unknown,
+                        pending_trace_control_reservations=None if trace_control is None or trace_control_state_unknown else len(unresolved_trace_controls),
+                        pending_feature_feedback=len(feedback_queue),
                         pending_paper_trace_publication=len(untraced_paper),
                         pending_paper_actions=len(pending_paper),paper_research=_paper_evidence(decisions,directory,ledger.terminal_results()),
                         tracking_enabled=bool(config.mlflow_tracking_uri),requested_stop_mode=stop_mode)
@@ -1624,23 +2249,34 @@ def run_expansion_campaign(config):
                         "latest_decision_id":f"D{decision_number-1:06d}",
                         "invocation_history":history_snapshot["invocations"]}
                     try:
-                        log_snapshot(directory,final_snapshot,config,role="execution",number=snapshot_number)
+                        if snapshot_number is not None and not pending_trace_enqueues:
+                            _publish_campaign_trace(directory,final_snapshot,config,role="execution",number=snapshot_number,
+                                                    control_store=trace_control)
                         if config.mlflow_tracking_uri and trace_failures<3:
                             from .research_telemetry import drain_trace_outbox
                             delivered = drain_trace_outbox(directory,config,limit=1)
                             tracking_errors.extend(str(error) for error in delivered.get("errors",[]))
                     except Exception as exc:
                         tracking_errors.append(str(exc))
+                        if isinstance(exc,StorageBlocked):trace_storage_blocked=True
+                        unresolved_trace_controls,trace_control_state_unknown,_=_refresh_control_queue(
+                            trace_control,pending_trace_enqueues,unresolved_trace_controls)
+                        spend=_control_planner_spend(directory,unresolved_trace_controls,
+                            control_state_unknown=trace_control_state_unknown,control_store=trace_control)
+                        finished.update(mode='blocked_tracking',
+                            planner_spend_usd=spend['total_cost_usd'],planner_spend_unknown=spend['spend_unknown'],
+                            pending_trace_enqueues=len(pending_trace_enqueues),
+                            trace_control_state_unknown=trace_control_state_unknown,
+                            pending_trace_control_reservations=None if trace_control is None or trace_control_state_unknown else len(unresolved_trace_controls))
+                        final_snapshot.update(finished,status='blocked_tracking',planner_spend=spend)
                     final_snapshot["pending_trace_delivery"] = _pending_trace_count(directory)
-                    if config.mlflow_tracking_uri and final_snapshot["pending_trace_delivery"]:
+                    if config.mlflow_tracking_uri and final_snapshot["pending_trace_delivery"]!=0:
                         finished.update(mode="blocked_tracking",pending_trace_delivery=final_snapshot["pending_trace_delivery"])
                         final_snapshot.update(finished,status="blocked_tracking")
                     core._write_json_atomic(directory/"status.json",final_snapshot)
                     final_summary = summary(final_snapshot)
                     core._write_json_atomic(directory/"summary.json",final_summary)
-                    temporary = directory/"summary.md.tmp"
-                    temporary.write_text(summary_markdown(final_summary))
-                    temporary.replace(directory/"summary.md")
+                    core._write_text_atomic(directory/"summary.md",summary_markdown(final_summary))
                     return finished
                 if inflight:
                     wait(inflight,timeout=1,return_when=FIRST_COMPLETED)
@@ -1715,15 +2351,19 @@ def _pending_trace_count(directory):
     path = Path(directory)/"trace-outbox.sqlite"
     if not path.is_file():
         return 0
-    with sqlite3.connect(f"file:{path}?mode=ro",uri=True) as conn:
-        return conn.execute("SELECT COUNT(*) FROM traces WHERE delivered=0").fetchone()[0]
+    from .research_telemetry import _read_outbox
+    try:
+        with _read_outbox(Path(directory)) as conn:
+            return conn.execute("SELECT COUNT(*) FROM traces WHERE delivered=0").fetchone()[0]
+    except StorageBlocked:
+        return None
 
 
 def _planner_cost(directory):
     return _planner_spend(directory)["total_cost_usd"]
 
 
-def _planner_spend(directory):
+def _planner_spend(directory,*,reserved_decision_ids=(),fallback_decisions=(),include_trace_receipts=False):
     """Keep reported subtotals, but require coverage before exempting failures."""
     from .openrouter_orchestrator import normalize_openrouter_usage
     from .openrouter_transport import classify_transport_attempt
@@ -1757,6 +2397,29 @@ def _planner_spend(directory):
             if cost is not None and (isinstance(cost,bool) or not isinstance(cost,(float,int)) or not math.isfinite(cost) or cost < 0):
                 cost = None
             aggregates.setdefault(path.stem,[]).append((cost,fixture,folder == "planner-responses"))
+
+    if include_trace_receipts and (directory/'trace-outbox.sqlite').is_file():
+        from .research_telemetry import _read_outbox
+        fallback_decisions=list(fallback_decisions)
+        with _read_outbox(directory) as conn:
+            # Inspect compact indexed identities first; do not reload historical
+            # megabyte evidence when normal billing receipts already cover it.
+            numbers=[row[0] for row in conn.execute("SELECT number FROM traces WHERE role='decision'")]
+            for number in numbers:
+                identifier=f'D{number:06d}'
+                if identifier in receipts or identifier in aggregates:continue
+                row=conn.execute("SELECT payload FROM traces WHERE role='decision' AND number=?",(number,)).fetchone()
+                fallback_decisions.append(json.loads(row[0]))
+    for payload in fallback_decisions:
+        identifier=payload.get('decision_id')
+        if not identifier or identifier in receipts or identifier in aggregates:continue
+        usage=payload.get('planner_usage') or {}
+        cost=usage.get('total_cost_usd')
+        if isinstance(cost,bool) or not isinstance(cost,(int,float)) or not math.isfinite(cost) or cost<0:cost=None
+        fixture=usage.get('cost_status')=='fixture'
+        aggregates[identifier]=[(cost,fixture,payload.get('planner_response') is not None)]
+        if cost is not None and not fixture:claimed_cost.add(identifier)
+        if payload.get('planner_status')=='failed':failed.add(identifier)
 
     def complete_coverage(identifiers):
         numbers = []
@@ -1805,6 +2468,10 @@ def _planner_spend(directory):
         if unknown and None not in values:
             values.append(None)
         costs[decision_id] = values
+    if isinstance(reserved_decision_ids,str):raise ValueError('Decision identity collection required')
+    for identifier in reserved_decision_ids:
+        if not isinstance(identifier,str) or not identifier.strip():raise ValueError('Explicit reserved decision identity required')
+        costs.setdefault(identifier,[None])
     unresolved = sorted(key for key,values in costs.items() if None in values)
     values = [value for row in costs.values() for value in row]
     unknown = any(value is None for value in values)
@@ -1821,6 +2488,19 @@ def _unsent_failure_streak(directory):
         if payload.get("planner_status")!="failed" or path.stem not in unsent:
             break
         count += 1
+    return count
+
+
+def _required_lane_failure_streak(directory):
+    count = 0
+    for path in reversed(sorted((Path(directory)/"decisions").glob("D*.json"))):
+        payload = core._read_json(path)
+        if (payload.get("planner_status") != "failed"
+                or not str(payload.get("error", "")).startswith("required_lane_refill:")):
+            break
+        count += 1
+        if count == 3:
+            break
     return count
 
 

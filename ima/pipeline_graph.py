@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass, field
 import copy
 import hashlib
 import json
+from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -22,6 +24,7 @@ from .feature_sets import FeatureSchema
 from .modeling import MarketBlend, RaceProbabilityModel, TemperatureCalibrator, normalize_by_race
 from .prediction_store import PredictionArtifact, PredictionStore, frame_fingerprint, prediction_key
 from .probabilistic_adapters import distribution_to_win, distribution_to_joint, ranking_scores_to_probabilities, win_to_joint
+from .research_pooling import ForwardSimplexPool, validate_selection
 
 
 @dataclass(frozen=True)
@@ -68,7 +71,7 @@ class GraphNode:
 
 
 def _learned_stage(node, nodes):
-    return node.kind in {"meta_estimator", "calibrate", "market_blend"} or (
+    return node.kind in {"meta_estimator", "calibrate", "market_blend", "learned_probability_pool"} or (
         node.kind == "race_normalize" and nodes[node.inputs[0]].output.kind == "ranking_score"
     )
 
@@ -91,6 +94,11 @@ class PipelineGraph:
     evaluation_contract_id: str = "chronological"
     fit_budget: int | None = None
     component_refs: tuple = ()
+    tune_node_id: str | None = None
+
+    @property
+    def tuned_estimator_id(self):
+        return self.tune_node_id or self.primary_node_id
 
     @classmethod
     def from_dict(cls, value):
@@ -119,6 +127,8 @@ class PipelineGraph:
             raise ValueError("External fitted references are unsupported; supply refittable estimator factories")
         if self.primary_node_id and (self.primary_node_id not in nodes or nodes[self.primary_node_id].kind != "estimator"):
             raise ValueError("primary_node_id must name an estimator")
+        if self.tune_node_id and (self.tune_node_id not in nodes or nodes[self.tune_node_id].kind != "estimator"):
+            raise ValueError("tune_node_id must name an estimator")
         if self.output_node_id not in nodes:
             raise ValueError("Unknown evaluation output")
         if self.joint_node_id and (self.joint_node_id not in nodes or nodes[self.joint_node_id].output.kind != "joint_order"):
@@ -160,18 +170,33 @@ class PipelineGraph:
                 collect(root)
         if self.primary_node_id is not None and self.primary_node_id not in reachable:
             raise ValueError("primary_node_id must be used by an output, fundamental, or joint endpoint")
+        if self.tune_node_id is not None and self.tune_node_id not in reachable:
+            raise ValueError("tune_node_id must be used by an output, fundamental, or joint endpoint")
         supported = {"estimator", "feature_view", "race_normalize", "calibrate",
                      "weighted_probability_pool", "log_probability_pool", "meta_estimator",
+                     "learned_probability_pool",
                      "market_blend", "probabilistic_adapter", "forward_oof_predict", "rank_distribution"}
         for node in nodes.values():
             if node.kind not in supported:
                 raise ValueError(f"Unsupported graph stage: {node.kind}")
             parents = [nodes[i] for i in node.inputs]
-            if node.kind in {"weighted_probability_pool", "log_probability_pool", "meta_estimator"}:
+            if node.kind in {"weighted_probability_pool", "log_probability_pool", "meta_estimator", "learned_probability_pool"}:
                 if not parents or node.output.kind != "win_probability" or any(p.output != parents[0].output for p in parents):
                     raise ValueError("Pool/stack inputs require identical target/unit/market contracts")
                 if parents[0].output.kind != "win_probability" or node.output != parents[0].output:
                     raise ValueError("Pool/stack is only defined for compatible win probabilities")
+                if node.kind == "learned_probability_pool":
+                    if set(node.parameters) - {"selection_mode", "selection_cutoff", "selection_protocol"}:
+                        raise ValueError("Unsupported learned pool parameters")
+                    mode = node.parameters.get("selection_mode", "development_selected")
+                    protocol = node.parameters.get("selection_protocol")
+                    if mode == "nested_selection":
+                        if not isinstance(protocol, dict):
+                            raise ValueError("nested_selection requires an explicit selection_protocol")
+                        if protocol.get("selection_cutoff") != node.parameters.get("selection_cutoff"):
+                            raise ValueError("selection_cutoff must match selection_protocol")
+                    validate_selection(node.parameters.get("selection_mode", "development_selected"),
+                                       node.parameters.get("selection_cutoff"), protocol)
             elif node.kind in {"calibrate", "market_blend", "forward_oof_predict"}:
                 if len(parents) != 1 or parents[0].output.kind != "win_probability":
                     raise ValueError("Calibration/market inputs require one win probability")
@@ -251,6 +276,8 @@ class FittedGraphNode:
                     values = ranking_scores_to_probabilities(scores, frame["race_id"])
                 else:
                     values = normalize_by_race(matrix @ (weights/weights.sum()), frame["race_id"])
+            elif node.kind == "learned_probability_pool":
+                values = self.state.predict(outputs, frame)
             elif node.kind == "meta_estimator":
                 values = self.state.predict_proba(self._meta_frame(frame, outputs))
             elif node.kind == "calibrate":
@@ -360,7 +387,8 @@ def _schema_subset(schema, columns):
 
 
 def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_factories=None,
-                       prediction_store: PredictionStore | None = None):
+                       prediction_store: PredictionStore | None = None,
+                       selection_source_context=None, selection_artifact_dir=None):
     graph = PipelineGraph.from_dict(graph).validate()
     frame = frame.copy()
     if "target_probability" not in frame and "target_win" in frame:
@@ -379,10 +407,88 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
     memo = {}
     report = {"physical_fits": 0, "cache_hits": 0, "oof_artifacts": [], "oof_populations": [],
               "component_fits": [], "training_cutoff": str(dates.max()),
+              "tune_node_id": graph.tuned_estimator_id, "learned_pools": [],
               "seed": seed, "schema_version": graph.schema_version,
               "dependency_versions": {"numpy": np.__version__, "scipy": scipy.__version__, "sklearn": sklearn.__version__}}
     schema_dict = asdict(feature_schema)
     graph_identity = asdict(graph)
+    selections = {}
+
+    def select_pool(node, data):
+        from .pool_selection import SelectionArtifact, select_prefix_graph, validate_selection_protocol
+
+        protocol = node.parameters["selection_protocol"]
+        if selection_source_context is None or selection_artifact_dir is None:
+            raise ValueError("nested_selection requires source lineage and an immutable artifact directory")
+        if factories:
+            raise ValueError("nested_selection does not accept unregistered estimator factories")
+        normalized = validate_selection_protocol(protocol, feature_schema=feature_schema,
+            expected_output=asdict(node.output))
+        parent_ids = tuple(node.inputs)
+        def parent_topology(lookup):
+            result = {}
+            def collect(identifier):
+                if identifier in result:
+                    return
+                parent = lookup[identifier]
+                result[identifier] = {"kind": parent.kind, "inputs": parent.inputs,
+                                      "output": asdict(parent.output), "fit_scope": parent.fit_scope}
+                for ancestor in parent.inputs:
+                    collect(ancestor)
+            for identifier in parent_ids:
+                collect(identifier)
+            return result
+        declared_topology = parent_topology(nodes)
+        for candidate in normalized["candidate_graphs"]:
+            candidate_nodes = {item["node_id"]: item for item in candidate["graph"]["nodes"]}
+            if not set(parent_ids) <= set(candidate_nodes):
+                raise ValueError("Every candidate graph must expose all learned-pool parent endpoint IDs")
+            for parent_id in parent_ids:
+                if candidate_nodes[parent_id]["output"] != asdict(node.output):
+                    raise ValueError("Candidate pool parent output contract mismatch")
+            if parent_topology({key: GraphNode.from_dict(value) for key, value in candidate_nodes.items()}) != declared_topology:
+                raise ValueError("Nested candidate parent topology differs from the declared outer parent topology")
+        cutoff = pd.Timestamp(normalized["selection_cutoff"])
+        unique = np.sort(pd.to_datetime(data[graph.date_column]).dt.normalize().unique())
+        future_dates = unique[unique > cutoff]
+        if len(future_dates) < graph.n_splits:
+            raise ValueError("Insufficient post-selection meetings for all configured forward OOF blocks")
+        future_start = future_dates[0]
+        directory = Path(selection_artifact_dir)
+        if not directory.is_dir() or directory.is_symlink():
+            raise ValueError("selection_artifact_dir must be an existing real directory")
+        protocol_hash = hashlib.sha256(json.dumps(normalized, sort_keys=True,
+            separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+        artifact_path = directory / f"selection-{node.node_id}-{protocol_hash[:24]}.json"
+        result = select_prefix_graph(normalized, data=data, feature_schema=feature_schema,
+            source_context=selection_source_context, future_oof_start=future_start,
+            artifact_path=artifact_path, expected_output=asdict(node.output))
+        # Candidate graphs are closed declarative DAGs. Splice their registered
+        # parent endpoints into this graph before any parent fit/OOF prediction.
+        existing_ids = set(nodes)
+        candidate_nodes = result.graph["nodes"]
+        parent_ancestry = set()
+        def collect_ancestry(identifier):
+            if identifier in parent_ancestry:
+                return
+            parent_ancestry.add(identifier)
+            for parent in nodes[identifier].inputs:
+                collect_ancestry(parent)
+        for parent_id in parent_ids:
+            collect_ancestry(parent_id)
+        for candidate_node in candidate_nodes:
+            identifier = candidate_node["node_id"]
+            if identifier in existing_ids and identifier not in parent_ancestry:
+                raise ValueError("Candidate graph node collides with unrelated outer graph node")
+            nodes[identifier] = GraphNode.from_dict(candidate_node)
+        artifact = SelectionArtifact.from_payload(result.artifact)
+        selections[node.node_id] = artifact
+        report["selections"] = report.get("selections", []) + [{
+            "node_id": node.node_id, "artifact_path": str(result.artifact_path),
+            "selection_id": artifact.selection_id, "selection_sha256": artifact.selection_sha256,
+            "selected_candidate_id": result.candidate_id,
+        }]
+        return artifact
 
     def component_contract(key):
         node = nodes[key]
@@ -398,9 +504,12 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
         report["physical_fits"] += 1
         report["component_fits"].append({"node_id": node.node_id, "training_cutoff": str(pd.to_datetime(data[graph.date_column]).max()),
             "rows": len(data), "fit_scope": node.fit_scope,
+            "effective_parameters": copy.deepcopy(node.parameters),
+            "tuned": node.node_id == graph.tuned_estimator_id,
             "fit_kind": "ranking_probability_adapter" if node.kind == "race_normalize" else node.kind})
 
     def build(key, data):
+        fit_record = None
         node = nodes[key]
         fingerprint = frame_fingerprint(data)
         # Identical compatible component nodes share fits, but downstream lineage stays explicit.
@@ -409,7 +518,12 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
                                     "factory_id": node.node_id if factories else None})
         if signature in memo:
             return memo[signature]
+        if node.kind == "learned_probability_pool" and node.parameters.get("selection_mode") == "nested_selection":
+            if key not in selections:
+                select_pool(node, data)
+                node = nodes[key]
         parents = tuple(build(p, data) for p in node.inputs)
+        started = perf_counter()
         fitted = FittedGraphNode(node, parents)
         if node.kind == "feature_view":
             fitted.feature_columns = tuple(node.parameters.get("features", feature_schema.features))
@@ -420,6 +534,8 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
             if not node.output.market and any(c.lower() in current_market or c.lower().startswith("current_market") for c in schema.features):
                 raise ValueError("Fundamental estimator includes a market/odds feature")
             consume(node, data)
+            fit_record = report["component_fits"][-1]
+            fit_record["features"] = list(schema.features)
             if node.node_id in factories:
                 fitted.state = factories[node.node_id]().fit(data)
             else:
@@ -459,10 +575,24 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
                 else:
                     raise ValueError("Native distributions need an explicitly refittable estimator factory")
         elif _learned_stage(node, nodes):
-            indices, outputs = forward_inputs(node.inputs, data)
+            selection_context = dict(node.parameters) if node.kind == "learned_probability_pool" else None
+            if node.kind == "learned_probability_pool" and node.parameters.get("selection_mode") == "nested_selection":
+                artifact = selections[node.node_id]
+                selection_context["selection_artifact"] = artifact
+            indices, outputs, blocks = forward_inputs(node.inputs, data, selection_context)
             learning = data.iloc[indices].copy()
             consume(node, learning)
-            if node.kind == "meta_estimator":
+            fit_record = report["component_fits"][-1]
+            if node.kind == "learned_probability_pool":
+                fitted.state = ForwardSimplexPool.fit(learning, blocks,
+                    horse_column=graph.horse_column, date_column=graph.date_column,
+                    outer_training_cutoff=pd.to_datetime(data[graph.date_column]).max(),
+                    selection_artifact=selections.get(node.node_id),
+                    selection_protocol=node.parameters.get("selection_protocol"),
+                    **{key: value for key, value in node.parameters.items()
+                       if key not in {"selection_protocol"}})
+                report["learned_pools"].append({"node_id": node.node_id, **fitted.state.report})
+            elif node.kind == "meta_estimator":
                 fitted.feature_columns = tuple(f"component_{i}" for i in range(len(outputs)))
                 meta = fitted._meta_frame(learning, outputs)
                 schema = FeatureSchema(name="graph_meta", numeric=fitted.feature_columns, categorical=())
@@ -482,28 +612,56 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
                     raise ValueError("Unavailable market quotes in blend training")
                 market = _validated_probabilities(learning[column].to_numpy(), learning)
                 fitted.state = MarketBlend.fit(outputs[0], market, learning)
+        if fit_record is not None:
+            actual_schema = getattr(fitted.state, "feature_schema", None)
+            if actual_schema is not None:
+                fit_record["features"] = list(actual_schema.features)
+            fit_record["wall_seconds"] = round(perf_counter()-started, 6)
         memo[signature] = fitted
         return fitted
 
-    def forward_inputs(parent_ids, data):
-        time = pd.to_datetime(data[graph.date_column])
+    def forward_inputs(parent_ids, data, selection=None):
+        time = pd.to_datetime(data[graph.date_column]).dt.normalize()
         unique = np.sort(time.unique())
-        if len(unique) < graph.min_train_dates + graph.n_splits:
-            raise ValueError("Insufficient chronological history for nested learned graph")
-        blocks = np.array_split(unique[graph.min_train_dates:], graph.n_splits)
-        indices, columns = [], [[] for _ in parent_ids]
+        selection = selection or {}
+        selection_mode = selection.get("selection_mode", "development_selected")
+        selection_cutoff = selection.get("selection_cutoff") or str(pd.to_datetime(data[graph.date_column]).max())
+        if selection_mode == "nested_selection":
+            cutoff = pd.Timestamp(selection_cutoff).normalize()
+            eligible = unique[unique > cutoff]
+            if len(eligible) < graph.n_splits:
+                raise ValueError("Insufficient post-selection meetings for configured forward OOF blocks")
+            blocks = np.array_split(eligible, graph.n_splits)
+        else:
+            if len(unique) < graph.min_train_dates + graph.n_splits:
+                raise ValueError("Insufficient chronological history for nested learned graph")
+            blocks = np.array_split(unique[graph.min_train_dates:], graph.n_splits)
+        indices, columns, artifacts_by_block = [], [[] for _ in parent_ids], []
+        selection_artifact = selection.get("selection_artifact")
+        selection_protocol = selection.get("selection_protocol")
         for fold_id, block in enumerate(blocks):
             training = data.loc[time < block[0]]
             positions = np.flatnonzero(time.isin(block).to_numpy())
             scoring = data.iloc[positions]
+            if selection_mode == "nested_selection":
+                from .pool_selection import validate_selection_artifact
+                validate_selection_artifact(selection_artifact.payload,
+                    protocol=selection_protocol, feature_schema=feature_schema,
+                    source_context=selection_source_context, source_frame=data,
+                    future_oof_start=selection_artifact.payload["future_oof_start"],
+                    expected_output=asdict(nodes[parent_ids[0]].output))
+                if pd.Timestamp(selection_artifact.payload["selection_cutoff"]) >= pd.to_datetime(
+                        scoring[graph.date_column]).min().normalize():
+                    raise ValueError("Selection cutoff must precede every nested OOF meeting")
             row_keys = tuple(zip(scoring["race_id"].astype(str), scoring[graph.horse_column].astype(str)))
-            fold_outputs = []
+            fold_outputs, fold_artifacts = [], []
             # Nested learned ancestors need enough earlier dates; exclude initial unsupported folds.
             if any(has_learned_ancestor(p) for p in parent_ids) and len(pd.to_datetime(training[graph.date_column]).unique()) < required_dates(parent_ids):
                 continue
             for parent_id in parent_ids:
                 component = component_contract(parent_id)
                 metadata = {"fit_scope": "forward_oof", "component_id": prediction_key(component),
+                    "selection_mode": selection_mode, "selection_cutoff": str(pd.Timestamp(selection_cutoff)),
                     "component_contract": component, "feature_schema": schema_dict, "seed": seed,
                     "protocol": {"n_splits": graph.n_splits, "min_train_dates": graph.min_train_dates,
                         "date_column": graph.date_column, "horse_column": graph.horse_column,
@@ -514,10 +672,18 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
                     "training_cutoff": str(pd.to_datetime(training[graph.date_column]).max()),
                     "prediction_start": str(pd.to_datetime(scoring[graph.date_column]).min()),
                     "versions": report["dependency_versions"]}
+                if selection_mode == "nested_selection":
+                    metadata.update(selection_id=selection_artifact.selection_id,
+                        selection_sha256=selection_artifact.selection_sha256,
+                        selection_cutoff=selection_artifact.payload["selection_cutoff"],
+                        selection_contract_sha256=selection_artifact.payload["protocol_sha256"],
+                        selected_candidate_id=selection_artifact.payload["selected_candidate_id"])
                 cache_key = prediction_key(metadata)
                 # Custom factory identity cannot be inferred from a callable; disable persistent reuse.
                 artifact = prediction_store.get(cache_key, row_keys) if prediction_store and not factories else None
                 if artifact is not None:
+                    if prediction_key(artifact.metadata) != cache_key:
+                        raise ValueError("Prediction cache lineage does not match requested key")
                     values = artifact.values
                     report["cache_hits"] += 1
                 else:
@@ -534,12 +700,15 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
                     artifact = PredictionArtifact(values, row_keys, metadata)
                     if prediction_store and not factories:
                         prediction_store.put(cache_key, artifact)
+                artifact.validate()
                 report["oof_artifacts"].append({"key": cache_key, "component_id": parent_id,
                     "training_cutoff": metadata["training_cutoff"], "prediction_start": metadata["prediction_start"],
                     "rows": len(row_keys), "row_keys_hash": prediction_key({"row_keys": row_keys}),
                     "training_fingerprint": metadata["training_fingerprint"],
                     "prediction_fingerprint": metadata["prediction_fingerprint"], "fold_id": fold_id})
                 fold_outputs.append(values)
+                fold_artifacts.append(artifact)
+            artifacts_by_block.append(fold_artifacts)
             indices.extend(positions.tolist())
             for i, values in enumerate(fold_outputs):
                 columns[i].append(values)
@@ -549,7 +718,7 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
             "eligible_rows": len(indices), "excluded_rows": len(data)-len(indices),
             "excluded_position_ranges": _position_ranges(sorted(set(range(len(data)))-set(indices))),
             "exclusion_reason": "initial history has no safe earlier fitted ancestor"})
-        return np.asarray(indices), [np.concatenate(c) for c in columns]
+        return np.asarray(indices), [np.concatenate(c) for c in columns], artifacts_by_block
 
     def has_learned_ancestor(key):
         return _learned_stage(nodes[key], nodes) or any(has_learned_ancestor(p) for p in nodes[key].inputs)
@@ -563,7 +732,10 @@ def fit_pipeline_graph(graph, frame, *, feature_schema, seed=42, estimator_facto
 
     output = build(graph.output_node_id, frame)
     fundamental = build(graph.fundamental_node_id or graph.output_node_id, frame)
-    report["fit_report_id"] = hashlib.sha256(json.dumps(graph_identity, sort_keys=True).encode()).hexdigest()
+    report["fit_report_id"] = hashlib.sha256(json.dumps({
+        "graph": graph_identity,
+        "selections": {key: value.selection_sha256 for key, value in selections.items()},
+    }, sort_keys=True).encode()).hexdigest()
     joint = build(graph.joint_node_id, frame) if graph.joint_node_id else None
     return FittedPipelineGraph(graph, output, fundamental, report, joint)
 
@@ -580,27 +752,40 @@ def _position_ranges(positions):
 
 
 def fit_graph(graph, train, calibration, feature_schema, seed=42, *, model_spec=None,
-              estimator_factories=None, prediction_store=None):
+              estimator_factories=None, prediction_store=None,
+              selection_source_context=None, selection_artifact_dir=None):
     """Schema3 dispatch. Final refits use train+calibration; scoring stays separate.
 
-    primary_node_id binds outer model.parameters to one declared estimator.
+    tune_node_id (or legacy primary_node_id) binds outer model.parameters.
     Learned stages fit recursive forward OOF predictions from these past rows.
     """
     graph = PipelineGraph.from_dict(graph)
     if model_spec is not None:
-        if graph.primary_node_id is None:
+        if graph.tuned_estimator_id is None:
             raise ValueError("Outer model tuning requires an explicit primary_node_id")
         kind = model_spec.get("kind") if isinstance(model_spec, dict) else model_spec.kind
         parameters = model_spec.get("parameters", {}) if isinstance(model_spec, dict) else model_spec.parameters
+        for pool in graph.nodes:
+            if pool.kind != "learned_probability_pool" or pool.parameters.get("selection_mode") != "nested_selection":
+                continue
+            for candidate in pool.parameters["selection_protocol"]["candidate_graphs"]:
+                primary = next((node for node in candidate["graph"]["nodes"]
+                                if node["node_id"] == graph.tuned_estimator_id), None)
+                if primary is None or primary.get("parameters", {}).get("model_kind", "benter_conditional_logit") != kind:
+                    raise ValueError("Nested candidate primary estimator conflicts with outer model family")
+                options = primary.get("parameters", {})
+                selected_parameters = dict(options.get("parameters", {})) | dict(options.get("model_parameters", {}))
+                if any(selected_parameters.get(key) != value for key, value in (parameters or {}).items()):
+                    raise ValueError("Outer tuning conflicts with the frozen nested selection candidate parameters")
         nodes = []
         for node in graph.nodes:
-            if node.node_id == graph.primary_node_id:
+            if node.node_id == graph.tuned_estimator_id:
                 options = dict(node.parameters)
                 declared_kind = options.get("model_kind", kind)
                 if declared_kind != kind:
                     raise ValueError("Outer tuning cannot silently change graph estimator family")
                 options["model_kind"] = kind
-                options["model_parameters"] = dict(options.get("model_parameters", {})) | dict(parameters or {})
+                options["model_parameters"] = dict(options.pop("parameters", {})) | dict(options.get("model_parameters", {})) | dict(parameters or {})
                 node = GraphNode(node.node_id, node.kind, node.inputs, options, node.output, node.fit_scope)
             nodes.append(node)
         graph = PipelineGraph(**(graph.__dict__ | {"nodes": tuple(nodes)}))
@@ -611,4 +796,6 @@ def fit_graph(graph, train, calibration, feature_schema, seed=42, *, model_spec=
     else:
         frame = train
     return fit_pipeline_graph(graph, frame, feature_schema=feature_schema, seed=seed,
-        estimator_factories=estimator_factories, prediction_store=prediction_store)
+        estimator_factories=estimator_factories, prediction_store=prediction_store,
+        selection_source_context=selection_source_context,
+        selection_artifact_dir=selection_artifact_dir)

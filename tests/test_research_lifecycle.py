@@ -1,0 +1,238 @@
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from ima.research_lifecycle import feature_feedback, is_probit_recipe, lifecycle_probit_fit, _REQUEST, compact_optional_history, prove_local_preflight, _qualified_unsent
+import pytest
+
+
+def test_probit_graph_detection():
+    assert is_probit_recipe(SimpleNamespace(model=SimpleNamespace(kind="gaussian_probit"), pipeline_graph=None))
+    assert is_probit_recipe(SimpleNamespace(model=SimpleNamespace(kind="benter_conditional_logit"), pipeline_graph={
+        "nodes": [{"parameters": {"model_kind": "gaussian_probit"}}]}))
+    assert not is_probit_recipe(SimpleNamespace(model=SimpleNamespace(kind="boosted"), pipeline_graph=None))
+
+
+def test_feature_feedback_does_not_claim_untested_improvement(tmp_path):
+    report = feature_feedback(tmp_path, [{"dataset_id": "dataset-candidate"}])
+    assert report["counts"]["definitions_completed"] == 0
+    assert report["outcomes"][0]["status"] == "untested"
+    assert "matched" in report["interpretation"]
+
+
+def test_probit_callback_preserves_fold_and_training_context(tmp_path):
+    from ima import performance_probit as probit
+    recipe = SimpleNamespace(canonical_payload=lambda: {"transforms": [{"kind": "signed_log1p"}], "train_window": "all_history"})
+    request = SimpleNamespace(output_dir=tmp_path, attempt_id="a", dataset_hash="d", recipe=recipe,
+                              protocol_parameters={"max_folds": 3}, code_revision="r")
+    (tmp_path/"progress.json").write_text(json.dumps({"fold_id": "fold-001", "fold_index": 1, "fold_count": 3}))
+    seen = {}
+    def fit(train, schema, params, **kwargs):
+        seen.update(kwargs)
+        kwargs["progress_callback"]({"stage": "optimizing", "objective": 1., "iteration": 2,
+                                    "objective_evaluations": 3})
+        return "model"
+    token = _REQUEST.set(request)
+    try:
+        with patch.object(probit, "_lifecycle_original_fit", fit, create=True):
+            assert lifecycle_probit_fit(None, None, {}) == "model"
+    finally:
+        _REQUEST.reset(token)
+    progress = json.loads((tmp_path/"progress.json").read_text())
+    assert progress["fold_id"] == "fold-001"
+    assert progress["objective"] == 1.
+    assert seen["training_context"]["dataset_hash"] == "d"
+    assert seen["training_context"]["protocol"] == {"max_folds": 3}
+    assert "evaluation" not in seen["training_context"]
+
+
+def test_direct_fit_without_campaign_context_unchanged():
+    from ima import performance_probit as probit
+    with patch.object(probit, "_lifecycle_original_fit", return_value="direct", create=True) as fit:
+        assert lifecycle_probit_fit("train", "schema", {"l2": 1}) == "direct"
+    fit.assert_called_once_with("train", "schema", {"l2": 1})
+
+
+def test_context_keeps_parent_ids_safety_and_pending_recipes():
+    evidence = {"completed_trial_index": [{"attempt_id": "a"}], "hypothesis_memory": [{}]*8,
+                "capabilities": {"eligible_predictors": {"x": {"target_tainted": True}}},
+                "pending_programs": [{"recipe": {"transforms": [1]}}]}
+    result = compact_optional_history(evidence)
+    assert len(result["hypothesis_memory"]) == 4
+    assert len(evidence["hypothesis_memory"]) == 8
+    for key in ("completed_trial_index", "capabilities", "pending_programs"):
+        assert result[key] == evidence[key]
+
+
+def test_preflight_proof_never_settles_uncertain_provider_cost(tmp_path):
+    (tmp_path/"decisions").mkdir()
+    (tmp_path/"evidence").mkdir()
+    decision = {"planner_status": "failed", "error": "Mandatory planner context exceeds byte budget: 300011>300000; no paid call",
+                "transport_attempts": [], "planner_usage": {}}
+    path = tmp_path/"decisions/D000236.json"
+    path.write_text(json.dumps(decision))
+    (tmp_path/"evidence/D000236.json").write_text("{}")
+    import hashlib
+    qualification = {"D000236": {"decision_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "evidence_sha256": hashlib.sha256((tmp_path/"evidence/D000236.json").read_bytes()).hexdigest()}}
+    with patch("ima.research_lifecycle.QUALIFIED_PREFLIGHTS", qualification):
+        proof = prove_local_preflight(tmp_path, "D000236")
+        assert _qualified_unsent(tmp_path, "D000236")
+    assert proof["provider_cost"] is None
+    decision["error"] = "TimeoutError: unknown provider billing"
+    path.write_text(json.dumps(decision))
+    assert not _qualified_unsent(tmp_path, "D000236")
+    assert json.loads((tmp_path/"lifecycle-preflight-proofs/D000236.json").read_text()) == proof
+
+
+def test_preflight_proof_rejects_any_call_evidence(tmp_path):
+    (tmp_path/"decisions").mkdir()
+    (tmp_path/"evidence").mkdir()
+    (tmp_path/"planner-calls").mkdir()
+    (tmp_path/"decisions/D000236.json").write_text(json.dumps({"planner_status": "failed",
+        "error": "Mandatory planner context exceeds byte budget: 300011>300000; no paid call"}))
+    (tmp_path/"evidence/D000236.json").write_text("{}")
+    (tmp_path/"planner-calls/D000236-01.json").write_text("{}")
+    with pytest.raises(ValueError, match="transport/call"):
+        prove_local_preflight(tmp_path, "D000236")
+
+
+def test_matching_error_alone_cannot_waive_unknown_billing(tmp_path):
+    (tmp_path/"decisions").mkdir()
+    (tmp_path/"evidence").mkdir()
+    (tmp_path/"decisions/D000236.json").write_text(json.dumps({"planner_status": "failed",
+        "error": "Mandatory planner context exceeds byte budget: 300011>300000; no paid call"}))
+    (tmp_path/"evidence/D000236.json").write_text("{}")
+    with pytest.raises(ValueError, match="sealed independent"):
+        prove_local_preflight(tmp_path, "D000236")
+
+
+def test_missing_proof_input_leaves_billing_unresolved(tmp_path):
+    (tmp_path/"lifecycle-preflight-proofs").mkdir()
+    (tmp_path/"lifecycle-preflight-proofs/D000999.json").write_text("{}")
+    assert not _qualified_unsent(tmp_path, "D000999")
+
+
+def test_native_billing_consumes_guard_preflight_and_keeps_sent_unknown(tmp_path):
+    from ima.research_expansion import _planner_spend
+    (tmp_path/"decisions").mkdir()
+    (tmp_path/"planner-transport").mkdir()
+    identity = {"producer": "planner_request_guard", "preflight_version": 1,
+                "decision_id": "D000001", "evidence_id": "e", "preflight_nonce": "nonce"}
+    events = [{**identity, "phase": "request_started"}, {**identity, "phase": "request.preflight_failed"}]
+    (tmp_path/"planner-transport/D000001-01.json").write_text(json.dumps({"events": events}))
+    (tmp_path/"decisions/D000001.json").write_text(json.dumps({"planner_status": "failed", "planner_usage": {},
+        "transport_attempts": [{"events": events}]}))
+    spend = _planner_spend(tmp_path)
+    assert spend["not_dispatched_decision_ids"] == ["D000001"]
+    assert not spend["spend_unknown"]
+    events.append({"phase": "http11.send_request_headers.started"})
+    (tmp_path/"planner-transport/D000001-01.json").write_text(json.dumps({"events": events}))
+    assert _planner_spend(tmp_path)["spend_unknown"]
+
+
+def test_feedback_failure_does_not_discard_successful_fit(tmp_path):
+    from ima import research_expansion as expansion
+    from ima.research_lifecycle import lifecycle_worker
+    request = SimpleNamespace(output_dir=tmp_path, attempt_id="a")
+    result = SimpleNamespace(status="completed", metrics={}, artifacts={})
+    result.serializable = lambda: {"status": result.status, "metrics": result.metrics, "artifacts": result.artifacts}
+    with patch.object(expansion, "_lifecycle_original_worker", return_value=result, create=True), \
+         patch("ima.research_lifecycle.link_feature_outcome", side_effect=OSError("tracking unavailable")):
+        assert lifecycle_worker(request, None, 1).status == "completed"
+    assert (tmp_path/"feature-feedback-pending.json").exists()
+    assert json.loads((tmp_path/"result.json").read_text())["status"] == "completed"
+
+
+def test_hooks_reach_compiled_campaign_namespace(tmp_path):
+    from ima import research_expansion as expansion, performance_probit, mlflow_tracking
+    from ima.research_lifecycle import install_campaign_policy, lifecycle_worker, lifecycle_prepare
+    names = ("_capabilities", "_planner_spend", "_worker", "_prepare_program", "BoundedFitExecutor")
+    isolated = {name: getattr(expansion, name) for name in names}
+    exec("def run(): return _worker, _prepare_program, _capabilities, _planner_spend, BoundedFitExecutor", isolated)
+    patches = {name: getattr(expansion, name) for name in names}
+    patches.update(run_expansion_campaign=isolated["run"], _lifecycle_installed=False)
+    with patch.multiple(expansion, **patches, create=True), \
+         patch.object(performance_probit, "fit_probit", performance_probit.fit_probit), \
+         patch.object(mlflow_tracking, "research_run_parameters", mlflow_tracking.research_run_parameters):
+        install_campaign_policy(tmp_path, release_sha256="release")
+        actual = isolated["run"]()
+        assert actual[0] is lifecycle_worker and actual[1] is lifecycle_prepare
+        assert actual[2] is expansion._capabilities and actual[3] is expansion._planner_spend
+        assert actual[4] is expansion.BoundedFitExecutor
+        spend_kwargs = {"reserved_decision_ids": ["D000999"],
+                        "fallback_decisions": [], "include_trace_receipts": True}
+        assert actual[3](tmp_path, **spend_kwargs) == patches["_planner_spend"](tmp_path, **spend_kwargs)
+        # Exercise the real controller call site, including all keyword arguments.
+        spend = expansion._control_planner_spend(tmp_path, [], planning=(None, {"decision_id": "D000999"}))
+        assert spend["spend_unknown"] is True
+
+
+def test_lifecycle_entrypoints_work_in_fresh_worker_interpreter(tmp_path):
+    """Spawned workers import modules; parent-only installed globals are absent."""
+    import os
+    import subprocess
+    import sys
+    code = r'''
+import json, os, sys
+from pathlib import Path
+from types import SimpleNamespace
+from ima import research_expansion as expansion, performance_probit as probit
+from ima.research_lifecycle import lifecycle_prepare, lifecycle_worker, lifecycle_probit_fit, _REQUEST
+assert not hasattr(expansion, '_lifecycle_original_prepare')
+assert not hasattr(expansion, '_lifecycle_original_worker')
+expansion._prepare_program = lambda *args: {'source': 'fresh_base_prepare', 'arguments': len(args)}
+recipe = SimpleNamespace(feature_definitions=None)
+assert lifecycle_prepare('dataset', recipe, 'digest', Path(sys.argv[1])) == {
+    'source': 'fresh_base_prepare', 'arguments': 4}
+result = SimpleNamespace(status='failed', metrics={}, artifacts={})
+result.serializable = lambda: {'status': result.status, 'metrics': result.metrics, 'artifacts': result.artifacts}
+expansion._worker = lambda *args: result
+root = Path(sys.argv[1]); root.mkdir(exist_ok=True)
+request = SimpleNamespace(output_dir=root, attempt_id='fresh-worker')
+os.environ['IMA_LIFECYCLE_RELEASE_SHA256'] = 'qualified-release'
+assert lifecycle_worker(request, None, 1) is result
+assert result.metrics['research_lifecycle']['release_sha256'] == 'qualified-release'
+assert probit.fit_probit is lifecycle_probit_fit
+assert _REQUEST.get() is None
+assert json.loads((root/'result.json').read_text())['status'] == 'failed'
+print('fresh worker entrypoints qualified')
+'''
+    environment = {key: value for key, value in os.environ.items() if not key.startswith('IMA_STORAGE_')}
+    run = subprocess.run([sys.executable, '-B', '-c', code, str(tmp_path)],
+                         capture_output=True, text=True, env=environment, timeout=60)
+    assert run.returncode == 0, run.stderr
+    assert 'fresh worker entrypoints qualified' in run.stdout
+
+
+def test_feature_preparation_reads_controller_campaign_configuration(tmp_path):
+    from ima import research_expansion as expansion
+    from ima.research_lifecycle import lifecycle_prepare
+    dataset_dir = tmp_path/'dataset';dataset_dir.mkdir()
+    dataset = dataset_dir/'features.parquet'
+    (dataset_dir/'manifest.json').write_text('{}')
+    config = {'dataset_registry_path': str(tmp_path/'registry'), 'mlflow_tracking_uri': 'http://example.invalid'}
+    (tmp_path/'campaign.json').write_text(json.dumps(config))
+    recipe = SimpleNamespace(feature_definitions=[{'name':'test'}], recipe_hash=lambda:'recipe')
+    with patch('ima.feature_lifecycle.build_feature_candidate', return_value={'build_id':'build'}) as build, \
+         patch.object(expansion, '_lifecycle_original_prepare', return_value={'prepared':True}, create=True):
+        assert lifecycle_prepare(dataset, recipe, 'digest', tmp_path) == {'prepared':True}
+    assert build.call_args.kwargs['registry_root'] == config['dataset_registry_path']
+    assert build.call_args.kwargs['tracking_uri'] == config['mlflow_tracking_uri']
+    assert json.loads((tmp_path/'feature-builds/recipe.json').read_text())['build_id'] == 'build'
+
+
+def test_reinstalling_probit_callback_never_captures_itself():
+    from ima import performance_probit as probit
+    from ima.research_lifecycle import _install_probit_callback
+    from unittest.mock import Mock
+    original = Mock(return_value='original-fit')
+    with patch.object(probit, 'fit_probit', original), \
+         patch.object(probit, '_lifecycle_original_fit', None, create=True):
+        _install_probit_callback(probit)
+        _install_probit_callback(probit)
+        assert probit._lifecycle_original_fit is original
+        assert probit.fit_probit is lifecycle_probit_fit
+        assert probit.fit_probit('train', 'schema', {}) == 'original-fit'
+        original.assert_called_once_with('train', 'schema', {})

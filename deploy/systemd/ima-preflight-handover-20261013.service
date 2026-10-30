@@ -1,0 +1,13 @@
+[Unit]
+Description=Single-use graceful IMA preflight repair handover
+After=ima-v7-openrouter-recovery-20261007.service
+ConditionPathExists=%h/research-v2/campaigns/agentic_v7_openrouter_recovery_20261007/STOP
+
+[Service]
+Type=oneshot
+TimeoutStartSec=infinity
+ExecStart=/usr/bin/python3 %h/research-v2/deploy-probit-feature-lifecycle.py activate c41464404086292818f7d11e74e3e9d67697f408
+ExecStartPost=/usr/bin/systemctl --user disable ima-preflight-handover-20261013.service
+
+[Install]
+WantedBy=default.target

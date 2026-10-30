@@ -252,6 +252,16 @@ class ResearchSummaryTests(unittest.TestCase):
                 self.assertIn(f"fold={expected}", summary_preview(value))
                 self.assertEqual(snapshot, before)
 
+    def test_storage_waits_are_visible_and_degraded(self):
+        waits={'attempt_ids':['waiting-fit'],'operation_ids':['fold:waiting'],'dependency_ids':[]}
+        value=summary({'mode':'blocked_storage','operation_status':'blocked_storage','blocked_storage':waits})
+        self.assertEqual(value['execution']['blocked_storage'],waits)
+        self.assertEqual(value['health'],'degraded')
+        self.assertTrue(value['operation']['failed'])
+        self.assertIn('Storage capacity',value['operation']['blocker'])
+        empty=summary({'blocked_storage':{key:[] for key in waits}})
+        self.assertEqual(empty['operation']['blockers'],[])
+
     def test_input_and_output_watermarks_and_details_stay_separate(self):
         value = summary({"evidence_id": "original", "input_terminal_watermark": 1,
                          "output_evidence_id": "fresh", "output_terminal_watermark": 3,

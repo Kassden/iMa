@@ -2,28 +2,40 @@
 import json
 import math
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
+from .research_sqlite import admitted_sqlite
 from .research_store import utc_now
 
 
 class HypothesisMemory:
     def __init__(self, path: Path):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as conn:
+        with admitted_sqlite(self.path, estimated_growth_bytes=16 * 1024, stage="hypothesis_memory_schema") as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS events (event_id TEXT PRIMARY KEY, hypothesis_id TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)")
 
     def record(self, event_id, hypothesis_id, kind, payload):
         encoded = json.dumps(payload, sort_keys=True, default=str)
-        with sqlite3.connect(self.path) as conn:
+        created_at = utc_now()
+        serialized_fields = (event_id, hypothesis_id, kind, encoded, created_at)
+        field_bytes = sum(len(value if isinstance(value, bytes) else str(value).encode("utf-8"))
+                          for value in serialized_fields)
+        # Per-transaction growth envelope: a 1 MiB floor covers small-record
+        # table/index page splits and transient SQLite metadata; scale further
+        # with every serialized field, including long identifiers.
+        growth = 1024 * 1024 + field_bytes * 4
+        with admitted_sqlite(self.path, estimated_growth_bytes=growth, stage="hypothesis_memory_record") as conn:
             old = conn.execute("SELECT payload FROM events WHERE event_id=?", (event_id,)).fetchone()
             if old and old[0] != encoded:
                 raise ValueError("Conflicting hypothesis event replay")
-            conn.execute("INSERT OR IGNORE INTO events VALUES (?,?,?,?,?)", (event_id, hypothesis_id, kind, encoded, utc_now()))
+            conn.execute("INSERT OR IGNORE INTO events VALUES (?,?,?,?,?)", (event_id, hypothesis_id, kind, encoded, created_at))
 
     def retrieve(self, query="", limit=20):
-        with sqlite3.connect(self.path) as conn:
+        from urllib.parse import quote
+
+        uri = f"file:{quote(str(self.path.resolve()), safe='/')}?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True)) as conn:
             rows = conn.execute("SELECT hypothesis_id,kind,payload,created_at FROM events WHERE payload LIKE ? ORDER BY rowid DESC LIMIT ?", (f"%{query}%", min(limit,100))).fetchall()
         return [dict(hypothesis_id=h, kind=k, payload=json.loads(p), created_at=t) for h,k,p,t in rows]
 

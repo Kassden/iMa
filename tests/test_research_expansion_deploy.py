@@ -61,6 +61,16 @@ class ResearchExpansionDeployTests(unittest.TestCase):
             'IMA_V6_CONFIG': str(self.config), 'IMA_V6_PYTHON': str(self.python),
             'IMA_V6_RESEARCH_POLICY': 'expansion_v6',
         }
+        cache_root=self.base/'fold-preparation-cache'
+        cache_root.mkdir(mode=0o700)
+        policy=self.base/'retention-policy.json'
+        policy.write_text(json.dumps({'schema_version':1,
+            'protected_cache_paths':[str(cache_root/('a'*64))]}))
+        policy.chmod(0o400)
+        self.env.update(IMA_CACHE_HOLD_POLICY=str(policy),
+            IMA_CACHE_HOLD_POLICY_SHA256=hashlib.sha256(policy.read_bytes()).hexdigest())
+        scratch=self.base/'scratch';scratch.mkdir(mode=0o700)
+        self.env.update(TMPDIR=str(scratch),IMA_STORAGE_ROOT=str(self.base))
         self.seal()
 
     def seal(self):
@@ -119,6 +129,19 @@ class ResearchExpansionDeployTests(unittest.TestCase):
         self.assertIn('preflight passed', output)
         self.assertIn('NOT a guaranteed hard billing bound', output)
         self.assertFalse((self.registry / 'locks').exists())
+
+    def test_missing_httpx_is_rejected_by_actual_launcher_preflight(self):
+        with patch('ima.research_runtime_preflight.import_module',
+                   side_effect=ModuleNotFoundError('httpx')):
+            with self.assertRaisesRegex(RuntimeError, 'Planner runtime is incomplete'):
+                self.check()
+        self.assertFalse((self.registry / 'locks').exists())
+        self.assertFalse((self.campaign / 'ledger.sqlite').exists())
+
+    def test_shared_scratch_is_rejected_without_creating_state(self):
+        scratch=Path(self.env['TMPDIR']);scratch.chmod(0o755)
+        with self.assertRaisesRegex(SystemExit,'scratch must be private'):
+            self.check()
 
     def test_v7_name_is_accepted_without_bypassing_provenance_checks(self):
         self.campaign_name = 'agentic_v7_mock'

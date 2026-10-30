@@ -10,11 +10,14 @@ import json
 import os
 import re
 import shutil
+import stat
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .research_storage import storage_writer, reserved_output_file, admitted_output, as_storage_blocked
 
 
 DEFAULT_EXPERIMENT_NAME = "ima-racing"
@@ -544,11 +547,25 @@ def _trace_result_preview(summary: dict[str, Any]) -> str:
     return f"{prefix}; cycle best by objective: {scores}"
 
 
+@storage_writer(stage='tracking_json',output=lambda a:Path(a['path']).parent,
+    estimate=lambda a:64*1024+4*len(json.dumps(a['payload'],indent=2,sort_keys=True).encode()))
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(temporary, path)
+    fd,temporary=tempfile.mkstemp(dir=path.parent,prefix=path.name+'.',suffix='.tmp')
+    try:
+        os.close(fd)
+        with reserved_output_file(temporary,'w') as stream:
+            json.dump(payload,stream,indent=2,sort_keys=True)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary,path)
+        directory_fd=os.open(path.parent,os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if os.path.exists(temporary):os.unlink(temporary)
 
 
 def _model_artifact_source(artifact_uri: str, model_path: Path) -> str:
@@ -693,132 +710,271 @@ def log_research_package_version(
     """Idempotently log and register a loadable target-aware research package."""
     if not config.enabled:
         return None
+    if not os.environ.get('IMA_STORAGE_ROOT'):
+        return _log_research_package_version(package_dir,config,attempt_id=attempt_id,
+            result=result,dataset_path=dataset_path)
+    package_dir=Path(package_dir)
+    try:
+        estimate,inodes=_research_upload_budget(package_dir,result,dataset_path,config)
+        # MLflow's native copies/SQLite writes cannot consume our bounded stream
+        # tickets; retain the entire conservative reservation until SDK return.
+        with admitted_output(package_dir.parent,estimated_bytes=estimate,
+                             inodes=inodes,stage='mlflow_model_upload'):
+            return _log_research_package_version(package_dir,config,attempt_id=attempt_id,
+                result=result,dataset_path=dataset_path)
+    except Exception as exc:
+        converted=as_storage_blocked(exc,stage='mlflow_model_upload',output=package_dir.parent)
+        if converted is None or converted is exc:raise
+        raise converted from exc
+
+
+def _research_upload_budget(package_dir,result,dataset_path,config):
+    """Cover overlapping package/code copies, reports and SDK metadata growth."""
+    from .research_storage import StorageBlocked
+    authority=Path(os.environ['IMA_STORAGE_ROOT']).resolve()
+    device=authority.stat().st_dev
+    _upload_filesystem(package_dir.parent,device)
+    _upload_filesystem(Path(tempfile.gettempdir()).resolve(),device,require_owner=False)
+    if not config.tracking_uri:
+        raise StorageBlocked('Explicit tracking destination required for admitted model upload')
+    _upload_destination(config.tracking_uri,device,remote_uri=config.tracking_uri)
+
+    sources=[(package_dir,False),(Path(__file__).resolve().parent,True)]
+    artifacts=result.get('artifacts') or {}
+    for key in ('paired_feature_report','discovery_manifest','feature_program'):
+        value=artifacts.get(key)
+        if value and Path(value).is_file():sources.append((Path(value),False))
+    discovery=artifacts.get('discovery_manifest')
+    if discovery and Path(discovery).is_file():
+        sources.extend((p,False) for p in Path(discovery).parent.glob('discovery-*')
+                       if p.suffix in {'.json','.joblib'} and p.is_file())
+    for pattern in ('preparation-*.json','formula-report.json','graph-fit-report.json','graph-fits.json'):
+        sources.extend((p,False) for p in package_dir.parent.glob(pattern))
+    if dataset_path is not None:
+        sources.extend(((Path(dataset_path).with_suffix('.manifest.json'),False),
+                        (Path(dataset_path).parent/'manifest.json',False)))
+    files=set()
+    directories=set()
+    for source,code_copy in sources:
+        if not source.exists():continue
+        entries=[source,*source.rglob('*')] if source.is_dir() else [source]
+        for path in entries:
+            if code_copy and ('__pycache__' in path.relative_to(source).parts or path.suffix=='.pyc'):continue
+            info=path.lstat()
+            if stat.S_ISLNK(info.st_mode):raise ValueError('MLflow upload source contains a symlink')
+            if stat.S_ISDIR(info.st_mode):directories.add(path.absolute())
+            elif stat.S_ISREG(info.st_mode):files.add(path.absolute())
+            else:raise ValueError('MLflow upload source contains a nonregular entry')
+    source_bytes=sum(path.stat().st_size for path in files)
+    metadata_bytes=len(json.dumps(result,allow_nan=False).encode())
+    # An estimate, not a filesystem quota. Release qualification must measure
+    # SDK/native peaks; unrelated writers may still consume the filesystem.
+    return 64*1024**2+4*(source_bytes+metadata_bytes),256+6*(len(files)+len(directories))
+
+
+def _upload_filesystem(destination,device,*,require_owner=True):
+    from .research_storage import StorageBlocked
+    current=Path(destination).absolute()
+    if current.resolve()!=current:
+        raise StorageBlocked('Noncanonical MLflow output or scratch destination')
+    while not current.exists():current=current.parent
+    info=current.stat()
+    if (current.resolve()!=current or info.st_dev!=device
+            or require_owner and info.st_uid!=os.getuid()):
+        raise StorageBlocked('MLflow output or scratch is outside the admitted own filesystem',
+            {'stage':'mlflow_model_upload','output':str(destination)})
+
+
+def _upload_destination(value,device,*,remote_uri=None):
+    from urllib.parse import urlparse,unquote
+    from .research_storage import StorageBlocked
+    if not isinstance(value,str) or not value:raise StorageBlocked('Explicit MLflow storage destination required')
+    uri=urlparse(value)
+    if uri.scheme.startswith('sqlite'):
+        from sqlalchemy.engine import make_url
+        database=make_url(value).database
+        if not database or database==':memory:':
+            raise StorageBlocked('A persistent tracking destination is required')
+        destination=Path(database).absolute()
+    elif uri.scheme=='file':
+        if uri.netloc not in {'','localhost'}:raise StorageBlocked('Remote file authority is unsupported')
+        destination=Path(unquote(uri.path)).absolute()
+    elif not uri.scheme:
+        if not Path(value).is_absolute():
+            raise StorageBlocked('An explicit absolute MLflow filesystem destination is required')
+        destination=Path(value)
+    elif uri.scheme in {'http','https'} and uri.netloc and value==remote_uri:
+        return
+    else:raise StorageBlocked('Unqualified MLflow storage destination')
+    _upload_filesystem(destination,device)
+
+
+def _log_research_package_version(
+    package_dir: Path,
+    config: MLflowConfig,
+    *,
+    attempt_id: str,
+    result: dict[str, Any],
+    dataset_path: Path | None = None,
+) -> dict[str,str] | None:
     mlflow = _mlflow()
-    if config.tracking_uri:
-        mlflow.set_tracking_uri(config.tracking_uri)
-    experiment = mlflow.set_experiment(config.experiment_name)
-    client = mlflow.tracking.MlflowClient()
-    target_kind = str(result.get("target_kind", "win_probability"))
-    model_name = f"{config.registered_model_name}-{target_kind.replace('_', '-')}"
-    existing = client.search_runs(
-        [experiment.experiment_id],
-        filter_string=f"tags.`ima.attempt_id` = '{attempt_id}'",
-        max_results=100,
-    )
-    if len(existing) == 100:
-        raise RuntimeError(f"Too many MLflow retries for attempt {attempt_id}")
-    finished = [run for run in existing if run.info.status == "FINISHED"]
-    if len(finished) > 1:
-        raise RuntimeError(f"Duplicate MLflow runs for attempt {attempt_id}")
-    if any(run.info.status not in {"FINISHED", "FAILED", "KILLED"} for run in existing):
-        raise RuntimeError(f"MLflow attempt {attempt_id} has an unfinished run")
-    if finished:
-        linkage = _research_model_linkage(client, model_name, finished[0].info.run_id)
+    if os.environ.get('IMA_STORAGE_ROOT') and (os.environ.get('MLFLOW_RUN_ID') or mlflow.active_run() is not None):
+        from .research_storage import StorageBlocked
+        raise StorageBlocked('Admitted model publication cannot implicitly resume an existing run')
+    publication_started=False
+    try:
+        if config.tracking_uri:
+            mlflow.set_tracking_uri(config.tracking_uri)
+        client=None
+        if os.environ.get('IMA_STORAGE_ROOT'):
+            from .research_storage import StorageBlocked
+            device=Path(os.environ['IMA_STORAGE_ROOT']).stat().st_dev
+            _upload_destination(mlflow.get_registry_uri(),device,remote_uri=config.tracking_uri)
+            client=mlflow.tracking.MlflowClient()
+            existing_experiment=client.get_experiment_by_name(config.experiment_name)
+            if existing_experiment is None:
+                raise StorageBlocked('Model publication requires an explicitly bootstrapped experiment')
+            _upload_destination(existing_experiment.artifact_location,device)
+        experiment = mlflow.set_experiment(config.experiment_name)
+        if os.environ.get('IMA_STORAGE_ROOT'):
+            _upload_destination(experiment.artifact_location,Path(os.environ['IMA_STORAGE_ROOT']).stat().st_dev)
+        if client is None:client=mlflow.tracking.MlflowClient()
+        target_kind = str(result.get("target_kind", "win_probability"))
+        model_name = f"{config.registered_model_name}-{target_kind.replace('_', '-')}"
+        existing = client.search_runs(
+            [experiment.experiment_id],
+            filter_string=f"tags.`ima.attempt_id` = '{attempt_id}'",
+            max_results=100,
+        )
+        if len(existing) == 100:
+            raise RuntimeError(f"Too many MLflow retries for attempt {attempt_id}")
+        finished = [run for run in existing if run.info.status == "FINISHED"]
+        if len(finished) > 1:
+            raise RuntimeError(f"Duplicate MLflow runs for attempt {attempt_id}")
+        if any(run.info.status not in {"FINISHED", "FAILED", "KILLED"} for run in existing):
+            raise RuntimeError(f"MLflow attempt {attempt_id} has an unfinished run")
+        if finished:
+            publication_started=bool(os.environ.get('IMA_STORAGE_ROOT'))
+            linkage = _research_model_linkage(client, model_name, finished[0].info.run_id)
+            if config.register_models and "model_version" not in linkage:
+                raise RuntimeError(f"MLflow did not register a model version for {attempt_id}")
+            return linkage
+
+        class ResearchPyFuncModel(mlflow.pyfunc.PythonModel):
+            def load_context(self, context) -> None:
+                from ima.research_model_package import load_research_package
+                self.package = load_research_package(Path(context.artifacts["package"]))
+
+            def predict(self, context, model_input, params=None):
+                if self.package.recipe.target.kind == "win_probability":
+                    return self.package.predict_proba(model_input)
+                return self.package.predict(model_input)
+
+        params = research_run_parameters(package_dir, result, attempt_id=attempt_id)
+        tags = {
+            "ima.attempt_id": attempt_id,
+            "ima.recipe_hash": str(result.get("recipe_hash", "")),
+            "ima.target_kind": target_kind,
+            "ima.protocol_id": str(result.get("lineage", {}).get("protocol_id", "")),
+            "ima.dataset_hash": str(result.get("lineage", {}).get("dataset_hash", "")),
+            "ima.feature_program_id": str(result.get("lineage", {}).get("feature_program_id", "")),
+            "ima.code_revision": str(result.get("lineage", {}).get("code_revision", "")),
+            "ima.environment_hash": str(result.get("lineage", {}).get("environment_hash", "")),
+            **research_identity_tags(params),
+        }
+        if existing:
+            tags["ima.retry_of_run_id"] = existing[0].info.run_id
+        run_options={'log_system_metrics':False} if os.environ.get('IMA_STORAGE_ROOT') else {}
+        sync_options={'synchronous':True} if os.environ.get('IMA_STORAGE_ROOT') else {}
+        publication_started=True
+        with mlflow.start_run(run_name=attempt_id, tags=tags,**run_options) as active:
+            artifact_validated=False
+            try:
+                if os.environ.get('IMA_STORAGE_ROOT'):
+                    _upload_destination(active.info.artifact_uri,device)
+                artifact_validated=True
+                mlflow.log_params(params,**sync_options)
+                if params.get("recipe.schema_version") == 3:
+                    for key in ("dataset_id", "evaluation_population_id", "availability_policy",
+                                "probability_basis", "target_unit", "predictor_catalog_id"):
+                        value = result.get("lineage", {}).get(key)
+                        if value is not None:
+                            mlflow.log_param(key, str(value),**sync_options)
+                            mlflow.set_tag(f"ima.{key}", str(value),**sync_options)
+                for key in ("discovery_id", "matrix_id"):
+                    if result.get("lineage", {}).get(key):
+                        mlflow.set_tag(f"ima.{key}", result["lineage"][key],**sync_options)
+                        mlflow.log_param(key, result["lineage"][key],**sync_options)
+                dataset = None
+                if dataset_path is not None:
+                    from mlflow.data.dataset_source_registry import resolve_dataset_source
+                    from mlflow.data.meta_dataset import MetaDataset
+
+                    dataset = MetaDataset(
+                        source=resolve_dataset_source(str(dataset_path.resolve())),
+                        name=dataset_path.name,
+                        digest=str(result["lineage"]["dataset_hash"])[:32],
+                    )
+                    mlflow.log_input(dataset, context="training")
+                mlflow.log_metrics(research_run_metrics(result), dataset=dataset,**sync_options)
+                mlflow.log_dict(result, "result.json")
+                discovery_path = result.get("artifacts", {}).get("discovery_manifest")
+                paired_path = result.get("artifacts", {}).get("paired_feature_report")
+                if paired_path and Path(paired_path).is_file():
+                    mlflow.log_artifact(paired_path, artifact_path="analysis")
+                if discovery_path and Path(discovery_path).is_file():
+                    mlflow.log_artifact(discovery_path, artifact_path="discovery")
+                    manifest = json.loads(Path(discovery_path).read_text())
+                    if manifest.get("matrix_path"):
+                        feature_dataset = MetaDataset(
+                            source=resolve_dataset_source(manifest["matrix_path"]),
+                            name=f"discovery-{manifest['discovery_id']}",
+                            digest=manifest["matrix_id"],
+                        )
+                        mlflow.log_input(feature_dataset, context="feature_matrix")
+                    for selection in Path(discovery_path).parent.glob("discovery-*"):
+                        if selection.suffix not in {".json",".joblib"}:
+                            continue
+                        if selection.name == "discovery-manifest.json":
+                            continue
+                        mlflow.log_artifact(str(selection), artifact_path="discovery")
+                feature_program_path = result.get("artifacts", {}).get("feature_program")
+                if feature_program_path and Path(feature_program_path).is_file():
+                    mlflow.log_artifact(feature_program_path, artifact_path="analysis")
+                if dataset_path is not None:
+                    manifest_path = dataset_path.with_suffix(".manifest.json")
+                    if not manifest_path.is_file() and params.get("recipe.schema_version") == 3:
+                        manifest_path = dataset_path.parent / "manifest.json"
+                    if manifest_path.is_file():
+                        mlflow.log_artifact(str(manifest_path), artifact_path="dataset")
+                if params.get("recipe.schema_version") == 3:
+                    for pattern in ("preparation-*.json", "formula-report.json", "graph-fit-report.json", "graph-fits.json"):
+                        for report_path in package_dir.parent.glob(pattern):
+                            mlflow.log_artifact(str(report_path), artifact_path="analysis")
+                weights_path = package_dir / "feature-weights.csv"
+                if weights_path.is_file():
+                    mlflow.log_artifact(str(weights_path), artifact_path="analysis")
+                with _writable_code_copy(Path(__file__).resolve().parent) as code_path:
+                    mlflow.pyfunc.log_model(
+                        name="model",
+                        python_model=ResearchPyFuncModel(),
+                        artifacts={"package": str(package_dir)},
+                        code_paths=[str(code_path)],
+                        pip_requirements=_research_dependencies(bool(discovery_path)),
+                        registered_model_name=model_name if config.register_models else None,
+                    )
+                run_id = active.info.run_id
+            finally:
+                if os.environ.get('IMA_STORAGE_ROOT') and artifact_validated:
+                    mlflow.flush_artifact_async_logging()
+        linkage = _research_model_linkage(client, model_name, run_id)
         if config.register_models and "model_version" not in linkage:
             raise RuntimeError(f"MLflow did not register a model version for {attempt_id}")
         return linkage
 
-    class ResearchPyFuncModel(mlflow.pyfunc.PythonModel):
-        def load_context(self, context) -> None:
-            from ima.research_model_package import load_research_package
-            self.package = load_research_package(Path(context.artifacts["package"]))
-
-        def predict(self, context, model_input, params=None):
-            if self.package.recipe.target.kind == "win_probability":
-                return self.package.predict_proba(model_input)
-            return self.package.predict(model_input)
-
-    params = research_run_parameters(package_dir, result, attempt_id=attempt_id)
-    tags = {
-        "ima.attempt_id": attempt_id,
-        "ima.recipe_hash": str(result.get("recipe_hash", "")),
-        "ima.target_kind": target_kind,
-        "ima.protocol_id": str(result.get("lineage", {}).get("protocol_id", "")),
-        "ima.dataset_hash": str(result.get("lineage", {}).get("dataset_hash", "")),
-        "ima.feature_program_id": str(result.get("lineage", {}).get("feature_program_id", "")),
-        "ima.code_revision": str(result.get("lineage", {}).get("code_revision", "")),
-        "ima.environment_hash": str(result.get("lineage", {}).get("environment_hash", "")),
-        **research_identity_tags(params),
-    }
-    if existing:
-        tags["ima.retry_of_run_id"] = existing[0].info.run_id
-    with mlflow.start_run(run_name=attempt_id, tags=tags) as active:
-        mlflow.log_params(params)
-        if params.get("recipe.schema_version") == 3:
-            for key in ("dataset_id", "evaluation_population_id", "availability_policy",
-                        "probability_basis", "target_unit", "predictor_catalog_id"):
-                value = result.get("lineage", {}).get(key)
-                if value is not None:
-                    mlflow.log_param(key, str(value))
-                    mlflow.set_tag(f"ima.{key}", str(value))
-        for key in ("discovery_id", "matrix_id"):
-            if result.get("lineage", {}).get(key):
-                mlflow.set_tag(f"ima.{key}", result["lineage"][key])
-                mlflow.log_param(key, result["lineage"][key])
-        dataset = None
-        if dataset_path is not None:
-            from mlflow.data.dataset_source_registry import resolve_dataset_source
-            from mlflow.data.meta_dataset import MetaDataset
-
-            dataset = MetaDataset(
-                source=resolve_dataset_source(str(dataset_path.resolve())),
-                name=dataset_path.name,
-                digest=str(result["lineage"]["dataset_hash"])[:32],
-            )
-            mlflow.log_input(dataset, context="training")
-        mlflow.log_metrics(research_run_metrics(result), dataset=dataset)
-        mlflow.log_dict(result, "result.json")
-        discovery_path = result.get("artifacts", {}).get("discovery_manifest")
-        paired_path = result.get("artifacts", {}).get("paired_feature_report")
-        if paired_path and Path(paired_path).is_file():
-            mlflow.log_artifact(paired_path, artifact_path="analysis")
-        if discovery_path and Path(discovery_path).is_file():
-            mlflow.log_artifact(discovery_path, artifact_path="discovery")
-            manifest = json.loads(Path(discovery_path).read_text())
-            if manifest.get("matrix_path"):
-                feature_dataset = MetaDataset(
-                    source=resolve_dataset_source(manifest["matrix_path"]),
-                    name=f"discovery-{manifest['discovery_id']}",
-                    digest=manifest["matrix_id"],
-                )
-                mlflow.log_input(feature_dataset, context="feature_matrix")
-            for selection in Path(discovery_path).parent.glob("discovery-*"):
-                if selection.suffix not in {".json",".joblib"}:
-                    continue
-                if selection.name == "discovery-manifest.json":
-                    continue
-                mlflow.log_artifact(str(selection), artifact_path="discovery")
-        feature_program_path = result.get("artifacts", {}).get("feature_program")
-        if feature_program_path and Path(feature_program_path).is_file():
-            mlflow.log_artifact(feature_program_path, artifact_path="analysis")
-        if dataset_path is not None:
-            manifest_path = dataset_path.with_suffix(".manifest.json")
-            if not manifest_path.is_file() and params.get("recipe.schema_version") == 3:
-                manifest_path = dataset_path.parent / "manifest.json"
-            if manifest_path.is_file():
-                mlflow.log_artifact(str(manifest_path), artifact_path="dataset")
-        if params.get("recipe.schema_version") == 3:
-            for pattern in ("preparation-*.json", "formula-report.json", "graph-fit-report.json", "graph-fits.json"):
-                for report_path in package_dir.parent.glob(pattern):
-                    mlflow.log_artifact(str(report_path), artifact_path="analysis")
-        weights_path = package_dir / "feature-weights.csv"
-        if weights_path.is_file():
-            mlflow.log_artifact(str(weights_path), artifact_path="analysis")
-        with _writable_code_copy(Path(__file__).resolve().parent) as code_path:
-            mlflow.pyfunc.log_model(
-                name="model",
-                python_model=ResearchPyFuncModel(),
-                artifacts={"package": str(package_dir)},
-                code_paths=[str(code_path)],
-                pip_requirements=_research_dependencies(bool(discovery_path)),
-                registered_model_name=model_name if config.register_models else None,
-            )
-        run_id = active.info.run_id
-    linkage = _research_model_linkage(client, model_name, run_id)
-    if config.register_models and "model_version" not in linkage:
-        raise RuntimeError(f"MLflow did not register a model version for {attempt_id}")
-    return linkage
-
+    finally:
+        if os.environ.get('IMA_STORAGE_ROOT') and publication_started:
+            mlflow.flush_async_logging()
 
 @contextmanager
 def _writable_code_copy(source: Path):
@@ -826,10 +982,32 @@ def _writable_code_copy(source: Path):
     # Immutable releases must therefore never be passed directly as code_paths.
     with tempfile.TemporaryDirectory(prefix="ima-mlflow-code-") as directory:
         destination = Path(directory) / source.name
-        shutil.copytree(source, destination, copy_function=shutil.copyfile,
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        for path in [destination, *destination.rglob("*")]:
-            path.chmod(path.stat().st_mode | (0o700 if path.is_dir() else 0o600))
+        ignore=shutil.ignore_patterns('__pycache__','*.pyc')
+        if os.environ.get('IMA_STORAGE_ROOT'):
+            try:
+                if not source.is_dir() or source.is_symlink():raise ValueError('Code source must be a real directory')
+                def walk_error(error):raise error
+                # copytree stringifies mkdir/copystat failures. We need neither
+                # source permissions nor timestamps in this writable code copy.
+                for current,folders,files in os.walk(source,onerror=walk_error,followlinks=False):
+                    excluded=ignore(current,folders+files)
+                    folders[:]=[name for name in folders if name not in excluded]
+                    target=destination/Path(current).relative_to(source)
+                    target.mkdir(mode=0o700)
+                    for name in [*folders,*(name for name in files if name not in excluded)]:
+                        if (Path(current)/name).is_symlink():raise ValueError('Code source contains a symlink')
+                    for name in files:
+                        if name not in excluded:
+                            shutil.copyfile(Path(current)/name,target/name)
+                            (target/name).chmod(0o600)
+            except OSError as exc:
+                converted=as_storage_blocked(exc,stage='tracking_code_copy',output=destination)
+                if converted is None:raise
+                raise converted from exc
+        else:
+            shutil.copytree(source, destination, copy_function=shutil.copyfile,ignore=ignore)
+            for path in [destination, *destination.rglob("*")]:
+                path.chmod(path.stat().st_mode | (0o700 if path.is_dir() else 0o600))
         yield destination
 
 

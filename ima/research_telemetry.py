@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import sqlite3
 import threading
 import time
@@ -148,21 +149,42 @@ def _trace_payload(campaign, payload, role, planner_evidence, output_snapshot):
     return payload
 
 
-def _outbox(campaign):
-    campaign.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(campaign / "trace-outbox.sqlite", timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=FULL")
-    conn.execute("""CREATE TABLE IF NOT EXISTS traces (
-        role TEXT NOT NULL, number INTEGER NOT NULL, payload TEXT NOT NULL,
-        tracking_uri TEXT NOT NULL, receipt TEXT, delivered INTEGER NOT NULL DEFAULT 0,
-        attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, trace_json TEXT,
-        PRIMARY KEY(role, number))""")
-    if "trace_json" not in {row[1] for row in conn.execute("PRAGMA table_info(traces)")}:
-        conn.execute("ALTER TABLE traces ADD COLUMN trace_json TEXT")
-    conn.commit()
-    return conn
+def _outbox(campaign, *, estimated_growth_bytes=16 * 1024**2):
+    campaign=Path(campaign)
+    db=campaign/'trace-outbox.sqlite'
+    if os.environ.get('IMA_STORAGE_ROOT'):
+        from .research_sqlite import native_sqlite_connection
+        conn=native_sqlite_connection(db,estimated_growth_bytes=estimated_growth_bytes,
+                                      stage='tracking_outbox_native',row_factory=sqlite3.Row)
+    else:
+        # Preserve the pre-admission behavior for explicitly disabled mode.
+        campaign.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(db, timeout=30)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=FULL")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("""CREATE TABLE IF NOT EXISTS traces (
+            role TEXT NOT NULL, number INTEGER NOT NULL, payload TEXT NOT NULL,
+            tracking_uri TEXT NOT NULL, receipt TEXT, delivered INTEGER NOT NULL DEFAULT 0,
+            attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, trace_json TEXT,
+            PRIMARY KEY(role, number))""")
+        if "trace_json" not in {row[1] for row in conn.execute("PRAGMA table_info(traces)")}:
+            conn.execute("ALTER TABLE traces ADD COLUMN trace_json TEXT")
+        conn.commit()
+        return conn
+    except BaseException as primary:
+        try:
+            if conn.in_transaction:
+                conn.rollback()
+        except BaseException as cleanup:
+            primary.add_note(f"Outbox rollback cleanup also failed: {cleanup!r}")
+        try:
+            conn.close()
+        except BaseException as cleanup:
+            primary.add_note(f"Outbox close cleanup also failed: {cleanup!r}")
+        raise
 
 
 def _canonical(payload):
@@ -173,18 +195,103 @@ def _canonical(payload):
     return payload
 
 
+from .research_storage import storage_writer, reserved_output_file, admitted_output, StorageBlocked, as_storage_blocked
+
+
 def log_snapshot(campaign: Path, payload: dict, config, *, role: str, number: int,
                  planner_evidence: dict | None = None,
-                 output_snapshot: dict | None = None) -> dict | None:
+                 output_snapshot: dict | None = None, control_store=None,
+                 execution_signature=None, decision_evidence_identity=None) -> dict | None:
     """Durably enqueue before logging; failed attempts remain available to drain."""
     if not config.mlflow_tracking_uri:
+        if control_store is not None:raise ValueError('Control tracing requires an explicit destination')
         return None
     if role not in {"decision", "execution", "dataset", "betting"} or number < 0:
         raise ValueError("Invalid trace role or sequence number")
     campaign = Path(campaign)
+    if control_store is not None:_check_control_context(control_store,campaign,config)
     payload = _trace_payload(campaign, payload, role, planner_evidence, output_snapshot)
+    return _publish_normalized_trace(campaign,payload,config,role=role,number=number,
+        control_store=control_store,signature=execution_signature,
+        evidence_identity=decision_evidence_identity)
+
+
+def _check_control_context(store,campaign,config):
+    store._claimed()
+    if str(Path(campaign).absolute())!=store._campaign or config.mlflow_tracking_uri!=store._destination:
+        raise ValueError('Trace campaign or destination differs from the claimed control context')
+
+
+def _decision_already_enqueued(store,campaign,payload,config,number):
+    for raw in store.pending():
+        body=json.loads(raw)
+        if body['role']=='decision' and body['sequence']==number:return False
+    if not (campaign/'trace-outbox.sqlite').exists():return False
+    with _read_outbox(campaign) as conn:
+        row=conn.execute("SELECT payload,tracking_uri FROM traces WHERE role='decision' AND number=?",(number,)).fetchone()
+        if row is None:return False
+        if (row['tracking_uri']!=config.mlflow_tracking_uri or
+                json.dumps(json.loads(row['payload']),sort_keys=True,allow_nan=False)!=
+                json.dumps(payload,sort_keys=True,allow_nan=False)):
+            raise ValueError('Previously enqueued decision differs from control publication')
+    return True
+
+
+def _publish_normalized_trace(campaign,payload,config,*,role,number,
+                              control_store=None,signature=None,evidence_identity=None,
+                              already_staged=False):
+    phase='control_intent' if control_store is not None else 'outbox_enqueue'
+    try:
+        if control_store is not None and role=='decision' and not already_staged:
+            if _decision_already_enqueued(control_store,campaign,payload,config,number):
+                phase='outbox_delivery'
+                return _deliver_trace(campaign,config,role,number)
+        if control_store is not None and not already_staged:
+            if role=='decision' and isinstance(evidence_identity,dict):
+                for key in ('decision_id','evidence_id'):
+                    if key in evidence_identity and payload.get(key)!=evidence_identity[key]:
+                        raise ValueError('Decision trace differs from its pre-dispatch evidence identity')
+            control_store.stage(role,number,payload,signature=signature,
+                                evidence_identity=evidence_identity)
+        phase='outbox_enqueue'
+        _enqueue_trace(campaign,payload,config,role=role,number=number)
+        if control_store is not None:
+            phase='control_acknowledge'
+            control_store.acknowledge(role,number)
+        phase='outbox_delivery'
+        return _deliver_trace(campaign,config,role,number)
+    except Exception as exc:
+        exc.trace_publication_phase=phase
+        if isinstance(exc,StorageBlocked):
+            exc.diagnostic.update(trace_publication_phase=phase,trace_role=role,trace_sequence=number)
+        raise
+
+
+def replay_control_trace(control_store,envelope: bytes,config):
+    """Replay stored normalized input, never a new snapshot or planner call."""
+    if type(envelope) is not bytes:raise ValueError('Immutable control envelope required')
+    body=json.loads(envelope)
+    if not isinstance(body,dict):raise ValueError('Invalid control envelope')
+    try:
+        if envelope not in control_store.pending() or body.get('state')!='complete':
+            raise ValueError('No matching complete pending control intent')
+    except StorageBlocked as exc:
+        exc.diagnostic.update(trace_publication_phase='control_intent',
+                              trace_role=body.get('role'),trace_sequence=body.get('sequence'))
+        raise
+    campaign=Path(body['campaign'])
+    _check_control_context(control_store,campaign,config)
+    return _publish_normalized_trace(campaign,body['payload'],config,
+        role=body['role'],number=body['sequence'],control_store=control_store,
+        already_staged=True)
+
+
+@storage_writer(stage='tracking_outbox',output=lambda a:a['campaign'],
+    estimate=lambda a:8*1024**2+8*len(json.dumps(a['payload'],sort_keys=True,allow_nan=False).encode()))
+def _enqueue_trace(campaign,payload,config,*,role,number):
     encoded = json.dumps(payload, sort_keys=True, allow_nan=False)
-    conn = _outbox(campaign)
+    conn = _outbox(campaign,estimated_growth_bytes=8*1024**2+8*len(encoded.encode()))
+    primary=None
     try:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM traces WHERE role=? AND number=?", (role, number)).fetchone()
@@ -205,14 +312,53 @@ def log_snapshot(campaign: Path, payload: dict, config, *, role: str, number: in
                          (role, number, encoded, config.mlflow_tracking_uri,
                           json.dumps(receipt) if receipt is not None else None, int(receipt is not None)))
         conn.commit()
+    except BaseException as exc:
+        primary=exc
+        if conn.in_transaction:
+            try:conn.rollback()
+            except BaseException as cleanup:exc.add_note(f"Outbox rollback cleanup also failed: {cleanup!r}")
+        raise
     finally:
-        conn.close()
-    return _deliver_trace(campaign, config, role, number)
+        try:conn.close()
+        except BaseException as cleanup:
+            if primary is None:raise
+            primary.add_note(f"Outbox close cleanup also failed: {cleanup!r}")
 
 
+@contextmanager
+def _read_outbox(campaign):
+    campaign=Path(campaign)
+    try:
+        # Read-only WAL connections may create shared-memory sidecars.
+        with admitted_output(campaign,estimated_bytes=1024**2,stage='tracking_outbox_read'):
+            conn=sqlite3.connect((campaign/'trace-outbox.sqlite').resolve().as_uri()+'?mode=ro',uri=True,timeout=30)
+            conn.row_factory=sqlite3.Row
+            try:yield conn
+            finally:conn.close()
+    except Exception as exc:
+        pressure=as_storage_blocked(exc,stage='tracking_outbox_read',output=campaign)
+        if pressure is None or pressure is exc:raise
+        raise pressure from exc
+
+
+def _delivery_bytes(arguments):
+    campaign=Path(arguments['campaign'])
+    with _read_outbox(campaign) as conn:
+        columns={row[1] for row in conn.execute('PRAGMA table_info(traces)')}
+        trace_size='length(CAST(trace_json AS BLOB))' if 'trace_json' in columns else 'NULL'
+        row=conn.execute('SELECT length(CAST(payload AS BLOB)),'+trace_size+' '
+                         'FROM traces WHERE role=? AND number=?',
+                         (arguments['role'],arguments['number'])).fetchone()
+        size=sum(value or 0 for value in row) if row else 0
+    return 16*1024**2+8*size
+
+
+@storage_writer(stage='tracking_delivery',output=lambda a:a['campaign'],estimate=_delivery_bytes)
 def _deliver_trace(campaign, config, role, number):
     from .mlflow_tracking import _mlflow, _write_json_atomic
-    conn = _outbox(campaign)
+    growth=_delivery_bytes({'campaign':campaign,'role':role,'number':number})
+    conn = _outbox(campaign,estimated_growth_bytes=growth)
+    primary=None
     try:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM traces WHERE role=? AND number=?", (role, number)).fetchone()
@@ -223,6 +369,9 @@ def _deliver_trace(campaign, config, role, number):
         if row["delivered"]:
             return json.loads(row["receipt"])
         conn.execute("UPDATE traces SET attempts=attempts+1 WHERE role=? AND number=?", (role, number))
+        # Count the durable attempt before span creation can fail. This commit
+        # releases SQLite's writer lock while the native delivery continues.
+        conn.commit()
         if row["receipt"]:
             receipt = json.loads(row["receipt"])
             trace_json = row["trace_json"]
@@ -245,12 +394,26 @@ def _deliver_trace(campaign, config, role, number):
         conn.execute("UPDATE traces SET delivered=1,last_error=NULL WHERE role=? AND number=?", (role, number))
         conn.commit()
         return receipt
-    except Exception as exc:
-        conn.execute("UPDATE traces SET last_error=? WHERE role=? AND number=?", (str(exc), role, number))
-        conn.commit()
+    except BaseException as exc:
+        primary=exc
+        try:
+            if conn.in_transaction:
+                conn.rollback()
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("UPDATE traces SET last_error=? WHERE role=? AND number=?", (str(exc), role, number))
+            conn.commit()
+        except BaseException as cleanup:
+            try:
+                if conn.in_transaction:conn.rollback()
+            except BaseException as rollback_error:
+                cleanup.add_note(f"Outbox error-record rollback also failed: {rollback_error!r}")
+            exc.add_note(f"Outbox error recording also failed: {cleanup!r}")
         raise
     finally:
-        conn.close()
+        try:conn.close()
+        except BaseException as cleanup:
+            if primary is None:raise
+            primary.add_note(f"Outbox close cleanup also failed: {cleanup!r}")
 
 
 def drain_trace_outbox(campaign: Path, config, *, limit: int = 20) -> dict:
@@ -260,12 +423,9 @@ def drain_trace_outbox(campaign: Path, config, *, limit: int = 20) -> dict:
         raise ValueError("Trace drain limit cannot be negative")
     if not config.mlflow_tracking_uri or not (campaign / "trace-outbox.sqlite").exists():
         return {"delivered": 0, "pending": 0, "errors": []}
-    conn = _outbox(campaign)
-    try:
+    with _read_outbox(campaign) as conn:
         rows = conn.execute("SELECT role,number FROM traces WHERE delivered=0 ORDER BY role,number LIMIT ?",
                             (limit,)).fetchall()
-    finally:
-        conn.close()
     delivered, errors = 0, []
     for row in rows:
         try:
@@ -273,11 +433,11 @@ def drain_trace_outbox(campaign: Path, config, *, limit: int = 20) -> dict:
             delivered += 1
         except Exception as exc:
             errors.append({"role": row["role"], "number": row["number"], "error": str(exc)})
-    conn = _outbox(campaign)
-    try:
+            if isinstance(exc,StorageBlocked):
+                errors[-1].update(exc.diagnostic)
+                break
+    with _read_outbox(campaign) as conn:
         pending = conn.execute("SELECT COUNT(*) FROM traces WHERE delivered=0").fetchone()[0]
-    finally:
-        conn.close()
     return {"delivered": delivered, "pending": pending, "errors": errors}
 
 
@@ -288,13 +448,10 @@ def next_trace_number(campaign: Path, role: str) -> int:
     campaign = Path(campaign)
     numbers = [int(path.stem.rsplit("-", 1)[1]) for path in (campaign / "traces").glob(f"{role}-*.json")]
     if (campaign / "trace-outbox.sqlite").exists():
-        conn = _outbox(campaign)
-        try:
+        with _read_outbox(campaign) as conn:
             number = conn.execute("SELECT MAX(number) FROM traces WHERE role=?", (role,)).fetchone()[0]
             if number is not None:
                 numbers.append(number)
-        finally:
-            conn.close()
     return max(numbers, default=0) + 1
 
 
@@ -417,7 +574,10 @@ def _emit_trace_locked(campaign: Path, payload: dict, config, *, role: str, numb
     artifact_dir = campaign / "traces" / f"{role}-{number:06d}"
     _write_json_atomic(artifact_dir / "summary.json", written)
     temporary = artifact_dir / "summary.md.tmp"
-    temporary.write_text(markdown)
+    with reserved_output_file(temporary,'w') as stream:
+        stream.write(markdown)
+        stream.flush()
+        os.fsync(stream.fileno())
     temporary.replace(artifact_dir / "summary.md")
     preview = summary_preview(written)
     if role == "betting":

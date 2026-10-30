@@ -1,0 +1,8 @@
+[Unit]
+Description=IMA aggregate model and feature research budget
+
+[Slice]
+MemoryAccounting=yes
+MemoryHigh=95000000000
+MemoryMax=100000000000
+CPUQuota=2600%

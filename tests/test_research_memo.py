@@ -21,7 +21,13 @@ class ResearchMemoTests(unittest.TestCase):
             result = choose_research_decision(
                 {"decision_id": "D1", "evidence_id": "E1", "capabilities": {"research_memo": memo}},
                 {"trial_ceiling": 260, "max_new_programs": 12}, OpenRouterConfig("test", "test/model"))
-        submitted = json.loads(post.call_args.args[1]["messages"][1]["content"])
+        # Stable contracts and fresh evidence may be separate JSON messages;
+        # together they must retain the complete memo and exact input identity.
+        submitted = {}
+        for message in post.call_args.args[1]['messages'][1:]:
+            part = json.loads(message['content'])
+            self.assertFalse(set(part) & set(submitted), 'Planner fields were duplicated across messages')
+            submitted.update(part)
         self.assertEqual(memo, submitted["evidence"]["capabilities"]["research_memo"])
         self.assertEqual(memo["sha256"], submitted["required_identity"]["research_memo_sha256"])
         self.assertEqual("D1", submitted["required_identity"]["decision_id"])

@@ -7,6 +7,7 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
+Slice=ima-research.slice
 EnvironmentFile=/home/imaopt/.config/imaopt/research-expansion.env
 ExecStart=/bin/bash ${IMA_V6_RELEASE}/deploy/systemd/ima-research-expansion-supervisor
 Restart=on-failure

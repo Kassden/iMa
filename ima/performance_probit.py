@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
+import hashlib
+import json
+import os
+from pathlib import Path
+import uuid
+import time
 from time import perf_counter
 import warnings
 
@@ -17,6 +23,87 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from .performance_distributions import PerformanceDistribution, _row_keys
+from .research_storage import reserved_output_file, storage_writer
+
+
+def _array_digest(values):
+    array = np.ascontiguousarray(values, dtype="<f8")
+    digest = hashlib.sha256(json.dumps(list(array.shape)).encode())
+    digest.update(array.tobytes())
+    return digest.hexdigest()
+
+
+def _warmstart_key(model, frame, x, y, training_context):
+    """Hash training-only values and state; never serialize frames or preprocessors."""
+    if not isinstance(training_context, dict) or not training_context.get("fold_id"):
+        raise ValueError("Warm starts require explicit training_context.fold_id")
+    if not any(training_context.get(key) for key in ("dataset", "dataset_id", "dataset_digest", "dataset_hash")):
+        raise ValueError("Warm starts require explicit training dataset identity")
+    import scipy
+    import sklearn
+    imputer, scaler = model.preprocessor.steps[0][1], model.preprocessor.steps[1][1]
+    columns = list(dict.fromkeys([*model.feature_columns, "race_id", "target_win",
+                                 *[key for key in ("horse_no", "date") if key in frame]]))
+    training = frame[columns]
+    row_hash = hashlib.sha256(pd.util.hash_pandas_object(training, index=True).to_numpy().tobytes()).hexdigest()
+    payload = {"version": 1, "context": training_context,
+        "features": list(model.feature_columns), "dtypes": [str(value) for value in training.dtypes],
+        "training_rows": row_hash, "matrix": _array_digest(x), "labels": _array_digest(y),
+        "compatibility": "race_centered_bounded_scale_v1" if model.heteroscedastic else "race_centered_shared_scale_v1",
+        "preprocessing": {"implementation": "median_keep_empty_standard_scaler_race_center_v1",
+            "steps": [{"class": type(step).__module__+"."+type(step).__qualname__,
+                       "parameters": {key: repr(value) for key, value in step.get_params(deep=False).items()}}
+                      for _, step in model.preprocessor.steps],
+            "imputer_statistics": _array_digest(imputer.statistics_),
+            "scaler_mean": _array_digest(scaler.mean_), "scaler_scale": _array_digest(scaler.scale_),
+            "scaler_variance": _array_digest(scaler.var_),
+            "scaler_samples": _array_digest(scaler.n_samples_seen_)},
+        "versions": {"numpy": np.__version__, "pandas": pd.__version__,
+                     "scipy": scipy.__version__, "sklearn": sklearn.__version__}}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def _read_warmstart(path, key, dimension):
+    try:
+        record = json.loads(path.read_text())
+        values = record["coefficients"]
+        if (set(record) != {"schema_version", "key", "coefficients", "coefficients_hash"}
+                or record["schema_version"] != 1 or record["key"] != key
+                or not isinstance(values, list) or len(values) != dimension
+                or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values)):
+            return None
+        coefficients = np.asarray(values, dtype=float)
+        if (not np.isfinite(coefficients).all() or np.max(np.abs(coefficients), initial=0) > 1e6
+                or _array_digest(coefficients) != record["coefficients_hash"]):
+            return None
+        return coefficients
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+
+
+@storage_writer(stage="probit_warmstart", output=lambda args: Path(args["path"]).parent,
+                estimate=lambda args: max(64 * 1024, args["coefficients"].size * 64 + 64 * 1024))
+def _write_warmstart(path, key, coefficients):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {"schema_version": 1, "key": key, "coefficients": coefficients.tolist(),
+              "coefficients_hash": _array_digest(coefficients)}
+    temporary = path.parent / (path.name + "-" + uuid.uuid4().hex)
+    try:
+        with reserved_output_file(temporary, "x") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            json.dump(record, stream, sort_keys=True, allow_nan=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def _race_groups(codes):
@@ -323,10 +410,12 @@ class GaussianRaceProbit:
         codes = pd.factorize(frame["race_id"], sort=False)[0]
         return _race_center(matrix, codes), codes
 
-    def fit(self, frame):
+    def fit(self, frame, *, progress_callback=None, cache_dir=None, training_context=None):
         if self.l2 <= 0 or self.scale_l2 <= 0 or self.max_iter < 1:
             raise ValueError("Probit requires positive identification regularization")
         started = perf_counter()
+        self.coefficients, self.scale_coefficients = None, None
+        self.fit_diagnostics = {}
         x, codes = self._matrix(frame, fit=True)
         y = frame["target_win"].to_numpy(float)
         groups = _race_groups(codes)
@@ -342,39 +431,93 @@ class GaussianRaceProbit:
         batches = _race_batches(groups, winners, self.quadrature_order)
         configured_order = self.quadrature_order
         preparation_seconds = perf_counter()-started
-        objective_seconds, evaluations = 0.0, 0
+        objective_seconds, evaluations, gradient_norm = 0.0, 0, None
 
         def objective(parameters):
-            nonlocal objective_seconds, evaluations
+            nonlocal objective_seconds, evaluations, gradient_norm
             tick = perf_counter()
             result = self._objective_and_gradient(parameters, x, codes, groups, winners, batches=batches)
             objective_seconds += perf_counter()-tick
             evaluations += 1
+            gradient_norm = float(np.linalg.norm(result[1], ord=np.inf))
             return result
 
         initial = np.zeros(dimension*(2 if self.heteroscedastic else 1))
+        warmstart_key, cache_path, warmstart_used = None, None, False
+        if cache_dir is not None:
+            warmstart_key = _warmstart_key(self, frame, x, y, training_context)
+            cache_path = Path(cache_dir)/f"{warmstart_key}.json"
+            cached = _read_warmstart(cache_path, warmstart_key, len(initial))
+            if cached is not None:
+                initial, warmstart_used = cached, True
         remaining_iterations = self.max_iter
         optimizer_seconds,verification_seconds,iterations = 0.,0.,0
+        callback_iterations = 0
+        optimization_round = 0
+        optimizer_started = None
+        verification_started = None
+        verification_batches_completed = 0
+
+        def emit(stage, objective_value=None, progress_kind=None):
+            if progress_callback is None:
+                return
+            tick = perf_counter()
+            progress_callback({"stage": stage, "pid": os.getpid(), "updated_at_epoch": time.time(),
+                "fold_id": (training_context or {}).get("fold_id"),
+                "iteration": callback_iterations, "objective": objective_value,
+                "gradient_norm": gradient_norm, "progress_kind": progress_kind,
+                "objective_evaluations": evaluations, "optimization_round": optimization_round,
+                "quadrature_order": self.quadrature_order, "preparation_seconds": preparation_seconds,
+                "verification_batches_completed": verification_batches_completed,
+                "verification_batches_total": len(batches),
+                "converged": stage == "fit_completed",
+                "objective_seconds": objective_seconds,
+                "optimizer_seconds": optimizer_seconds+(tick-optimizer_started if optimizer_started is not None else 0.),
+                "quadrature_verification_seconds": verification_seconds+(tick-verification_started if verification_started is not None else 0.),
+                "fit_seconds": tick-started, "warmstart_used": warmstart_used,
+                "warmstart_key": warmstart_key})
+
+        callback_best = None
+
+        def optimizer_callback(intermediate_result):
+            nonlocal callback_iterations, callback_best
+            callback_iterations += 1
+            value = float(intermediate_result.fun)
+            kind = "objective_improvement" if callback_best is not None and value < callback_best-1e-9 else "optimizer_iteration"
+            callback_best = min(value, callback_best) if callback_best is not None else value
+            emit("optimizing", value, kind)
+
         rounds = []
+        emit("prepared")
         while True:
             optimizer_started = perf_counter()
             result = minimize(objective,initial,jac=True,method="L-BFGS-B",
+                              callback=optimizer_callback,
                               options={"maxiter":remaining_iterations,"ftol":1e-9})
             optimizer_seconds += perf_counter()-optimizer_started
+            optimizer_started = None
             if not result.success:
+                emit("failed")
                 raise RuntimeError(f"Probit likelihood fit did not converge: {result.message}")
+            if not np.isfinite(result.x).all() or not np.isfinite(result.fun):
+                raise RuntimeError("Probit optimizer returned nonfinite coefficients/objective")
             iterations += int(result.nit)
             remaining_iterations -= max(1,int(result.nit))
             means = x@result.x[:dimension]
             scales = self._scales(x,result.x[dimension:],codes) if self.heteroscedastic else np.ones(len(x))
             verification_started = perf_counter()
+            verification_batches_completed = 0
+            emit("verifying_quadrature", float(result.fun))
             errors = []
             for indices,_ in batches:
                 coarse = _batch_log_win_probabilities(means[indices],scales[indices],self.quadrature_order)
                 fine = _batched_win_probabilities(means[indices],scales[indices],order=self.quadrature_order,
                                                  max_order=max(512,self.quadrature_order))
                 errors.append(float(np.max(np.abs(np.exp(coarse-logsumexp(coarse,axis=1)[:,None])-fine))))
+                verification_batches_completed += 1
+                emit("verifying_quadrature", float(result.fun))
             verification_seconds += perf_counter()-verification_started
+            verification_started = None
             rounds.append({"quadrature_order":self.quadrature_order,"iterations":int(result.nit),
                            "max_refinement_error":max(errors)})
             if max(errors)<=1e-4:
@@ -385,6 +528,8 @@ class GaussianRaceProbit:
             self.quadrature_order = min(max(512,configured_order),2*self.quadrature_order)
             batches = _race_batches(groups,winners,self.quadrature_order)
             initial = result.x
+            optimization_round += 1
+            callback_best = None
         self.coefficients = result.x[:dimension]
         self.scale_coefficients = result.x[dimension:] if self.heteroscedastic else None
         self.fit_diagnostics = {"fit_regime": "winner_likelihood", "objective": float(result.fun),
@@ -396,7 +541,11 @@ class GaussianRaceProbit:
             "preparation_seconds": preparation_seconds, "optimizer_seconds": optimizer_seconds,
             "quadrature_verification_seconds": verification_seconds,
             "fit_seconds": perf_counter()-started, "objective_engine": "bounded_numpy_batches_v1",
+            "warmstart_used": warmstart_used, "warmstart_key": warmstart_key,
             "training_quadrature_max_refinement_error": max(errors)}
+        if cache_path is not None:
+            _write_warmstart(cache_path, warmstart_key, np.asarray(result.x, dtype=float))
+        emit("fit_completed", float(result.fun))
         return self
 
     def _objective_and_gradient(self, parameters, x, codes, groups, winners, *, batches=None):
@@ -449,6 +598,10 @@ class GaussianRaceProbit:
     predict = predict_fundamental_proba
 
 
-def fit_probit(train, feature_schema, parameters=None):
+def fit_probit(train, feature_schema, parameters=None, *, progress_callback=None,
+               cache_dir=None, training_context=None):
     """Parent dispatch for model kind gaussian_probit; numeric predictors only."""
-    return GaussianRaceProbit(tuple(feature_schema.numeric), **dict(parameters or {})).fit(train)
+    if training_context is not None:
+        training_context = dict(training_context, probit_feature_schema=feature_schema.contract())
+    return GaussianRaceProbit(tuple(feature_schema.numeric), **dict(parameters or {})).fit(
+        train, progress_callback=progress_callback, cache_dir=cache_dir, training_context=training_context)

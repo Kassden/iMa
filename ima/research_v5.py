@@ -74,7 +74,7 @@ def run_v5_campaign(config):
     if not config.protocol_path or not config.dataset_path:
         raise ValueError("v5 requires immutable dataset and protocol paths")
     directory = Path(config.campaign_dir)
-    directory.mkdir(parents=True, exist_ok=True)
+    core._prepare_campaign_directory(directory)
     with core.campaign_lock(directory):
         dataset = core._resolve_dataset(config,directory)
         digest = core._hash_file(dataset)

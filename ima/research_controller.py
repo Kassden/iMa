@@ -65,8 +65,9 @@ class DatasetFeatureProfile:
         required = {"race_id", "race_no", "date", "target_win", "source", "horse_id", "jockey_id", "jockey_key", "trainer_id", "trainer_key", "finish_seconds", "lengths_raw", "actual_weight"}
         if prepared_frame is not None:
             frame = prepared_frame[[column for column in prepared_frame if column in numeric | required]].copy()
-        elif dataset_path.suffix == ".parquet":
-            frame = pd.read_parquet(dataset_path)
+        elif dataset_path.suffix == ".parquet" or dataset_path.name == 'features.delta.json':
+            from .dataset_delta import read_feature_table
+            frame = read_feature_table(dataset_path)
             frame = frame[[column for column in frame if column in numeric | required]]
         else:
             frame = pd.read_csv(
@@ -176,7 +177,7 @@ def run_research_campaign(config: Any) -> dict[str, Any]:
             "Executable agentic campaigns require an explicit protocol_path"
         )
     campaign_dir = Path(config.campaign_dir)
-    campaign_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_campaign_directory(campaign_dir)
     with campaign_lock(campaign_dir):
         dataset_path = _resolve_dataset(config, campaign_dir)
         dataset_hash = _hash_file(dataset_path)
@@ -400,7 +401,7 @@ def campaign_status(campaign_dir: Path) -> dict[str, Any]:
     ledger_path = campaign_dir / "ledger.sqlite"
     status = _read_json(campaign_dir / "status.json")
     if ledger_path.exists():
-        status["ledger"] = ResearchLedger(ledger_path).snapshot()
+        status["ledger"] = ResearchLedger(ledger_path, read_only=True).snapshot()
     status["controller_online"] = _controller_lock_held(campaign_dir / "controller.lock")
     status["controller_lock"] = _read_lock_metadata(campaign_dir / "controller.lock")
     status["campaign_dir"] = str(campaign_dir)
@@ -411,7 +412,7 @@ def request_campaign_stop(campaign_dir: Path) -> Path:
     if not campaign_dir.exists():
         raise FileNotFoundError(campaign_dir)
     marker = campaign_dir / "STOP"
-    marker.write_text(utc_now() + "\n", encoding="utf-8")
+    _write_text_atomic(marker, utc_now() + "\n")
     return marker
 
 
@@ -1327,6 +1328,23 @@ def _resolve_dataset(config: Any, campaign_dir: Path) -> Path:
     cached = campaign_dir / "inputs" / "rich-history.csv.gz"
     if cached.exists():
         return cached
+    from .research_storage import admitted_output, as_storage_blocked
+    try:
+        with admitted_output(campaign_dir, estimated_bytes=64*1024**2,
+                             stage="controller_fallback_dataset"):
+            return _build_fallback_dataset(cached)
+    except Exception as exc:
+        converted = as_storage_blocked(exc, stage="controller_fallback_dataset", output=cached)
+        if converted is None or converted is exc:
+            raise
+        raise converted from exc
+
+
+def _build_fallback_dataset(cached: Path) -> Path:
+    """Build under admission; publish only a completely flushed gzip export."""
+    import gzip
+    import io
+    from .research_storage import reserved_output_file
     from .rich_features import load_full_rich_history
     frame = load_full_rich_history(
         Path("track/hkracing 2/runs.csv"),
@@ -1334,9 +1352,31 @@ def _resolve_dataset(config: Any, campaign_dir: Path) -> Path:
         Path("data/processed/historical/runners.csv.gz"),
     )
     cached.parent.mkdir(parents=True, exist_ok=True)
-    temporary = cached.with_suffix(cached.suffix + ".tmp")
-    frame.to_csv(temporary, index=False, compression="gzip")
-    os.replace(temporary, cached)
+    # All production callers hold the campaign lock. Reuse one staging slot
+    # so a killed exporter cannot accumulate a new orphan on every restart.
+    temporary = cached.with_name(cached.name + ".tmp")
+    opened = False
+    failure = None
+    try:
+        with reserved_output_file(temporary, "wb") as stream:
+            opened = True
+            with gzip.GzipFile(fileobj=stream, mode="wb") as compressed:
+                with io.TextIOWrapper(compressed, encoding="utf-8", newline="") as text:
+                    frame.to_csv(text, index=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, cached)
+        directory_fd = os.open(cached.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except BaseException as exc:
+        failure = exc
+        raise
+    finally:
+        if opened:
+            _cleanup_export_staging(temporary, failure)
     return cached
 
 
@@ -1530,6 +1570,47 @@ def _hash_file(path: Path) -> str:
 @contextmanager
 def campaign_lock(campaign_dir: Path) -> Iterator[None]:
     path = campaign_dir / "controller.lock"
+    if os.environ.get("IMA_STORAGE_ROOT"):
+        import stat
+        from .research_storage import admitted_output, as_storage_blocked, reserved_output_file
+
+        retained_fd = None
+        try:
+            try:
+                with admitted_output(path.parent, estimated_bytes=4096, stage="controller_lock",
+                                     inodes=_publication_inode_budget(path)):
+                    with reserved_output_file(path, "ab") as handle:
+                        fd = handle.fileno()
+                        before = os.fstat(fd)
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        locked = os.fstat(fd)
+                        named = os.stat(path, follow_symlinks=False)
+                        if (not stat.S_ISREG(locked.st_mode) or locked.st_uid != os.getuid()
+                                or locked.st_nlink != 1 or not os.path.samestat(before, locked)
+                                or not os.path.samestat(locked, named)):
+                            raise ValueError("Unsafe or changed controller lock target")
+                        retained_fd = os.dup(fd)
+                        metadata = (json.dumps({"pid": os.getpid(), "started_at": utc_now()}) + "\n").encode("utf-8")
+                        os.ftruncate(fd, 0)
+                        handle.write(metadata)
+                        handle.flush()
+                        os.fsync(fd)
+            except BlockingIOError as exc:
+                raise RuntimeError(f"Campaign controller already running: {campaign_dir}") from exc
+            except Exception as exc:
+                converted = as_storage_blocked(exc, stage="controller_lock", output=path)
+                if converted is None or converted is exc:
+                    raise
+                raise converted from exc
+            # The duplicated descriptor keeps the lock after admission has ended.
+            yield
+        finally:
+            if retained_fd is not None:
+                try:
+                    fcntl.flock(retained_fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(retained_fd)
+        return
     handle = path.open("a+", encoding="utf-8")
     try:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1547,17 +1628,180 @@ def campaign_lock(campaign_dir: Path) -> Iterator[None]:
         handle.close()
 
 
+def _prepare_campaign_directory(campaign_dir: Path) -> None:
+    campaign_dir = Path(campaign_dir)
+    if not os.environ.get("IMA_STORAGE_ROOT"):
+        campaign_dir.mkdir(parents=True, exist_ok=True)
+        return
+    from .research_storage import admitted_output, as_storage_blocked
+
+    missing_inodes = max(0, _publication_inode_budget(campaign_dir) - 1)
+    try:
+        with admitted_output(campaign_dir, estimated_bytes=max(4096,missing_inodes*65536),
+                             stage="controller_campaign_directory", inodes=missing_inodes):
+            campaign_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        converted = as_storage_blocked(exc, stage="controller_campaign_directory", output=campaign_dir)
+        if converted is None or converted is exc:
+            raise
+        raise converted from exc
+
+
 def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
+    if os.environ.get("IMA_STORAGE_ROOT"):
+        import stat
+        from .research_storage import admitted_output, as_storage_blocked, reserved_output_file
+
+        encoded = (json.dumps(payload, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+        lock_fd = None
+        original_length = None
+        primary = None
+        try:
+            with admitted_output(path.parent, estimated_bytes=len(encoded) + 65536,
+                                 stage="controller_jsonl", inodes=_publication_inode_budget(path.parent)):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    with reserved_output_file(path, "ab") as handle:
+                        stream_info = os.fstat(handle.fileno())
+                        lock_fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+                        locked_info = os.fstat(lock_fd)
+                        if (not os.path.samestat(stream_info, locked_info)
+                                or not os.path.samestat(stream_info, os.stat(path, follow_symlinks=False))):
+                            raise ValueError("JSONL target changed while opening")
+                        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                        locked_info = os.fstat(lock_fd)
+                        if (not stat.S_ISREG(locked_info.st_mode) or locked_info.st_nlink!=1
+                                or locked_info.st_uid!=os.getuid()
+                                or not os.path.samestat(stream_info, locked_info)
+                                or not os.path.samestat(locked_info, os.stat(path, follow_symlinks=False))):
+                            raise ValueError("JSONL target changed while waiting for append lock")
+                        original_length = locked_info.st_size
+                        try:
+                            handle.write(encoded)
+                            handle.flush()
+                            os.fsync(handle.fileno())
+                        except BaseException as exc:
+                            primary = exc
+                except BaseException as exc:
+                    if primary is None:
+                        primary = exc
+                if primary is not None and lock_fd is not None and original_length is not None:
+                    try:
+                        os.ftruncate(lock_fd, original_length)
+                        os.fsync(lock_fd)
+                    except OSError as cleanup:
+                        primary.add_note(
+                            f"JSONL append rollback failed: {type(cleanup).__name__}, "
+                            f"errno={cleanup.errno}; original file length was {original_length}"
+                        )
+                if primary is not None:
+                    raise primary
+        except Exception as exc:
+            converted = as_storage_blocked(exc, stage="controller_jsonl", output=path)
+            if converted is None or converted is exc:
+                raise
+            raise converted from exc
+        finally:
+            if lock_fd is not None:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(lock_fd)
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
+def _publication_inode_budget(parent: Path) -> int:
+    """Reserve the output inode plus every directory mkdir(parents=True) may create."""
+    required = 1
+    while not parent.exists():
+        required += 1
+        if parent == parent.parent:
+            raise ValueError("Publication has no existing filesystem ancestor")
+        parent = parent.parent
+    return required
+
+
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    encoded = json.dumps(payload, indent=2, sort_keys=True,
+                         allow_nan=not bool(os.environ.get("IMA_STORAGE_ROOT"))).encode("utf-8")
+    _write_bytes_atomic(path, encoded, stage="controller_json")
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    _write_bytes_atomic(path, text.encode("utf-8"), stage="controller_text")
+
+
+def _write_bytes_atomic(path: Path, encoded: bytes, *, stage: str) -> None:
+    """Publish one controller-owned artifact; the caller serializes its staging slot."""
+    if os.environ.get("IMA_STORAGE_ROOT"):
+        import stat
+        from .research_storage import admitted_output, as_storage_blocked, reserved_output_file
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        try:
+            with admitted_output(path.parent, estimated_bytes=len(encoded)+65536,
+                                 stage=stage, inodes=max(4,_publication_inode_budget(path.parent))):
+                opened = False
+                identity = None
+                failure = None
+                try:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    with reserved_output_file(temporary, "wb") as handle:
+                        info = os.fstat(handle.fileno())
+                        identity = (info.st_dev, info.st_ino)
+                        opened = True
+                        handle.write(encoded)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    observed = temporary.lstat()
+                    if ((observed.st_dev, observed.st_ino) != identity
+                            or not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1
+                            or observed.st_uid != os.getuid()):
+                        raise ValueError("Publication staging identity changed")
+                    os.replace(temporary, path)
+                    directory_fd = os.open(path.parent, os.O_RDONLY)
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
+                except BaseException as exc:
+                    failure = exc
+                    raise
+                finally:
+                    if opened:
+                        _cleanup_export_staging(temporary, failure, expected_identity=identity)
+        except Exception as exc:
+            converted = as_storage_blocked(exc, stage=stage, output=path)
+            if converted is None or converted is exc:
+                raise
+            raise converted from exc
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    temporary.write_bytes(encoded)
     os.replace(temporary, path)
+
+
+def _cleanup_export_staging(path: Path, failure: BaseException | None, *, expected_identity=None) -> None:
+    """Keep the primary error if removing a bounded staging slot also fails."""
+    try:
+        if expected_identity is not None:
+            try:
+                info = path.lstat()
+            except FileNotFoundError:
+                return
+            if (info.st_dev, info.st_ino) != expected_identity:
+                if failure is not None:
+                    failure.add_note(f"Changed staging identity retained: {path}")
+                    return
+                raise ValueError(f"Changed staging identity retained: {path}")
+        path.unlink(missing_ok=True)
+    except OSError as cleanup:
+        if failure is None:
+            raise
+        failure.add_note(f"Staging cleanup failed: {type(cleanup).__name__}, errno={cleanup.errno}; retained slot {path}")
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -1567,16 +1811,22 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _controller_lock_held(path: Path) -> bool:
-    if not path.exists():
-        return False
-    handle = path.open("a+", encoding="utf-8")
     try:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        handle.close()
+        os.close(fd)
         return True
-    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-    handle.close()
+    except BaseException:
+        os.close(fd)
+        raise
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
     return False
 
 

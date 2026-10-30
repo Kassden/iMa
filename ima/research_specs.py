@@ -284,7 +284,7 @@ class PipelineRecipe(StrictModel):
             ):
                 raise ValueError("Distribution graph ancestors require transforms=[] and feature_discovery=null; "
                                  "fold-local distribution preprocessing is not supported")
-            if graph.primary_node_id is None:
+            if graph.tuned_estimator_id is None:
                 raise ValueError("Tunable graphs require primary_node_id")
             for field, disabled in (("calibration", CalibrationSpec(kind="none")),
                                     ("blend", BlendSpec(kind="none"))):
@@ -294,13 +294,46 @@ class PipelineRecipe(StrictModel):
                     raise ValueError(f"Graph recipes define {field} inside graph nodes, not an outer adapter")
             if self.target.kind != "win_probability":
                 raise ValueError("Composed graph evaluation currently requires win_probability")
+            nested_pools = [node for node in graph.nodes
+                            if node.kind == "learned_probability_pool"
+                            and node.parameters.get("selection_mode") == "nested_selection"]
+            if nested_pools:
+                if self.transforms or self.feature_discovery or self.feature_definitions or self.extra_numeric_features:
+                    raise ValueError("nested_selection currently requires the shared graph feature schema without outer recipe transforms/discovery")
+                from .feature_sets import FEATURE_SCHEMAS, FeatureSchema, drop_feature_families
+                from .pool_selection import validate_selection_protocol
+                declared_schema = drop_feature_families(
+                    FEATURE_SCHEMAS[self.feature_schema], self.drop_feature_families)
+                for node in nested_pools:
+                    protocol = node.parameters["selection_protocol"]
+                    registered = protocol.get("registered_features") if isinstance(protocol, dict) else None
+                    # Dataset availability is unknown when parsing a recipe. The
+                    # declaration may omit unavailable registered predictors, but
+                    # cannot add, duplicate or reorder them. Execution still
+                    # requires exact equality with its actual eligible schema.
+                    if (not isinstance(registered, list) or not registered
+                            or any(not isinstance(name, str) for name in registered)
+                            or registered != [name for name in declared_schema.features
+                                              if name in registered]):
+                        raise ValueError("nested_selection registered_features must be a nonempty "
+                                         "ordered subset of the declared feature schema")
+                    selection_schema = FeatureSchema(
+                        declared_schema.name,
+                        tuple(name for name in declared_schema.numeric if name in registered),
+                        tuple(name for name in declared_schema.categorical if name in registered),
+                    )
+                    validate_selection_protocol(protocol,
+                        feature_schema=selection_schema, expected_output={
+                            "kind": "win_probability", "target": "win_probability",
+                            "unit": "probability", "market": False,
+                        })
             for node in graph.nodes:
                 if node.kind == "estimator":
                     kind = node.parameters.get("model_kind", "benter_conditional_logit")
                     parameters = node.parameters.get("model_parameters", node.parameters.get("parameters", {}))
                     ModelSpec(kind=kind, parameters=parameters)
-                    if node.node_id == graph.primary_node_id and kind != self.model.kind:
-                        raise ValueError("Outer model must match the primary graph estimator family")
+                    if node.node_id == graph.tuned_estimator_id and kind != self.model.kind:
+                        raise ValueError("Outer model must match the primary/tune graph estimator family")
             nodes = {node.node_id: node for node in graph.nodes}
             fundamental = nodes[graph.fundamental_node_id or graph.output_node_id]
             if fundamental.output.kind != "win_probability":

@@ -44,6 +44,7 @@ features = [
 ]
 dev = [
   "playwright>=1.54,<2",
+  "pytest==9.1.1",
 ]
 research = [
   "Pebble==5.2.2",

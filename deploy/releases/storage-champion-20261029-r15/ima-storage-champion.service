@@ -1,0 +1,31 @@
+[Unit]
+Description=iMa storage-bounded champion research controller
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=30
+KillMode=control-group
+UMask=0077
+LimitCORE=0
+Slice=ima-research.slice
+MemoryMax=100000000000
+CPUQuota=2600%
+TasksMax=256
+RuntimeMaxSec=infinity
+Environment="PYTHONDONTWRITEBYTECODE=1"
+Environment="PYTHONPATH=/home/imaopt/research-v2/canaries/continuing-storage-champion-9d64fcd14d7c-20261029-r15"
+Environment="IMA_CODE_REVISION=9d64fcd14d7ccedc1238ce4c80687350f75f0ea0"
+Environment="IMA_STORAGE_ROOT=/home/imaopt/research-v2/storage-control"
+Environment="TMPDIR=/home/imaopt/research-v2/canaries/continuing-storage-champion-9d64fcd14d7c-20261029-r15/scratch"
+Environment="IMA_CACHE_HOLD_POLICY=/home/imaopt/research-v2/storage-control/retention-holds-20261028.json"
+Environment="IMA_CACHE_HOLD_POLICY_SHA256=cb3362b1982b9475f3658b12d60b0e13f988f521d76b5da542fcfd7ca0097568"
+Environment="OPENBLAS_NUM_THREADS=1"
+Environment="OMP_NUM_THREADS=1"
+Environment="MKL_NUM_THREADS=1"
+ExecStart=/home/imaopt/research-v2/canaries/builder-runtime-20261028/venv/bin/python -B /home/imaopt/research-v2/canaries/continuing-storage-champion-9d64fcd14d7c-20261029-r15/qualification_driver.py
+
+[Install]
+WantedBy=default.target

@@ -10,6 +10,17 @@ from .data import CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES
 from .feature_sets import FEATURE_SCHEMAS
 
 
+def graph_fit_lineage(fitted_graph) -> dict:
+    """Consumer-facing attribution from actual fits, including selection exposure."""
+    report = fitted_graph.fit_report
+    return {"graph_id": fitted_graph.graph.graph_id,
+            "tune_node_id": report.get("tune_node_id"),
+            "training_cutoff": report["training_cutoff"],
+            "components": report["component_fits"],
+            "learned_pools": report.get("learned_pools", []),
+            "physical_fits": report["physical_fits"], "cache_hits": report["cache_hits"]}
+
+
 def _stage(
     stage_id: str,
     name: str,

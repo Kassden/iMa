@@ -14,8 +14,13 @@ from datetime import datetime, timezone
 
 SUMMARY_SCHEMA_VERSION = 1
 _FAILURES = {"failed", "error", "timeout", "timed_out", "interrupted",
-             "blocked_tracking", "blocked_failures", "blocked_paper"}
+             "blocked_tracking", "blocked_failures", "blocked_paper", "blocked_storage"}
 _ACTIVE = {"reserved", "queued", "preparing", "running"}
+
+
+def publish_execution_change(signature, previous_signature):
+    """Status heartbeats are not new scientific execution events."""
+    return previous_signature is None or signature != previous_signature
 
 
 def reported_cost(usage: dict) -> float | None:
@@ -138,6 +143,17 @@ def summary(snapshot: dict) -> dict:
             blockers.append(value)
     if snapshot.get("planner_spend_unknown"):
         blockers.append("Planner cost unresolved; further paid calls frozen")
+    storage_waits=snapshot.get('blocked_storage')
+    if storage_waits and (not isinstance(storage_waits,dict) or any(storage_waits.values())):
+        blockers.append('Storage capacity unavailable; work is waiting for infrastructure recovery')
+    if snapshot.get('trace_storage_blocked'):
+        blockers.append('Trace storage admission blocked; paid planning paused')
+    if snapshot.get('pending_trace_control_reservations'):
+        blockers.append('Unresolved decision reservation; paid planning frozen')
+    if snapshot.get('trace_control_state_unknown'):
+        blockers.append('Trace control state unreadable; paid planning frozen')
+    if snapshot.get('pending_trace_enqueues'):
+        blockers.append('Trace publications pending; delivery is not acknowledged')
     admission = resources.get("admission_blockers") or {}
     for attempt, reasons in sorted(admission.items()):
         blockers.append(f"{attempt}: {_text(reasons)}")
@@ -154,8 +170,10 @@ def summary(snapshot: dict) -> dict:
     unknown_receipts = spend.get("unknown_receipt_ids", spend.get("unresolved_decision_ids", snapshot.get("unknown_receipt_ids")))
     unresolved = (bool(unknown_receipts) or spend.get("spend_unknown") is True
                   or snapshot.get("planner_spend_unknown") is True
+                  or snapshot.get("trace_control_state_unknown") is True
                   or role == "decision" and receipt_cost is None and usage.get("cost_status") not in {"fixture", "not_dispatched"})
     total = spend.get("total_cost_usd", snapshot.get("planner_spend_usd", receipt_cost))
+    if unresolved:total=None
     known = spend.get("known_spend_usd", snapshot.get("known_spend_usd", usage.get("known_cost_usd", receipt_cost)))
     current = snapshot.get("champions_by_contract", output.get("champions_by_contract", {})) or {}
     prior = snapshot.get("prior_champions_by_contract")
@@ -208,6 +226,12 @@ def summary(snapshot: dict) -> dict:
                       "invocation_history": history, "oom_history": incidents, "historical_oom": historical_oom,
                       "restart_count": snapshot.get("restart_count", runtime_history.get("restart_count", resources.get("restart_count"))),
                       "pending_trace_delivery": snapshot.get("pending_trace_delivery"),
+                      "blocked_storage":storage_waits,
+                      "pending_trace_enqueues":snapshot.get('pending_trace_enqueues'),
+                      "pending_trace_control_reservations":snapshot.get('pending_trace_control_reservations'),
+                      "trace_storage_blocked":snapshot.get('trace_storage_blocked'),
+                      "trace_control_enabled":snapshot.get('trace_control_enabled'),
+                      "trace_control_state_unknown":snapshot.get('trace_control_state_unknown'),
                       "pending_tracking": counts.get("pending_tracking"), "pending_tells": counts.get("pending_tells")},
         "champions": _champions(current, prior or {}),
         "billing": {"known_subtotal_usd": known, "total_cost_usd": None if unresolved else total,
